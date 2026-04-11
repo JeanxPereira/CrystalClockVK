@@ -1,0 +1,54 @@
+{
+    "version": 6,
+    "cmakeMinimumRequired": {
+        "major": 3,
+        "minor": 25,
+        "patch": 0
+    },
+    "configurePresets": [
+        {
+            "name": "default",
+            "displayName": "Debug (Ninja)",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+            },
+            "environment": {
+                "VULKAN_SDK": "/Users/jeanxpereira/VulkanSDK/1.4.341.1/macOS",
+                "PATH": "/Users/jeanxpereira/VulkanSDK/1.4.341.1/macOS/bin:$penv{PATH}",
+                "DYLD_LIBRARY_PATH": "/Users/jeanxpereira/VulkanSDK/1.4.341.1/macOS/lib",
+                "VK_ICD_FILENAMES": "/Users/jeanxpereira/VulkanSDK/1.4.341.1/macOS/share/vulkan/icd.d/MoltenVK_icd.json",
+                "VK_LAYER_PATH": "/Users/jeanxpereira/VulkanSDK/1.4.341.1/macOS/share/vulkan/explicit_layer.d"
+            }
+        },
+        {
+            "name": "release",
+            "displayName": "Release (Ninja)",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build-release",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+            },
+            "environment": {
+                "VULKAN_SDK": "/Users/jeanxpereira/VulkanSDK/1.4.341.1/macOS",
+                "PATH": "/Users/jeanxpereira/VulkanSDK/1.4.341.1/macOS/bin:$penv{PATH}",
+                "DYLD_LIBRARY_PATH": "/Users/jeanxpereira/VulkanSDK/1.4.341.1/macOS/lib",
+                "VK_ICD_FILENAMES": "/Users/jeanxpereira/VulkanSDK/1.4.341.1/macOS/share/vulkan/icd.d/MoltenVK_icd.json",
+                "VK_LAYER_PATH": "/Users/jeanxpereira/VulkanSDK/1.4.341.1/macOS/share/vulkan/explicit_layer.d"
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "default",
+            "configurePreset": "default"
+        },
+        {
+            "name": "release",
+            "configurePreset": "release"
+        }
+    ]
+}
