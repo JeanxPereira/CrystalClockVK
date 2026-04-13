@@ -1,56 +1,74 @@
 #version 450
 
-// PS2 OSDSYS-style animated tunnel background.
-// Radial depth tunnel with rotating rings in dark blue/teal palette.
+// Tunnel fragment shader — ported 1:1 from Raylib's tunnel.fs
+// Point light attenuation with scrolling noise texture.
 
-layout(location = 0) in vec2 fragUV;
+layout(location = 0) in vec2 fragTexCoord;
+layout(location = 1) in vec3 fragPosition;
+layout(location = 2) in vec3 fragNormal;
+
+layout(set = 0, binding = 0) uniform FrameUBO {
+    mat4 viewProj;
+    vec4 viewPos;
+    vec4 prismColor;   // a = time
+} ubo;
+
+layout(set = 0, binding = 1) uniform sampler2D noiseTexture;
 
 layout(push_constant) uniform PushConstants {
-    mat4 mvp;
+    mat4 model;
     vec4 rodColor;
-    vec4 screenParams; // x=width, y=height, z=time, w=unused
+    vec4 screenParams;  // z = time
 } pc;
 
 layout(location = 0) out vec4 outColor;
 
-void main() {
+// Raylib's exact tunnel colors
+const vec3 mainColor = vec3(0.28, 0.19, 0.43);
+const vec3 secondaryColor = vec3(0.18, 0.10, 0.32);
+
+// Raylib's exact light constants
+const float LIGHT_KC = 1.0;
+const float LIGHT_KL = 0.007;
+const float LIGHT_KQ = 0.0002;
+const vec3 LIGHT_AMBIENT = vec3(0.1, 0.1, 0.1);
+const vec3 LIGHT_DIFFUSE = vec3(1.0, 1.0, 1.0);
+
+vec3 sampleNoise() {
     float time = pc.screenParams.z;
-    float aspect = pc.screenParams.x / pc.screenParams.y;
+    vec2 texCoord = fragTexCoord + vec2(time, 0.0);
+    float noise = texture(noiseTexture, texCoord).r;
+    float t = smoothstep(0.0, 1.0, noise);
+    return mix(mainColor * 1.25, secondaryColor, t);
+}
 
-    vec2 uv = fragUV * 2.0 - 1.0;
-    uv.x *= aspect;
+vec3 calcPointLight(vec3 normal, vec3 fragPos, vec3 viewDir) {
+    vec3 lightPos = ubo.viewPos.xyz;
+    vec3 lightDir = normalize(lightPos - fragPos);
 
-    float r = length(uv);
-    float angle = atan(uv.y, uv.x);
+    // Flip normal if facing away from light (inside cylinder)
+    if (dot(normal, lightDir) < 0.0)
+        normal = -normal;
 
-    // Depth tunnel: inverse radius for infinite-depth illusion
-    float tunnel = 1.0 / (r + 0.001);
-    float tunnelSpeed = time * 0.4;
+    float diff = max(dot(normal, lightDir), 0.0);
+    float distance = length(lightPos - fragPos);
+    float attenuation = 1.0 / (LIGHT_KC + LIGHT_KL * distance + LIGHT_KQ * distance * distance);
 
-    // Rotating rings with depth parallax
-    float rings = sin(tunnel * 3.0 - tunnelSpeed) * 0.5 + 0.5;
+    vec3 noise = sampleNoise();
+    vec3 ambient = LIGHT_AMBIENT * noise;
+    vec3 diffuse = LIGHT_DIFFUSE * diff * noise;
 
-    // Angular rotation for swirl effect
-    float swirl = sin(angle * 4.0 + tunnel * 0.5 + time * 0.2) * 0.5 + 0.5;
+    ambient *= attenuation;
+    diffuse *= attenuation;
 
-    // Combine patterns
-    float pattern = rings * 0.7 + swirl * 0.3;
+    return ambient + diffuse;
+}
 
-    // PS2 OSDSYS dark blue/teal palette
-    vec3 deepBlue = vec3(0.02, 0.03, 0.08);
-    vec3 midTeal  = vec3(0.05, 0.12, 0.18);
-    vec3 highlight = vec3(0.08, 0.20, 0.30);
+void main() {
+    vec3 N = normalize(fragNormal);
+    vec3 fragVec = ubo.viewPos.xyz - fragPosition;
+    float fade = 1.0 - smoothstep(0.0, 100.0, length(fragVec));
 
-    vec3 color = mix(deepBlue, midTeal, pattern * 0.6);
-    color = mix(color, highlight, swirl * rings * 0.4);
-
-    // Vignette: darken edges, brighten center subtly
-    float vignette = 1.0 - smoothstep(0.3, 1.8, r);
-    color *= vignette;
-
-    // Subtle pulsing glow at center
-    float centerGlow = exp(-r * r * 4.0) * 0.15;
-    color += vec3(0.04, 0.08, 0.15) * centerGlow * (sin(time * 0.8) * 0.3 + 0.7);
-
-    outColor = vec4(color, 1.0);
+    vec3 color = calcPointLight(N, fragPosition, normalize(fragVec));
+    outColor = vec4(color, fade);
 }

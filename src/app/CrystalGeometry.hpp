@@ -6,32 +6,30 @@
 #include <array>
 #include <cmath>
 
-// Crystal rod vertex format
 struct CrystalVertex {
     glm::vec3 position;
     glm::vec3 normal;
     glm::vec2 uv;
 };
 
-// Generates the hexagonal prism mesh for a single crystal rod.
-// Matches the OSDSYS geometry: 6-sided prism with beveled tip.
-//
-// The mesh is centered at origin, extending from Y=0 to Y=height.
-// Bevel starts at Y = height - tipLength, tapering radius from 'radius' to 'tipRadius'.
-//
-// Returns triangulated vertex list (no index buffer needed for small geometry).
+// Generates PS2-accurate hexagonal prism geometry.
+// Also generates a cylinder mesh for the tunnel background.
 class CrystalGeometry {
 public:
-    // Default values from OSDSYS_Clock.cpp reference (PS2 crystal proportions)
-    // Mesh is centered on Y=0 (extends from -height/2 to +height/2)
+    // Crystal rod mesh — matches Raylib's GenCrystalRodMesh dimensions
     static std::vector<CrystalVertex> generateRodMesh(
         int sides = 6,
-        float height = 1.85f,
-        float radius = 0.215f,
-        float bevelWidth = 0.035f,
-        float bevelCut = 0.025f);
+        float baseRadius = 0.866025f,   // cos(30°) — hexagon inscribed
+        float topRadius = 0.766026f,    // tapered top
+        float height = 10.0f,
+        float bevelStart = 9.85f);      // where taper begins
 
-    // Vertex input description for Vulkan pipeline
+    // Tunnel cylinder mesh — matches Raylib's GenMeshCylinder(20, 100, 30)
+    static std::vector<CrystalVertex> generateCylinderMesh(
+        float radius = 20.0f,
+        float length = 100.0f,
+        int slices = 30);
+
     static VkVertexInputBindingDescription getBindingDescription();
     static std::array<VkVertexInputAttributeDescription, 3> getAttributeDescriptions();
 };

@@ -79,7 +79,7 @@ void UIRenderer::render(VkCommandBuffer cmd, VkImageView targetView, VkExtent2D 
     VkRenderingAttachmentInfo colorAttach{};
     colorAttach.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
     colorAttach.imageView = targetView;
-    colorAttach.imageLayout = VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ_KHR;
+    colorAttach.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     colorAttach.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
     colorAttach.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 

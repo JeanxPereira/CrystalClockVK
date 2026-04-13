@@ -2,73 +2,139 @@
 #include <glm/gtc/constants.hpp>
 #include <array>
 
+// ──────────────────────────────────────────────────────────────────────────
+// Crystal Rod Mesh — ported 1:1 from Raylib's GenCrystalRodMesh
+// Generates a hexagonal prism with a tapered bevel at the top.
+// Layout: 3 vertex rings (base, bevel, top) + 2 center caps.
+// ──────────────────────────────────────────────────────────────────────────
 std::vector<CrystalVertex> CrystalGeometry::generateRodMesh(
-    int sides, float height, float radius, float bevelWidth, float bevelCut) {
+    int sides, float baseRadius, float topRadius, float height, float bevelStart) {
 
-    std::vector<CrystalVertex> vertices;
-    vertices.reserve(static_cast<size_t>(sides) * 18);
+    int indexedVertCount = sides * 3 + 2;
+    int triCount = sides * 6;
+    int indexCount = triCount * 3;
 
-    float half = height * 0.5f;
-    float innerRadius = radius - bevelWidth;
+    std::vector<glm::vec3> tV(indexedVertCount);
+    std::vector<glm::vec3> tN(indexedVertCount);
+    std::vector<glm::vec2> tT(indexedVertCount);
+    std::vector<uint16_t> tI(indexCount);
+
     float angleStep = glm::two_pi<float>() / static_cast<float>(sides);
-    float angleOffset = glm::pi<float>() / static_cast<float>(sides);
+    int vi = 0, ni = 0, ti = 0;
 
-    // Pre-compute corner positions (matching OSDSYS_Clock.cpp buildHexPrism)
-    std::vector<glm::vec3> topOuter(sides), botOuter(sides);
-    std::vector<glm::vec3> topInner(sides), botInner(sides);
+    for (int ring = 0; ring < 3; ring++) {
+        float y, radius;
+        if (ring == 0)      { y = 0.0f;       radius = baseRadius; }
+        else if (ring == 1) { y = bevelStart;  radius = baseRadius; }
+        else                { y = height;      radius = topRadius;  }
 
-    for (int i = 0; i < sides; i++) {
-        float a = static_cast<float>(i) * angleStep + angleOffset;
-        float ca = std::cos(a);
-        float sa = std::sin(a);
+        for (int s = 0; s < sides; s++) {
+            float a = s * angleStep - glm::half_pi<float>();
+            float x = radius * std::cos(a);
+            float z = radius * std::sin(a);
 
-        topOuter[i] = {ca * radius,       half - bevelCut,  sa * radius};
-        botOuter[i] = {ca * radius,      -half + bevelCut,  sa * radius};
-        topInner[i] = {ca * innerRadius,  half,             sa * innerRadius};
-        botInner[i] = {ca * innerRadius, -half,             sa * innerRadius};
+            tV[vi] = {x, y, z};
+
+            float nx = std::cos(a);
+            float nz = std::sin(a);
+            if (ring == 2) {
+                float bevelAngle = std::atan2(baseRadius - topRadius, height - bevelStart);
+                float ny = std::sin(bevelAngle);
+                float horiz = std::cos(bevelAngle);
+                tN[ni] = {nx * horiz, ny, nz * horiz};
+            } else {
+                tN[ni] = {nx, 0.0f, nz};
+            }
+
+            tT[ti] = {static_cast<float>(s) / static_cast<float>(sides), y / height};
+
+            vi++; ni++; ti++;
+        }
     }
 
-    auto addTri = [&](glm::vec3 a, glm::vec3 b, glm::vec3 c, glm::vec3 n) {
-        float u0 = 0.5f, u1 = 0.5f;
-        vertices.push_back({a, n, {u0, 0.5f}});
-        vertices.push_back({b, n, {u1, 0.0f}});
-        vertices.push_back({c, n, {u0, 1.0f}});
-    };
+    int bottomCenter = vi;
+    tV[vi] = {0.0f, 0.0f, 0.0f};
+    tN[ni] = {0.0f, -1.0f, 0.0f};
+    tT[ti] = {0.5f, 0.0f};
+    vi++; ni++; ti++;
 
-    auto addQuad = [&](glm::vec3 a, glm::vec3 b, glm::vec3 c, glm::vec3 d, glm::vec3 n) {
-        float u0 = 0.0f, u1 = 1.0f;
-        vertices.push_back({a, n, {u0, 0.0f}});
-        vertices.push_back({b, n, {u1, 0.0f}});
-        vertices.push_back({c, n, {u1, 1.0f}});
+    int topCenter = vi;
+    tV[vi] = {0.0f, height, 0.0f};
+    tN[ni] = {0.0f, 1.0f, 0.0f};
+    tT[ti] = {0.5f, 1.0f};
 
-        vertices.push_back({a, n, {u0, 0.0f}});
-        vertices.push_back({c, n, {u1, 1.0f}});
-        vertices.push_back({d, n, {u0, 1.0f}});
-    };
+    int ii = 0;
+    // Lateral: ring0 → ring1
+    for (int s = 0; s < sides; s++) {
+        int s1 = (s + 1) % sides;
+        tI[ii++] = s;           tI[ii++] = sides + s;     tI[ii++] = s1;
+        tI[ii++] = s1;          tI[ii++] = sides + s;     tI[ii++] = sides + s1;
+    }
+    // Bevel: ring1 → ring2
+    for (int s = 0; s < sides; s++) {
+        int s1 = (s + 1) % sides;
+        tI[ii++] = sides + s;       tI[ii++] = 2*sides + s;     tI[ii++] = sides + s1;
+        tI[ii++] = sides + s1;      tI[ii++] = 2*sides + s;     tI[ii++] = 2*sides + s1;
+    }
+    // Bottom cap
+    for (int s = 0; s < sides; s++) {
+        int s1 = (s + 1) % sides;
+        tI[ii++] = bottomCenter; tI[ii++] = s1; tI[ii++] = s;
+    }
+    // Top cap
+    for (int s = 0; s < sides; s++) {
+        int s1 = (s + 1) % sides;
+        tI[ii++] = topCenter; tI[ii++] = 2*sides + s; tI[ii++] = 2*sides + s1;
+    }
 
-    for (int i = 0; i < sides; i++) {
-        int j = (i + 1) % sides;
+    std::vector<CrystalVertex> vertices(indexCount);
+    for (int i = 0; i < indexCount; i++) {
+        int idx = tI[i];
+        vertices[i] = { tV[idx], tN[idx], tT[idx] };
+    }
 
-        // Top cap triangles
-        addTri(topInner[j], topInner[i], {0, half, 0}, {0, 1, 0});
+    return vertices;
+}
 
-        // Bottom cap triangles
-        addTri(botInner[i], botInner[j], {0, -half, 0}, {0, -1, 0});
+// ──────────────────────────────────────────────────────────────────────────
+// Tunnel Cylinder Mesh — matches Raylib's GenMeshCylinder
+// Simple open-ended cylinder rendered from the inside.
+// ──────────────────────────────────────────────────────────────────────────
+std::vector<CrystalVertex> CrystalGeometry::generateCylinderMesh(
+    float radius, float length, int slices) {
 
-        // Top bevel quads
-        glm::vec3 topBevelN = glm::normalize(
-            glm::cross(topInner[j] - topInner[i], topOuter[i] - topInner[i]));
-        addQuad(topInner[i], topInner[j], topOuter[j], topOuter[i], topBevelN);
+    std::vector<CrystalVertex> vertices;
+    vertices.reserve(slices * 6);
 
-        // Bottom bevel quads
-        glm::vec3 botBevelN = glm::normalize(
-            glm::cross(botOuter[i] - botOuter[j], botInner[j] - botOuter[j]));
-        addQuad(botInner[j], botInner[i], botOuter[i], botOuter[j], botBevelN);
+    float angleStep = glm::two_pi<float>() / static_cast<float>(slices);
 
-        // Main body side quads
-        glm::vec3 sideN = glm::normalize(glm::vec3(
-            topOuter[i].x + topOuter[j].x, 0.0f, topOuter[i].z + topOuter[j].z));
-        addQuad(topOuter[i], topOuter[j], botOuter[j], botOuter[i], sideN);
+    for (int i = 0; i < slices; i++) {
+        float a0 = i * angleStep;
+        float a1 = (i + 1) * angleStep;
+
+        float c0 = std::cos(a0), s0 = std::sin(a0);
+        float c1 = std::cos(a1), s1 = std::sin(a1);
+
+        float u0 = static_cast<float>(i) / static_cast<float>(slices);
+        float u1 = static_cast<float>(i + 1) / static_cast<float>(slices);
+
+        glm::vec3 p00 = {radius * c0, radius * s0, 0.0f};
+        glm::vec3 p01 = {radius * c0, radius * s0, length};
+        glm::vec3 p10 = {radius * c1, radius * s1, 0.0f};
+        glm::vec3 p11 = {radius * c1, radius * s1, length};
+
+        // Inward-facing normals (camera is inside the cylinder)
+        glm::vec3 n0 = {-c0, -s0, 0.0f};
+        glm::vec3 n1 = {-c1, -s1, 0.0f};
+
+        // Quad as two triangles (CCW winding for inward faces)
+        vertices.push_back({p00, n0, {u0, 0.0f}});
+        vertices.push_back({p10, n1, {u1, 0.0f}});
+        vertices.push_back({p01, n0, {u0, 1.0f}});
+
+        vertices.push_back({p10, n1, {u1, 0.0f}});
+        vertices.push_back({p11, n1, {u1, 1.0f}});
+        vertices.push_back({p01, n0, {u0, 1.0f}});
     }
 
     return vertices;

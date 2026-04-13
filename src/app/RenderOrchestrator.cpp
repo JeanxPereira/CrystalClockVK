@@ -2,6 +2,10 @@
 #include "renderer/ShaderLoader.hpp"
 #include <filesystem>
 #include <iostream>
+#include <cstring>
+
+#define STB_IMAGE_IMPLEMENTATION
+#include "../../3rdparty/stb_image.h"
 
 static std::filesystem::path findShaderDir() {
     std::vector<std::filesystem::path> candidates = {
@@ -14,57 +18,90 @@ static std::filesystem::path findShaderDir() {
 }
 
 void RenderOrchestrator::init(const VulkanContext& ctx, const SwapchainManager& swapchain, ResourceManager& resources) {
-    // GS ALPHA register configs per pass (from GsRegisterState.hpp)
-    // Pass 1: (1,0,1) Glass FB refraction  → AlphaBlend
-    // Pass 2: (2,1,2) Additive highlights   → Additive
-    // Pass 3: (2,1,2) Additive offset       → Additive
-    // Pass 4: (1,0,1) Active rod refract    → AlphaBlend
-    // Pass 5: (0,1,1) Active rod fill       → ReverseAlpha
+    m_ctx = &ctx;
+
     m_passAlpha[0] = GsAlpha::alphaBlend();
     m_passAlpha[1] = GsAlpha::additive();
     m_passAlpha[2] = GsAlpha::additive();
     m_passAlpha[3] = GsAlpha::alphaBlend();
     m_passAlpha[4] = GsAlpha::reverseAlpha();
 
-    // Set up Input Attachment descriptor layout
-    VkDescriptorSetLayoutBinding inputAttachBinding{};
-    inputAttachBinding.binding = 0;
-    inputAttachBinding.descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
-    inputAttachBinding.descriptorCount = 1;
-    inputAttachBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    createDescriptorResources(ctx);
+    createPipelines(ctx.device(), swapchain.imageFormat());
 
-    VkDescriptorSetLayoutCreateInfo layoutInfoBinding{};
-    layoutInfoBinding.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    layoutInfoBinding.bindingCount = 1;
-    layoutInfoBinding.pBindings = &inputAttachBinding;
-    if (vkCreateDescriptorSetLayout(ctx.device(), &layoutInfoBinding, nullptr, &m_inputAttachmentLayout) != VK_SUCCESS) {
-        throw std::runtime_error("Failed to create input attachment layout");
+    for (int i = 0; i < 2; i++) {
+        m_uboBuffer[i] = resources.createBuffer(
+            sizeof(FrameUBO),
+            VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+            VMA_MEMORY_USAGE_CPU_TO_GPU);
     }
 
-    // Initialize descriptor allocator for input attachments (we need 1 per frame, max inflight Frames is usually 2, allocate 10 safe mode)
-    std::vector<DescriptorAllocator::PoolSizeRatio> ratios = { {VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1.0f} };
+    uploadMeshes(resources);
+    loadTextures(resources);
+
+    // Initialize rod states
+    for (int i = 0; i < CrystalMath::ROD_COUNT; i++) {
+        m_rodState[i].selected = false;
+        m_rodState[i].screenRatio = GsConstants::SCREEN_RATIO_16_9;
+        m_rodState[i].yScale = 1.0f;
+    }
+
+    std::cout << "[OK] RenderOrchestrator initialized ("
+              << m_rodVertexCount << " rod vertices, "
+              << m_tunnelVertexCount << " tunnel vertices, "
+              << PASS_COUNT << " GS passes)\n";
+}
+
+void RenderOrchestrator::createDescriptorResources(const VulkanContext& ctx) {
+    VkDescriptorSetLayoutBinding uboBinding{};
+    uboBinding.binding = 0;
+    uboBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    uboBinding.descriptorCount = 1;
+    uboBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+
+    VkDescriptorSetLayoutBinding samplerBinding{};
+    samplerBinding.binding = 1;
+    samplerBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    samplerBinding.descriptorCount = 1;
+    samplerBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+    VkDescriptorSetLayoutBinding bindings[] = { uboBinding, samplerBinding };
+
+    VkDescriptorSetLayoutCreateInfo layoutInfo{};
+    layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    layoutInfo.bindingCount = 2;
+    layoutInfo.pBindings = bindings;
+    vkCreateDescriptorSetLayout(ctx.device(), &layoutInfo, nullptr, &m_descriptorLayout);
+
+    std::vector<DescriptorAllocator::PoolSizeRatio> ratios = {
+        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1.0f},
+        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1.0f}
+    };
     m_descriptorAllocator[0].init(ctx.device(), 10, ratios);
     m_descriptorAllocator[1].init(ctx.device(), 10, ratios);
+
+    VkSamplerCreateInfo sampInfo{};
+    sampInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+    sampInfo.magFilter = VK_FILTER_LINEAR;
+    sampInfo.minFilter = VK_FILTER_LINEAR;
+    sampInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    sampInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    sampInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    sampInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+    vkCreateSampler(ctx.device(), &sampInfo, nullptr, &m_sampler);
 
     VkPushConstantRange pushRange{};
     pushRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
     pushRange.offset = 0;
     pushRange.size = sizeof(CrystalPushConstants);
 
-    VkPipelineLayoutCreateInfo layoutInfo{};
-    layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    layoutInfo.setLayoutCount = 1;
-    layoutInfo.pSetLayouts = &m_inputAttachmentLayout;
-    layoutInfo.pushConstantRangeCount = 1;
-    layoutInfo.pPushConstantRanges = &pushRange;
-    vkCreatePipelineLayout(ctx.device(), &layoutInfo, nullptr, &m_pipelineLayout);
-
-    createPipelines(ctx.device(), swapchain.imageFormat());
-    uploadMesh(resources);
-
-    std::cout << "[OK] RenderOrchestrator initialized ("
-              << m_vertexCount << " vertices/rod, "
-              << PASS_COUNT << " GS passes configured)\n";
+    VkPipelineLayoutCreateInfo plInfo{};
+    plInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    plInfo.setLayoutCount = 1;
+    plInfo.pSetLayouts = &m_descriptorLayout;
+    plInfo.pushConstantRangeCount = 1;
+    plInfo.pPushConstantRanges = &pushRange;
+    vkCreatePipelineLayout(ctx.device(), &plInfo, nullptr, &m_pipelineLayout);
 }
 
 void RenderOrchestrator::createPipelines(VkDevice device, VkFormat colorFormat) {
@@ -81,21 +118,20 @@ void RenderOrchestrator::createPipelines(VkDevice device, VkFormat colorFormat) 
     std::vector<VkVertexInputBindingDescription> bindings = {binding};
     std::vector<VkVertexInputAttributeDescription> attributes(attrs.begin(), attrs.end());
 
-    // Tunnel background — fullscreen, opaque, no depth, no vertex input
     m_tunnelPipeline = PipelineBuilder()
         .setShaders(tunnelVert, tunnelFrag)
+        .setVertexInput(bindings, attributes)
         .setTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
-        .setCullMode(VK_CULL_MODE_NONE)
-        .setBlendMode(BlendMode::Opaque)
+        .setCullMode(VK_CULL_MODE_BACK_BIT)
+        .setBlendMode(BlendMode::AlphaBlend)
         .setDepthTest(false, false)
         .setColorFormat(colorFormat)
         .setDepthFormat(VK_FORMAT_D32_SFLOAT)
         .setPipelineLayout(m_pipelineLayout)
         .build(device);
 
-    // Pass 1/4: Glass refraction (alpha blend) — GS ALPHA(1,0,1)
+    // Pass 1/4: Glass refraction (alpha blend) — SRC_ALPHA / ONE_MINUS_SRC_ALPHA
     m_glassPipeline = PipelineBuilder()
-        .setFlags(VK_PIPELINE_CREATE_COLOR_ATTACHMENT_FEEDBACK_LOOP_BIT_EXT)
         .setShaders(crystalVert, crystalFrag)
         .setVertexInput(bindings, attributes)
         .setTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
@@ -107,7 +143,7 @@ void RenderOrchestrator::createPipelines(VkDevice device, VkFormat colorFormat) 
         .setPipelineLayout(m_pipelineLayout)
         .build(device);
 
-    // Pass 2/3: Specular highlights (additive) — GS ALPHA(2,1,2)
+    // Pass 2/3: Specular highlights (additive) — ONE / ONE
     m_specularPipeline = PipelineBuilder()
         .setShaders(crystalVert, specularFrag)
         .setVertexInput(bindings, attributes)
@@ -120,9 +156,8 @@ void RenderOrchestrator::createPipelines(VkDevice device, VkFormat colorFormat) 
         .setPipelineLayout(m_pipelineLayout)
         .build(device);
 
-    // Pass 5: Reverse-alpha fill — GS ALPHA(0,1,1)
+    // Pass 5: Reverse-alpha fill — ONE_MINUS_SRC_ALPHA / SRC_ALPHA
     m_reversePipeline = PipelineBuilder()
-        .setFlags(VK_PIPELINE_CREATE_COLOR_ATTACHMENT_FEEDBACK_LOOP_BIT_EXT)
         .setShaders(crystalVert, crystalFrag)
         .setVertexInput(bindings, attributes)
         .setTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
@@ -140,180 +175,275 @@ void RenderOrchestrator::createPipelines(VkDevice device, VkFormat colorFormat) 
     vkDestroyShaderModule(device, crystalFrag, nullptr);
     vkDestroyShaderModule(device, specularFrag, nullptr);
 
-#ifndef NDEBUG
-    // Apply RenderDoc/Vulkan debugging names
-    auto setDebugName = [&](VkPipeline pipe, const char* name) {
-        auto func = (PFN_vkSetDebugUtilsObjectNameEXT)vkGetDeviceProcAddr(device, "vkSetDebugUtilsObjectNameEXT");
-        if (func) {
-            VkDebugUtilsObjectNameInfoEXT info{VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT};
-            info.objectType = VK_OBJECT_TYPE_PIPELINE;
-            info.objectHandle = (uint64_t)pipe;
-            info.pObjectName = name;
-            func(device, &info);
-        }
-    };
-    
-    setDebugName(m_tunnelPipeline, "Tunnel Background Pipeline");
-    setDebugName(m_glassPipeline, "Glass Refraction Pipeline");
-    setDebugName(m_specularPipeline, "Specular Highlight Pipeline");
-    setDebugName(m_reversePipeline, "Reverse Alpha Active Pipeline");
-#endif
-
     std::cout << "[OK] Pipelines created (tunnel + glass + specular + reverse)\n";
 }
 
-void RenderOrchestrator::uploadMesh(ResourceManager& resources) {
-    auto meshVertices = CrystalGeometry::generateRodMesh();
-    m_vertexCount = static_cast<uint32_t>(meshVertices.size());
-    VkDeviceSize bufferSize = sizeof(CrystalVertex) * m_vertexCount;
-
-    m_vertexBuffer = resources.createBuffer(
-        bufferSize,
+void RenderOrchestrator::uploadMeshes(ResourceManager& resources) {
+    auto rodVertices = CrystalGeometry::generateRodMesh();
+    m_rodVertexCount = static_cast<uint32_t>(rodVertices.size());
+    VkDeviceSize rodSize = sizeof(CrystalVertex) * m_rodVertexCount;
+    m_rodVertexBuffer = resources.createBuffer(rodSize,
         VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
         VMA_MEMORY_USAGE_GPU_ONLY);
-    resources.uploadToBuffer(m_vertexBuffer, meshVertices.data(), bufferSize);
+    resources.uploadToBuffer(m_rodVertexBuffer, rodVertices.data(), rodSize);
 
-    std::cout << "[OK] Crystal mesh uploaded: " << m_vertexCount << " vertices ("
-              << bufferSize << " bytes)\n";
+    auto cylVertices = CrystalGeometry::generateCylinderMesh();
+    m_tunnelVertexCount = static_cast<uint32_t>(cylVertices.size());
+    VkDeviceSize cylSize = sizeof(CrystalVertex) * m_tunnelVertexCount;
+    m_tunnelVertexBuffer = resources.createBuffer(cylSize,
+        VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        VMA_MEMORY_USAGE_GPU_ONLY);
+    resources.uploadToBuffer(m_tunnelVertexBuffer, cylVertices.data(), cylSize);
+
+    std::cout << "[OK] Meshes uploaded: rod=" << m_rodVertexCount
+              << " tunnel=" << m_tunnelVertexCount << " vertices\n";
 }
 
-void RenderOrchestrator::recordFrame(PassRecorder& recorder, const FrameParams& params) {
+void RenderOrchestrator::loadTextures(ResourceManager& resources) {
+    std::vector<std::string> texPaths = {
+        "resources/textures/noiseTexture.png",
+        "../resources/textures/noiseTexture.png",
+        "bin/resources/textures/noiseTexture.png",
+    };
+
+    int w, h, channels;
+    unsigned char* data = nullptr;
+    for (auto& path : texPaths) {
+        data = stbi_load(path.c_str(), &w, &h, &channels, 4);
+        if (data) {
+            std::cout << "[OK] Loaded noise texture: " << path << " (" << w << "x" << h << ")\n";
+            break;
+        }
+    }
+
+    if (!data) {
+        std::cerr << "[WARN] Could not load noiseTexture.png, creating fallback\n";
+        w = 64; h = 64;
+        data = new unsigned char[w * h * 4];
+        for (int i = 0; i < w * h * 4; i += 4) {
+            unsigned char v = static_cast<unsigned char>(rand() % 128 + 64);
+            data[i] = v; data[i+1] = v; data[i+2] = v; data[i+3] = 255;
+        }
+    }
+
+    VkExtent2D texExtent = { static_cast<uint32_t>(w), static_cast<uint32_t>(h) };
+    m_noiseTexture = resources.createImage(texExtent, VK_FORMAT_R8G8B8A8_UNORM,
+        VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
+    resources.uploadToImage(m_noiseTexture, data, texExtent, VK_FORMAT_R8G8B8A8_UNORM);
+    stbi_image_free(data);
+}
+
+void RenderOrchestrator::updateRodStates(const FrameParams& params) {
     int highlightedRod = CrystalMath::getHighlightedRod(params.time.hour);
-    
-    // Continuous rod self-rotation
-    float selfRotation = std::fmod(params.totalTime * (CrystalMath::TAU / 15.0f), CrystalMath::TAU);
+    bool isWidescreen = params.aspect > 1.5f;
+    int hourCounter = static_cast<int>(params.time.secondsInHour);
 
-    // Get the global cycling color (deep blue -> violet -> teal)
-    glm::vec3 globalPrismColor = CrystalMath::lerpPrismColor(params.time.secondsInMinute);
+    for (int i = 0; i < CrystalMath::ROD_COUNT; i++) {
+        m_rodState[i].selected = (i == highlightedRod);
+        m_rodState[i].screenRatio = isWidescreen
+            ? GsConstants::SCREEN_RATIO_16_9
+            : GsConstants::SCREEN_RATIO_4_3;
+        m_rodState[i].yScale = GsCrystalMath::computeRodScale(
+            i, GsConstants::INITIAL_SCALE_FACTOR, isWidescreen,
+            m_rodState[i].screenRatio, m_rodState[i].selected, hourCounter);
+    }
+}
 
-    // Standard glass base color for transparent passes
-    glm::vec4 glassColor = glm::vec4(0.15f, 0.25f, 0.45f, 1.0f);
+void RenderOrchestrator::updateUBO(const FrameParams& params) {
+    float fov = glm::radians(CrystalMath::CAMERA_FOV);
+    glm::mat4 proj = glm::perspective(fov, params.aspect, CrystalMath::CAMERA_NEAR, CrystalMath::CAMERA_FAR);
+    proj[1][1] *= -1.0f;
 
-    float fov = glm::radians(42.0f); 
-    float halfWidth = static_cast<float>(params.extent.width) / 2.0f;
-    float nearPlane = 0.1f;
-    
-    glm::mat4 proj = CrystalMath::buildProjectionMatrix(fov, halfWidth, nearPlane, params.aspect);
-    proj[1][1] *= -1.0f; // Vulkan Y-flip
+    glm::mat4 view = glm::lookAt(
+        glm::vec3(0.0f, 0.0f, CrystalMath::CAMERA_Z),
+        glm::vec3(0.0f, 0.0f, -1.0f),
+        glm::vec3(0.0f, 1.0f, 0.0f));
+
+    float smoothSeconds = params.time.minute * 60.0f + params.time.secondsInMinute;
+
+    FrameUBO ubo{};
+    ubo.viewProj = proj * view;
+    ubo.viewPos = glm::vec4(0.0f, 0.0f, CrystalMath::CAMERA_Z, 0.0f);
+    ubo.prismColor = glm::vec4(CrystalMath::lerpPrismColor(smoothSeconds), params.totalTime);
+
+    void* mapped = nullptr;
+    vmaMapMemory(m_ctx->allocator(), m_uboBuffer[params.frameIndex].allocation, &mapped);
+    std::memcpy(mapped, &ubo, sizeof(FrameUBO));
+    vmaUnmapMemory(m_ctx->allocator(), m_uboBuffer[params.frameIndex].allocation);
+
+    updateRodStates(params);
+}
+
+void RenderOrchestrator::recordTunnelPass(PassRecorder& recorder, const FrameParams& params) {
+    m_descriptorAllocator[params.frameIndex].resetPools();
+
+    m_tunnelDescSet[params.frameIndex] = m_descriptorAllocator[params.frameIndex].allocate(m_descriptorLayout);
+
+    DescriptorWriter writer;
+    writer.writeBuffer(0, m_uboBuffer[params.frameIndex].buffer, sizeof(FrameUBO), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+    writer.writeImage(1, m_noiseTexture.imageView, m_sampler, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+    writer.updateSet(params.device, m_tunnelDescSet[params.frameIndex]);
 
     float w = static_cast<float>(params.extent.width);
     float h = static_cast<float>(params.extent.height);
-    float baseAngle = params.totalTime;
 
-    // ═══════════════════════════════════════════════════════════════════════
-    // TUNNEL BACKGROUND — fullscreen opaque draw
-    // ═══════════════════════════════════════════════════════════════════════
     recorder.bindPipeline(m_tunnelPipeline);
-    {
-        CrystalPushConstants pc{};
-        pc.mvp = glm::mat4(1.0f);
-        pc.rodColor = glm::vec4(0.0f);
-        pc.screenParams = glm::vec4(w, h, params.totalTime, 0.0f);
+    recorder.bindDescriptorSet(m_pipelineLayout, 0, m_tunnelDescSet[params.frameIndex]);
+    recorder.bindVertexBuffer(m_tunnelVertexBuffer.buffer);
 
-        recorder.pushConstants(m_pipelineLayout,
-            VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-            &pc, sizeof(pc));
-        recorder.draw(3);
-    }
+    CrystalPushConstants pc{};
+    pc.model = CrystalMath::buildTunnelMatrix();
+    pc.rodColor = glm::vec4(0.0f);
+    pc.screenParams = glm::vec4(w, h, params.totalTime * 0.004f, 0.0f);
 
-    // Move camera backwards (from Z=6.5f to Z=11.5f) to see the entire ring
-    glm::mat4 view = glm::lookAt(glm::vec3(0.0f, 0.0f, 11.5f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+    recorder.pushConstants(m_pipelineLayout,
+        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+        &pc, sizeof(pc));
+    recorder.draw(m_tunnelVertexCount);
+}
 
-    // Common lambda to draw unselected rods (Passes 1, 2, 3)
-    auto drawUnselectedRods = [&](VkPipeline pipeline, glm::vec4 color, float alpha, float angleOffsetA) {
+void RenderOrchestrator::recordCrystalPasses(PassRecorder& recorder, const FrameParams& params) {
+    m_crystalDescSet[params.frameIndex] = m_descriptorAllocator[params.frameIndex].allocate(m_descriptorLayout);
+
+    DescriptorWriter writer;
+    writer.writeBuffer(0, m_uboBuffer[params.frameIndex].buffer, sizeof(FrameUBO), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+    writer.writeImage(1, params.tunnelImageView, m_sampler, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+    writer.updateSet(params.device, m_crystalDescSet[params.frameIndex]);
+
+    float smoothSeconds = params.time.minute * 60.0f + params.time.secondsInMinute;
+    glm::vec3 globalPrismColor = CrystalMath::lerpPrismColor(smoothSeconds);
+
+    // OSDSYS base angle: (float)*param_3 * in_f1
+    // We derive from clock time — the base rotation from elapsed seconds
+    float baseAngle = CrystalMath::lerpClockRotation(smoothSeconds / 60.0f);
+    float hourAngle = CrystalMath::getClockRotationAngle(params.time.hour);
+
+    // Pass 3 shimmer offsets — from param_3[0x2c] and param_3[0x2d]
+    // These are clock-state-driven. We approximate from time progression.
+    float shimmerOffsetX = std::sin(smoothSeconds * 0.1f) * 0.15f;
+    float shimmerOffsetY = std::cos(smoothSeconds * 0.07f) * 0.12f;
+
+    float w = static_cast<float>(params.extent.width);
+    float h = static_cast<float>(params.extent.height);
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Draw helper — OSDSYS-accurate rod filtering
+    // Pass 1-3: only rods with flag==0 (unselected)
+    // Pass 4-5: only rods with flag!=0 (selected)
+    // ═══════════════════════════════════════════════════════════════════════
+    enum class PassMode { Unselected, SelectedOnly };
+
+    auto drawRods = [&](VkPipeline pipeline, glm::vec4 color, float alpha,
+                        PassMode mode, int passIndex) {
         recorder.bindPipeline(pipeline);
-        for (int i = 0; i < CrystalMath::ROD_COUNT; i++) {
-            if (i == highlightedRod) continue;
+        recorder.bindDescriptorSet(m_pipelineLayout, 0, m_crystalDescSet[params.frameIndex]);
+        recorder.bindVertexBuffer(m_rodVertexBuffer.buffer);
 
-            float rodRingAngle = (i * CrystalMath::ANGLE_STEP_P2);
-            float yScale = CrystalMath::computeRodScale(i, 1.0f, params.aspect > 1.5f, false, 0);
-            
-            // clockGroupPitch, clockGroupYaw dynamically turning the clock structure based on time
-            float groupPitch = std::sin(params.totalTime * 0.2f) * 0.3f;
-            float groupYaw = baseAngle * 0.1f;
-            
-            glm::mat4 model = CrystalMath::buildRodMatrix(rodRingAngle, angleOffsetA, yScale, selfRotation, groupPitch, groupYaw);
-            glm::mat4 mvp = proj * view * model;
+        float angleStep = GsConstants::ANGLE_STEP_P2_STATIC;
+        if (passIndex == 2) angleStep = GsConstants::ANGLE_STEP_P3_STATIC;
+
+        for (int i = 0; i < CrystalMath::ROD_COUNT; i++) {
+            bool isSelected = m_rodState[i].selected;
+
+            // OSDSYS rod filtering: flag==0 for P1-3, flag!=0 for P4-5
+            if (mode == PassMode::Unselected && isSelected) continue;
+            if (mode == PassMode::SelectedOnly && !isSelected) continue;
+
+            float yScale = m_rodState[i].yScale;
+
+            // Compute per-rod angle for this pass
+            float rodAngle = CrystalMath::computeRodAngle(baseAngle, i, angleStep);
+
+            // Build rotation matrix based on pass
+            glm::mat4 orbitMatrix;
+            if (passIndex == 0 || passIndex == 3 || passIndex == 4) {
+                // Pass 1/4/5: glass — use hour angle + rod placement
+                float rodPlacement = hourAngle + static_cast<float>(i) * (-CrystalMath::TAU / 12.0f);
+                orbitMatrix = CrystalMath::buildRodMatrix(rodPlacement, rodPlacement);
+            } else if (passIndex == 1) {
+                // Pass 2: specular — SAME angle for both params
+                // OSDSYS: FUN_00232e38(angle, angle, ...)
+                orbitMatrix = CrystalMath::buildRodMatrix(rodAngle, rodAngle);
+            } else {
+                // Pass 3: shimmer — DIFFERENT angles
+                // OSDSYS: FUN_00232e38(angle + param_3[0x2c], angle + param_3[0x2d])
+                float angleA = rodAngle + shimmerOffsetX;
+                float angleB = rodAngle + shimmerOffsetY;
+                orbitMatrix = CrystalMath::buildRodMatrix(angleA, angleB);
+            }
+
+            glm::mat4 model = CrystalMath::buildFullRodModel(orbitMatrix, yScale);
+
+            // Pass 5: alpha override 0xFF
+            float passAlpha = alpha;
+            if (passIndex == 4) passAlpha = static_cast<float>(GsConstants::PASS5_ALPHA_OVERRIDE) / 255.0f;
 
             CrystalPushConstants pc{};
-            pc.mvp = mvp;
+            pc.model = model;
             pc.rodColor = color;
-            pc.screenParams = glm::vec4(w, h, params.totalTime, alpha); 
+            pc.screenParams = glm::vec4(w, h, params.totalTime, passAlpha);
 
             recorder.pushConstants(m_pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, &pc, sizeof(pc));
-            recorder.draw(m_vertexCount);
+            recorder.draw(m_rodVertexCount);
         }
     };
-    
-    // Common lambda to draw selected rods (Passes 4, 5)
-    auto drawSelectedRods = [&](VkPipeline pipeline, glm::vec4 color, float alpha) {
-        recorder.bindPipeline(pipeline);
-        
-        float rodRingAngle = (highlightedRod * CrystalMath::ANGLE_STEP_P2);
-        
-        int hourCounter = static_cast<int>(params.time.minute * 60 + params.time.secondsInMinute);
-        float yScale = CrystalMath::computeRodScale(highlightedRod, 1.0f, params.aspect > 1.5f, true, hourCounter);
-        
-        float groupPitch = std::sin(params.totalTime * 0.2f) * 0.3f;
-        float groupYaw = baseAngle * 0.1f;
-        
-        glm::mat4 model = CrystalMath::buildRodMatrix(rodRingAngle, 0.0f, yScale, selfRotation, groupPitch, groupYaw);
-        glm::mat4 mvp = proj * view * model;
 
-        CrystalPushConstants pc{};
-        pc.mvp = mvp;
-        pc.rodColor = color;
-        pc.screenParams = glm::vec4(w, h, params.totalTime, alpha); 
+    // ═══════════════════════════════════════════════════════════════════════
+    // Pass 1: Base transparent glass (FB refraction)
+    // OSDSYS: FUN_002324e8(1,0,1) — Cs*As + Cd*(1-As) — unselected rods
+    // ═══════════════════════════════════════════════════════════════════════
+    drawRods(m_glassPipeline,
+             glm::vec4(0.15f, 0.25f, 0.45f, 1.0f), 0.4f,
+             PassMode::Unselected, 0);
 
-        recorder.pushConstants(m_pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, &pc, sizeof(pc));
-        recorder.draw(m_vertexCount);
-    };
+    // ═══════════════════════════════════════════════════════════════════════
+    // Pass 2: Additive specular highlights — SAME angles
+    // OSDSYS: FUN_00230fe8(2,1,2) — Cs + Cd — unselected rods
+    // FUN_00232e38(angle, angle, ...) ← both params identical
+    // ═══════════════════════════════════════════════════════════════════════
+    drawRods(m_specularPipeline,
+             glm::vec4(globalPrismColor * 0.8f, 1.0f), 0.7f,
+             PassMode::Unselected, 1);
 
-    recorder.bindVertexBuffer(m_vertexBuffer.buffer);
+    // ═══════════════════════════════════════════════════════════════════════
+    // Pass 3: Offset rotation shimmer — DIFFERENT angles (THE GHOSTING)
+    // OSDSYS: FUN_00232e38(angle+param_3[0x2c], angle+param_3[0x2d])
+    // ═══════════════════════════════════════════════════════════════════════
+    drawRods(m_specularPipeline,
+             glm::vec4(globalPrismColor * 0.8f, 1.0f), 0.7f,
+             PassMode::Unselected, 2);
 
-    // Pass 1: Base transparent glass (Requires Local Read Framebuffer Refraction)
-    {
-        m_descriptorAllocator[params.frameIndex].resetPools();
-        VkDescriptorSet inputAttachSet = m_descriptorAllocator[params.frameIndex].allocate(m_inputAttachmentLayout);
-        
-        DescriptorWriter writer;
-        writer.writeImage(0, params.currentImageView, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ_KHR, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT);
-        writer.updateSet(params.device, inputAttachSet);
+    // ═══════════════════════════════════════════════════════════════════════
+    // Pass 4: Selected rod glass (alpha blend) — ONLY active rod
+    // OSDSYS: FUN_00232538(1,0,1) — rods with flag!=0
+    // ═══════════════════════════════════════════════════════════════════════
+    drawRods(m_glassPipeline,
+             glm::vec4(0.15f, 0.25f, 0.45f, 1.0f), 0.5f,
+             PassMode::SelectedOnly, 3);
 
-        // Transition from rendering output to input read by injecting a region dependency
-        recorder.insertLocalReadBarrier();
-
-        // 0 = index of the color attachment we are reading from
-        recorder.setLocalReadInputIndices(0);
-        recorder.bindDescriptorSet(m_pipelineLayout, 0, inputAttachSet);
-        drawUnselectedRods(m_glassPipeline, glassColor, 0.48f, 0.0f);
-    }
-    
-    // Pass 2: Specular highlights
-    drawUnselectedRods(m_specularPipeline, glm::vec4(globalPrismColor * 1.5f, 1.0f), 0.7f, 0.0f);
-    
-    // Pass 3: Offset rotation shimmer (THE OSDSYS GHOSTING!)
-    // Using a single offset for tilt
-    drawUnselectedRods(m_specularPipeline, glm::vec4(globalPrismColor * 1.0f, 1.0f), 0.5f, CrystalMath::SHIMMER_OFFSET_X);
-                       
-    // Barrier to make writes from unselected rods visible to subpassLoad in selected rods
-    recorder.insertLocalReadBarrier();
-
-    // Pass 4: Highlighted rod glass
-    drawSelectedRods(m_glassPipeline, glm::vec4(0.2f, 0.4f, 0.7f, 1.0f), 0.72f);
-    
-    // Pass 5: Highlighted rod fill (Reverse alpha)
-    drawSelectedRods(m_reversePipeline, glm::vec4(globalPrismColor * 2.0f, 1.0f), 0.8f);
+    // ═══════════════════════════════════════════════════════════════════════
+    // Pass 5: Selected rod fill (reverse alpha) — ONLY active rod
+    // OSDSYS: FUN_002324e8(0,1,1) + param=0xFF — rods with flag!=0
+    // ═══════════════════════════════════════════════════════════════════════
+    drawRods(m_reversePipeline,
+             glm::vec4(globalPrismColor * 1.5f, 1.0f), 0.8f,
+             PassMode::SelectedOnly, 4);
 }
 
 void RenderOrchestrator::destroy(VkDevice device, ResourceManager& resources) {
-    resources.destroyBuffer(m_vertexBuffer);
+    resources.destroyBuffer(m_rodVertexBuffer);
+    resources.destroyBuffer(m_tunnelVertexBuffer);
+    resources.destroyImage(m_noiseTexture);
+    for (int i = 0; i < 2; i++) {
+        vmaDestroyBuffer(m_ctx->allocator(), m_uboBuffer[i].buffer, m_uboBuffer[i].allocation);
+    }
+    vkDestroySampler(device, m_sampler, nullptr);
     vkDestroyPipeline(device, m_tunnelPipeline, nullptr);
     vkDestroyPipeline(device, m_glassPipeline, nullptr);
     vkDestroyPipeline(device, m_specularPipeline, nullptr);
     vkDestroyPipeline(device, m_reversePipeline, nullptr);
     vkDestroyPipelineLayout(device, m_pipelineLayout, nullptr);
-    vkDestroyDescriptorSetLayout(device, m_inputAttachmentLayout, nullptr);
+    vkDestroyDescriptorSetLayout(device, m_descriptorLayout, nullptr);
     m_descriptorAllocator[0].destroy();
     m_descriptorAllocator[1].destroy();
 }

@@ -39,3 +39,10 @@ The PS2 GS renders the clock in 5 distinct passes using the same `DAT_002973*` p
 ## Code Directives
 - **English Only**: The codebase (variables, structures) and all text must be strictly in English.
 - **Zero Comments**: Avoid unnecessary comments. Use comments ONLY when it is expressly necessary to explain highly complex logic (e.g. GS reverse-engineered math).
+
+## Claude Directives
+- Use short, 3-6 word sentences.
+- No filter, preamble, or pleasantries.
+- Run tools first, show the result, then stop. DO not narrate.
+- Drop articles(“Me fix code” not “will fix the code”).
+- Mantain CLAUDE.md and MEMORY.md updated

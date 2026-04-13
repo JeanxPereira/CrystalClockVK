@@ -10,6 +10,7 @@
 #include "app/RenderOrchestrator.hpp"
 #include "app/TimeSync.hpp"
 #include "app/CrystalMath.hpp"
+#include "gs/GsConstants.hpp"
 #include <chrono>
 #include <imgui.h>
 #include <iostream>
@@ -112,52 +113,20 @@ int main(int argc, char* argv[]) {
             swapchain.extent(),
             VK_FORMAT_D32_SFLOAT,
             VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
-        
+
+        // Tunnel render target — renders tunnel to this, then crystal reads it as sampled texture
+        AllocatedImage tunnelImage = resources.createImage(
+            swapchain.extent(),
+            swapchain.imageFormat(),
+            VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
+
+        // Main color target — crystals render here, then blit to swapchain
         AllocatedImage mainColorImage = resources.createImage(
             swapchain.extent(),
             swapchain.imageFormat(),
-            VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
-        
+            VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
+
         transitionDepthImage(vulkan, frames[0], depthImage);
-        
-        // Initial transition for color image to speed up first frame
-        vkWaitForFences(vulkan.device(), 1, &frames[0].renderFence, VK_TRUE, UINT64_MAX);
-        vkResetFences(vulkan.device(), 1, &frames[0].renderFence);
-        vkResetCommandBuffer(frames[0].commandBuffer, 0);
-
-        {
-            VkCommandBufferBeginInfo bi{};
-            bi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-            bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-            vkBeginCommandBuffer(frames[0].commandBuffer, &bi);
-
-            VkImageMemoryBarrier2 barrierColor{};
-            barrierColor.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
-            barrierColor.srcStageMask = VK_PIPELINE_STAGE_2_NONE;
-            barrierColor.dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-            barrierColor.dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT;
-            barrierColor.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-            barrierColor.newLayout = VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ_KHR;
-            barrierColor.image = mainColorImage.image;
-            barrierColor.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-
-            VkDependencyInfo dep{};
-            dep.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
-            dep.imageMemoryBarrierCount = 1;
-            dep.pImageMemoryBarriers = &barrierColor;
-            vkCmdPipelineBarrier2(frames[0].commandBuffer, &dep);
-            vkEndCommandBuffer(frames[0].commandBuffer);
-
-            VkCommandBufferSubmitInfo ci{};
-            ci.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
-            ci.commandBuffer = frames[0].commandBuffer;
-            VkSubmitInfo2 si{};
-            si.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
-            si.commandBufferInfoCount = 1;
-            si.pCommandBufferInfos = &ci;
-            vkQueueSubmit2(vulkan.graphicsQueue(), 1, &si, frames[0].renderFence);
-            vkWaitForFences(vulkan.device(), 1, &frames[0].renderFence, VK_TRUE, UINT64_MAX);
-        }
 
         uint32_t frameNumber = 0;
         bool resizeRequested = false;
@@ -185,58 +154,22 @@ int main(int argc, char* argv[]) {
                 swapSync = SwapchainSync::create(vulkan.device(), swapchain.imageCount());
 
                 resources.destroyImage(depthImage);
+                resources.destroyImage(tunnelImage);
                 resources.destroyImage(mainColorImage);
-                
+
                 depthImage = resources.createImage(
-                    swapchain.extent(),
-                    VK_FORMAT_D32_SFLOAT,
+                    swapchain.extent(), VK_FORMAT_D32_SFLOAT,
                     VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
-                
+
+                tunnelImage = resources.createImage(
+                    swapchain.extent(), swapchain.imageFormat(),
+                    VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
+
                 mainColorImage = resources.createImage(
-                    swapchain.extent(),
-                    swapchain.imageFormat(),
-                    VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
-                    
+                    swapchain.extent(), swapchain.imageFormat(),
+                    VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
+
                 transitionDepthImage(vulkan, frames[0], depthImage);
-                
-                // Transition the newly created color image correctly
-                vkResetFences(vulkan.device(), 1, &frames[0].renderFence);
-                vkResetCommandBuffer(frames[0].commandBuffer, 0);
-                {
-                    VkCommandBufferBeginInfo bi{};
-                    bi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-                    bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-                    vkBeginCommandBuffer(frames[0].commandBuffer, &bi);
-                    
-                    VkImageMemoryBarrier2 barrierColor{};
-                    barrierColor.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
-                    barrierColor.srcStageMask = VK_PIPELINE_STAGE_2_NONE;
-                    barrierColor.dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-                    barrierColor.dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT;
-                    barrierColor.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-                    barrierColor.newLayout = VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ_KHR;
-                    barrierColor.image = mainColorImage.image;
-                    barrierColor.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-
-                    VkDependencyInfo depColor{};
-                    depColor.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
-                    depColor.imageMemoryBarrierCount = 1;
-                    depColor.pImageMemoryBarriers = &barrierColor;
-                    vkCmdPipelineBarrier2(frames[0].commandBuffer, &depColor);
-
-                    vkEndCommandBuffer(frames[0].commandBuffer);
-
-                    VkCommandBufferSubmitInfo ci{};
-                    ci.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
-                    ci.commandBuffer = frames[0].commandBuffer;
-                    VkSubmitInfo2 si{};
-                    si.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
-                    si.commandBufferInfoCount = 1;
-                    si.pCommandBufferInfos = &ci;
-                    vkQueueSubmit2(vulkan.graphicsQueue(), 1, &si, frames[0].renderFence);
-                    vkWaitForFences(vulkan.device(), 1, &frames[0].renderFence, VK_TRUE, UINT64_MAX);
-                }
-
                 resizeRequested = false;
             }
 
@@ -265,18 +198,6 @@ int main(int argc, char* argv[]) {
 
             TimeInfo timeInfo = TimeSync::getCurrentTime();
 
-            // Always ensure the color target is back to Local Read layout just in case
-            recorder.transitionImage(mainColorImage.image,
-                VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ_KHR);
-
-            VkClearValue clearColor{};
-            clearColor.color = {{0.0f, 0.0f, 0.0f, 1.0f}};
-
-            recorder.beginDebugLabel("Crystal Clock", 0.2f, 0.4f, 1.0f);
-            recorder.beginRendering(mainColorImage.imageView, depthImage.imageView,
-                                    swapchain.extent(), &clearColor, VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ_KHR);
-            recorder.setViewportScissor(swapchain.extent());
-
             FrameParams params{};
             params.time = timeInfo;
             params.extent = swapchain.extent();
@@ -284,9 +205,69 @@ int main(int argc, char* argv[]) {
             params.totalTime = std::chrono::duration<float>(now - appStartTime).count();
             params.device = vulkan.device();
             params.currentImageView = mainColorImage.imageView;
+            params.tunnelImageView = tunnelImage.imageView;
             params.frameIndex = frameNumber % FrameOverlap;
 
-            orchestrator.recordFrame(recorder, params);
+            // Update UBO with viewProj, viewPos, prismColor
+            orchestrator.updateUBO(params);
+
+            // ═══════════════════════════════════════════════════════════════
+            // PASS A: Render tunnel to tunnelImage
+            // ═══════════════════════════════════════════════════════════════
+            recorder.transitionImage(tunnelImage.image,
+                VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+
+            VkClearValue tunnelClear{};
+            tunnelClear.color = {{0.0f, 0.0f, 0.0f, 1.0f}};
+
+            recorder.beginDebugLabel("Tunnel Background", 0.2f, 0.2f, 0.6f);
+            recorder.beginRendering(tunnelImage.imageView, depthImage.imageView,
+                                    swapchain.extent(), &tunnelClear);
+            recorder.setViewportScissor(swapchain.extent());
+
+            orchestrator.recordTunnelPass(recorder, params);
+
+            recorder.endRendering();
+            recorder.endDebugLabel();
+
+            // Transition tunnel to SHADER_READ_ONLY for crystal refraction sampling
+            recorder.transitionImage(tunnelImage.image,
+                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+            // ═══════════════════════════════════════════════════════════════
+            // PASS B: Render crystals to mainColorImage, sampling tunnelImage
+            // ═══════════════════════════════════════════════════════════════
+
+            // Copy tunnel content to main color image as base (so crystals blend ON TOP of tunnel)
+            recorder.transitionImage(mainColorImage.image,
+                VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+            recorder.transitionImage(tunnelImage.image,
+                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+
+            VkImageCopy tunnelCopy{};
+            tunnelCopy.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+            tunnelCopy.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+            tunnelCopy.extent = {swapchain.extent().width, swapchain.extent().height, 1};
+            vkCmdCopyImage(frame.commandBuffer,
+                           tunnelImage.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                           mainColorImage.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                           1, &tunnelCopy);
+
+            // Transition for the crystal rendering pass
+            recorder.transitionImage(tunnelImage.image,
+                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+            recorder.transitionImage(mainColorImage.image,
+                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+
+            VkClearValue crystalClear{};
+            // Don't clear — we just copied the tunnel content
+
+            recorder.beginDebugLabel("Crystal Clock", 0.2f, 0.4f, 1.0f);
+            recorder.beginRendering(mainColorImage.imageView, depthImage.imageView,
+                                    swapchain.extent(), nullptr); // nullptr = no clear
+            recorder.setViewportScissor(swapchain.extent());
+
+            orchestrator.recordCrystalPasses(recorder, params);
 
             recorder.endRendering();
             recorder.endDebugLabel();
@@ -294,51 +275,50 @@ int main(int argc, char* argv[]) {
             // ImGui overlay
             int hlRod = CrystalMath::getHighlightedRod(timeInfo.hour);
             int hourCounter = static_cast<int>(timeInfo.minute * 60 + timeInfo.secondsInMinute);
-            float fillAmt = CrystalMath::computeRodScale(hlRod, 1.0f, true, true, hourCounter);
+            bool isWide = params.aspect > 1.5f;
+            int screenRatio = isWide ? GsConstants::SCREEN_RATIO_16_9 : GsConstants::SCREEN_RATIO_4_3;
+            float fillAmt = CrystalMath::computeRodScale(hlRod, 1.0f, isWide, screenRatio, true, hourCounter);
 
             ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
             ImGui::SetNextWindowSize(ImVec2(280, 240), ImGuiCond_FirstUseEver);
             ImGui::Begin("CrystalClock Debug");
             ImGui::Text("FPS: %.1f", fps);
             ImGui::Separator();
-            
+
             if (rdoc.isLoaded()) {
                 if (ImGui::Button("Trigger RenderDoc Capture")) {
                     rdoc.triggerCapture();
                 }
                 ImGui::Separator();
             }
-            
+
             ImGui::Text("Time: %02d:%02d:%02d.%03d", timeInfo.hour, timeInfo.minute, timeInfo.second, timeInfo.millisecond);
             ImGui::Text("Highlighted Rod: %d", hlRod);
             ImGui::Text("Hour Scale Slide: %.3f", fillAmt);
             ImGui::Text("Sec in Min: %.2f", timeInfo.secondsInMinute);
             ImGui::Separator();
-            ImGui::Text("Tunnel + Glass(11) + Spec(11) + Shimmer(11) + P4/P5(2)");
-            ImGui::Text("Draw Calls: %d", 1 + 11 + 11 + 11 + 2);
+            ImGui::Text("Tunnel(1) + Glass(12) + Spec(12) + Shimmer(12) + P4/P5(2)");
+            ImGui::Text("Draw Calls: %d", 1 + 12 + 12 + 12 + 2);
             ImGui::End();
 
+            // Render ImGui to mainColorImage (already in COLOR_ATTACHMENT_OPTIMAL)
             ui.render(frame.commandBuffer, mainColorImage.imageView, swapchain.extent());
 
-            // Transition main image to transfer src
+            // Blit mainColorImage to swapchain
             recorder.transitionImage(mainColorImage.image,
-                VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ_KHR, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
-
-            // Transition swapchain to transfer dst
+                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
             recorder.transitionImage(swapchain.currentImage(),
                 VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
-            // Blit / Copy
             VkImageCopy copyRegion{};
             copyRegion.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
             copyRegion.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
             copyRegion.extent = {swapchain.extent().width, swapchain.extent().height, 1};
-            vkCmdCopyImage(frame.commandBuffer, 
+            vkCmdCopyImage(frame.commandBuffer,
                            mainColorImage.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                            swapchain.currentImage(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                            1, &copyRegion);
 
-            // Ready swapchain for presenting
             recorder.transitionImage(swapchain.currentImage(),
                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
@@ -381,6 +361,7 @@ int main(int argc, char* argv[]) {
 
         orchestrator.destroy(vulkan.device(), resources);
         resources.destroyImage(depthImage);
+        resources.destroyImage(tunnelImage);
         resources.destroyImage(mainColorImage);
 
         swapSync.destroy(vulkan.device());

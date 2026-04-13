@@ -4,6 +4,9 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/constants.hpp>
 #include <cmath>
+#include "TimeSync.hpp"
+#include "gs/GsCrystalMath.hpp"
+#include "gs/GsConstants.hpp"
 
 namespace CrystalMath {
 
@@ -13,102 +16,84 @@ constexpr float PI = glm::pi<float>();
 constexpr float TAU = glm::two_pi<float>();
 constexpr float DEG2RAD = PI / 180.0f;
 
-// Ring layout parameter
-constexpr float ROD_RING_RADIUS = 2.5f;
+constexpr float ROD_RING_RADIUS = 6.5f;
+
+constexpr float CAMERA_FOV = 70.0f;
+constexpr float CAMERA_Z = 30.0f;
+constexpr float CAMERA_NEAR = 0.1f;
+constexpr float CAMERA_FAR = 100.0f;
 
 // ──────────────────────────────────────────────────────────────────────────
-// Globals extracted from Ghidra OSDSYS 
+// Tunnel transform — matches Raylib's TM matrix
 // ──────────────────────────────────────────────────────────────────────────
-// Pass angle steps - creates the layout distribution and rotation over time
-constexpr float ANGLE_STEP_P2 = 360.0f / 12.0f * DEG2RAD; 
-constexpr float ANGLE_STEP_P3 = 360.0f / 12.0f * DEG2RAD; 
-
-// Simulated system offsets (param_3[0x2c] and param_3[0x2d])
-constexpr float SHIMMER_OFFSET_X = DEG2RAD * 0.2f; 
-constexpr float SHIMMER_OFFSET_Y = DEG2RAD * 0.1f;
-
-// ──────────────────────────────────────────────────────────────────────────
-// Correct Hierarchical Model Matrix (Fixes the spiky ball error)
-// 1. Position on 2D ring
-// 2. Spin rod on its own axis
-// 3. Tumble the entire clock group in 3D
-// ──────────────────────────────────────────────────────────────────────────
-inline glm::mat4 buildRodMatrix(float rodRingAngle, float tiltAngleOffset, float yScale, float selfRotation, float clockGroupPitch, float clockGroupYaw) {
-    // Base object (assume rod is a cylinder aligned along Y axis)
-    glm::mat4 model(1.0f);
-    
-    // 1. Master Group Tumble (from system clock/time)
-    // The entire clock tilts and yaws in 3D space
-    model = glm::rotate(model, clockGroupYaw, glm::vec3(0.0f, 1.0f, 0.0f));
-    model = glm::rotate(model, clockGroupPitch, glm::vec3(1.0f, 0.0f, 0.0f));
-    
-    // 2. Ring distribution placement
-    // Move on the XY plane to the radius distance
-    glm::vec3 radialDir = glm::vec3(std::sin(rodRingAngle), std::cos(rodRingAngle), 0.0f);
-    model = glm::translate(model, radialDir * ROD_RING_RADIUS);
-    
-    // 3. Orient radially outward!
-    // If it points UP (+Y), rotating around -Z aligns it with the radial vector
-    model = glm::rotate(model, rodRingAngle, glm::vec3(0.0f, 0.0f, -1.0f));
-    
-    // 3.5 Shimmer Tilt (Pass 3 dual-angle ghosting offset)
-    model = glm::rotate(model, tiltAngleOffset, glm::vec3(1.0f, 0.0f, 0.0f));
-    
-    // 4. Local continuous rotation (spinning on its length axis)
-    model = glm::rotate(model, selfRotation, glm::vec3(0.0f, 1.0f, 0.0f));
-    
-    // 5. Active hour squeeze (Scale along Y)
-    // To keep the bottom of the cylinder anchored at the ring radius while the top shrinks,
-    // we translate along the Y axis by (yScale - 1.0) since the base is at Y = -1.0.
-    model = glm::translate(model, glm::vec3(0.0f, yScale - 1.0f, 0.0f));
-    model = glm::scale(model, glm::vec3(1.0f, yScale, 1.0f));
-    
-    return model;
-}
-
-// OSDSYS FUN_002730a8: Builds the custom GS-native projection matrix.
-inline glm::mat4 buildProjectionMatrix(float fov, float halfWidth, float nearPlane, float aspect) {
-    // Note: OSDSYS hardcodes far to 2048.0f (GS internal coordinate space max)
-    float farPlane = 2048.0f; 
-    
-    // Construct base perspective mapping
-    glm::mat4 proj = glm::perspective(fov, aspect, nearPlane, farPlane);
-    
-    // In the real hardware, scale = 65536.0f (Q16.16 GS fixed-point precision) is pushed
-    // and combined with halfWidth. For Vulkan, we keep normalized device coordinates (-1 to 1)
-    // but we can apply the structural modifications found in the VU code if needed.
-    // For now, the standard projection matches the required visual output in modern APIs
-    // without the 65536 GS clipping requirement.
-    
-    return proj;
+inline glm::mat4 buildTunnelMatrix() {
+    glm::mat4 M = glm::mat4(1.0f);
+    M = glm::translate(M, glm::vec3(0.0f, 0.0f, 30.0f));
+    M = glm::rotate(M, PI + PI / 2.0f, glm::vec3(1.0f, 0.0f, 0.0f));
+    return M;
 }
 
 // ──────────────────────────────────────────────────────────────────────────
-// Scale Computation (from FUN_00232da0)
+// Rod Matrix Builder — VU0-accurate Azimuth/Elevation rotation
+//
+// Replaces old Euler Z→Y→Z chain with OSDSYS-accurate axis-angle rotation
+// built from cross-product orthogonalization (VOPMSUB).
+//
+// angleA and angleB are the two rotation inputs:
+//   Pass 2: angleA == angleB (symmetric)
+//   Pass 3: angleA != angleB (shimmer offset from param_3[0x2c]/[0x2d])
 // ──────────────────────────────────────────────────────────────────────────
-
-// Re-simplified scale logic matching the visual intent since we don't know the exact VU0 base mesh dimensions
-inline float computeRodScale(int rodIndex, float baseScale, bool isWidescreen, 
-                             bool isSelected, int hourCounter) {
-    float scale = baseScale;
-    
-    // The PS2 index-based scale logic implies the original mesh was tiny (scaled x3)
-    // Since our mesh is already 1.0, we just return baseScale for normal rods.
-    
-    // Hour Indicator Squeeze (Progress bar over 3600 seconds)
-    if (isSelected) {
-        float timeRatio = static_cast<float>(hourCounter) / 3600.0f;
-        scale *= (1.0f - timeRatio);
-        // clamp to avoid negative scaling crossing the ring
-        if (scale < 0.001f) scale = 0.001f;
-    }
-    
-    return scale;
+inline glm::mat4 buildRodMatrix(float angleA, float angleB) {
+    return GsCrystalMath::buildRotation(angleA, angleB);
 }
 
 // ──────────────────────────────────────────────────────────────────────────
-// Prism Color Lerp (PS2 Global Color Cycle)
-// Loops Deep Blue -> Violet -> Teal continuously every 10 seconds.
+// Per-pass angle for a rod
+// OSDSYS: baseAngle + rodIndex * passAngleStep
+// ──────────────────────────────────────────────────────────────────────────
+inline float computeRodAngle(float baseAngle, int rodIndex, float angleStep) {
+    return GsCrystalMath::computePassAngle(baseAngle, rodIndex, angleStep);
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Build the full model matrix for a rod including translation and scale.
+// ──────────────────────────────────────────────────────────────────────────
+inline glm::mat4 buildFullRodModel(const glm::mat4& orbitMatrix, float yScale) {
+    glm::mat4 localTransform = glm::mat4(1.0f);
+    localTransform = glm::scale(localTransform, glm::vec3(1.0f, yScale, 1.0f));
+    localTransform = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, ROD_RING_RADIUS, 0.0f)) * localTransform;
+    return orbitMatrix * localTransform;
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Rod Scale — delegates to gs/GsCrystalMath with OSDSYS constants
+// ──────────────────────────────────────────────────────────────────────────
+inline float computeRodScale(int rodIndex, float baseScale, bool isWidescreen,
+                             int screenRatio, bool isSelected, int hourCounter) {
+    return GsCrystalMath::computeRodScale(rodIndex, baseScale, isWidescreen,
+                                           screenRatio, isSelected, hourCounter);
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Clock rotation helpers
+// ──────────────────────────────────────────────────────────────────────────
+inline float lerpClockRotation(float secondsInMinute) {
+    return (secondsInMinute / 60.0f) * TAU;
+}
+
+inline float getClockRotationAngle(int hour) {
+    float h = static_cast<float>(hour < 12 ? hour : hour - 12);
+    return h * (-TAU / 12.0f);
+}
+
+// Highlighted rod — the OSDSYS uses a per-rod flag at +0x150.
+// For now, rod 0 sits at the current hour position after rotation.
+inline int getHighlightedRod(int) {
+    return 0;
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Prism Color Lerp — Deep Blue → Violet → Teal every 10 seconds.
 // ──────────────────────────────────────────────────────────────────────────
 inline glm::vec3 lerpPrismColor(float secondsInMinute) {
     const glm::vec3 PRISM_COLORS[] = {
@@ -120,15 +105,69 @@ inline glm::vec3 lerpPrismColor(float secondsInMinute) {
     float mod = std::fmod(secondsInMinute, 10.0f);
     int colorIdx = (static_cast<int>(secondsInMinute) - static_cast<int>(mod)) % 3;
     float t = mod / 10.0f;
-    
-    glm::vec3 c1 = PRISM_COLORS[colorIdx];
-    glm::vec3 c2 = PRISM_COLORS[(colorIdx + 1) % 3];
-    return glm::mix(c1, c2, t);
+
+    return glm::mix(PRISM_COLORS[colorIdx], PRISM_COLORS[(colorIdx + 1) % 3], t);
 }
 
-// Highlighted rod = current hour (0-11)
-inline int getHighlightedRod(int hour) {
-    return hour % 12;
+// ──────────────────────────────────────────────────────────────────────────
+// Prism scale — simple hour countdown (kept as fallback)
+// Prefer GsCrystalMath::computeRodScale for OSDSYS accuracy.
+// ──────────────────────────────────────────────────────────────────────────
+inline float lerpPrismScale(float secondsInHour) {
+    return 1.0f - secondsInHour / 3600.0f;
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Orb Math — ported from Raylib clock.cpp
+// ──────────────────────────────────────────────────────────────────────────
+constexpr int ORBS = 7;
+constexpr int TRAIL_SEGMENTS = 120;
+constexpr int TRAIL_POINTS = TRAIL_SEGMENTS + 1;
+constexpr float TRAIL_WIDTH = 1.0f;
+constexpr float ORB_SCALE = 2.5f;
+
+constexpr float MAX_SPHERE_RADIUS = 6.0f;
+constexpr float MIN_SPHERE_RADIUS = MAX_SPHERE_RADIUS / 2.0f;
+
+constexpr float ORB_X_SPEED = PI / 2.0f;
+constexpr float ORB_Z_SPEED = -PI;
+constexpr float ORB_ANGLE_STEP = 360.0f / 60.0f * DEG2RAD;
+const float ORB_ANGLES[] = { PI / 2.0f, PI + PI / 6.0f, 0.0f };
+
+inline float getOrbRotationAngle(float time, int i) {
+    return time * i * ORB_ANGLE_STEP;
+}
+
+inline float lerpXRotationAngle(const TimeInfo& t, float smoothedSeconds) {
+    float angle1 = ORB_ANGLES[t.minute % 3];
+    float angle2 = ORB_ANGLES[(t.minute + 1) % 3];
+    float t_norm = smoothedSeconds / 60.0f;
+    return glm::mix(angle1, angle2, t_norm);
+}
+
+inline glm::mat4 buildOrbRotationMatrix(const TimeInfo& timeInfo) {
+    float smoothSeconds = timeInfo.minute * 60.0f + timeInfo.secondsInMinute;
+    float hourRotRad = static_cast<float>(timeInfo.hour % 12) * -30.0f * DEG2RAD;
+
+    float ax = ORB_X_SPEED * smoothSeconds + lerpXRotationAngle(timeInfo, smoothSeconds);
+    float az = ORB_Z_SPEED * smoothSeconds;
+
+    glm::mat4 rx = glm::rotate(glm::mat4(1.0f), ax, glm::vec3(1.0f, 0.0f, 0.0f));
+    glm::mat4 rz = glm::rotate(glm::mat4(1.0f), az, glm::vec3(0.0f, 0.0f, 1.0f));
+    glm::mat4 rHour = glm::rotate(glm::mat4(1.0f), hourRotRad, glm::vec3(0.0f, 0.0f, 1.0f));
+
+    return rHour * rx * rz;
+}
+
+inline glm::vec3 getOrbPosition(float timeInMinuteSeconds, float radius, int orbIndex, const glm::mat4& rotation) {
+    float angle = getOrbRotationAngle(timeInMinuteSeconds, orbIndex);
+    glm::vec3 pos(radius * std::cos(angle), radius * std::sin(angle), 0.0f);
+    return glm::vec3(rotation * glm::vec4(pos, 1.0f));
+}
+
+inline float lerpSphereRadius(float secondsInHour) {
+    float t = secondsInHour / 3600.0f;
+    return glm::mix(MIN_SPHERE_RADIUS, MAX_SPHERE_RADIUS, t);
 }
 
 } // namespace CrystalMath
