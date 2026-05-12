@@ -70,5 +70,5 @@ void main() {
     float fade = 1.0 - smoothstep(0.0, 100.0, length(fragVec));
 
     vec3 color = calcPointLight(N, fragPosition, normalize(fragVec));
-    outColor = vec4(color, fade);
+    outColor = vec4(color * fade, 1.0);
 }

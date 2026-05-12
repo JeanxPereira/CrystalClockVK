@@ -33,7 +33,7 @@ void RenderOrchestrator::init(const VulkanContext& ctx, const SwapchainManager& 
         m_uboBuffer[i] = resources.createBuffer(
             sizeof(FrameUBO),
             VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-            VMA_MEMORY_USAGE_CPU_TO_GPU);
+            VMA_MEMORY_USAGE_AUTO);
     }
 
     uploadMeshes(resources);
@@ -123,7 +123,7 @@ void RenderOrchestrator::createPipelines(VkDevice device, VkFormat colorFormat) 
         .setVertexInput(bindings, attributes)
         .setTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
         .setCullMode(VK_CULL_MODE_BACK_BIT)
-        .setBlendMode(BlendMode::AlphaBlend)
+        .setBlendMode(BlendMode::Opaque)
         .setDepthTest(false, false)
         .setColorFormat(colorFormat)
         .setDepthFormat(VK_FORMAT_D32_SFLOAT)
@@ -137,7 +137,7 @@ void RenderOrchestrator::createPipelines(VkDevice device, VkFormat colorFormat) 
         .setTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
         .setCullMode(VK_CULL_MODE_NONE)
         .setBlendMode(BlendMode::AlphaBlend)
-        .setDepthTest(true, true)
+        .setDepthTest(false, false)
         .setColorFormat(colorFormat)
         .setDepthFormat(VK_FORMAT_D32_SFLOAT)
         .setPipelineLayout(m_pipelineLayout)
@@ -251,7 +251,9 @@ void RenderOrchestrator::updateRodStates(const FrameParams& params) {
 
 void RenderOrchestrator::updateUBO(const FrameParams& params) {
     float fov = glm::radians(CrystalMath::CAMERA_FOV);
-    glm::mat4 proj = glm::perspective(fov, params.aspect, CrystalMath::CAMERA_NEAR, CrystalMath::CAMERA_FAR);
+    bool isWidescreen = params.aspect > 1.5f;
+    float halfWidth = isWidescreen ? GsConstants::GS_HALF_WIDTH_16_9 : GsConstants::GS_HALF_WIDTH_4_3;
+    glm::mat4 proj = GsCrystalMath::buildGsProjection(fov, halfWidth, CrystalMath::CAMERA_NEAR, isWidescreen);
     proj[1][1] *= -1.0f;
 
     glm::mat4 view = glm::lookAt(
@@ -259,17 +261,30 @@ void RenderOrchestrator::updateUBO(const FrameParams& params) {
         glm::vec3(0.0f, 0.0f, -1.0f),
         glm::vec3(0.0f, 1.0f, 0.0f));
 
+    static bool printed = false;
+    if (!printed) {
+        printf("Proj:\n%f %f %f %f\n%f %f %f %f\n%f %f %f %f\n%f %f %f %f\n",
+            proj[0][0], proj[0][1], proj[0][2], proj[0][3],
+            proj[1][0], proj[1][1], proj[1][2], proj[1][3],
+            proj[2][0], proj[2][1], proj[2][2], proj[2][3],
+            proj[3][0], proj[3][1], proj[3][2], proj[3][3]);
+        printf("View:\n%f %f %f %f\n%f %f %f %f\n%f %f %f %f\n%f %f %f %f\n",
+            view[0][0], view[0][1], view[0][2], view[0][3],
+            view[1][0], view[1][1], view[1][2], view[1][3],
+            view[2][0], view[2][1], view[2][2], view[2][3],
+            view[3][0], view[3][1], view[3][2], view[3][3]);
+        printed = true;
+    }
+
     float smoothSeconds = params.time.minute * 60.0f + params.time.secondsInMinute;
 
     FrameUBO ubo{};
     ubo.viewProj = proj * view;
-    ubo.viewPos = glm::vec4(0.0f, 0.0f, CrystalMath::CAMERA_Z, 0.0f);
-    ubo.prismColor = glm::vec4(CrystalMath::lerpPrismColor(smoothSeconds), params.totalTime);
+    ubo.viewPos = glm::vec4(0.0f, 0.0f, CrystalMath::CAMERA_Z, 1.0f);
+    ubo.prismColor = glm::vec4(CrystalMath::lerpPrismColor(smoothSeconds), 1.0f);
 
-    void* mapped = nullptr;
-    vmaMapMemory(m_ctx->allocator(), m_uboBuffer[params.frameIndex].allocation, &mapped);
-    std::memcpy(mapped, &ubo, sizeof(FrameUBO));
-    vmaUnmapMemory(m_ctx->allocator(), m_uboBuffer[params.frameIndex].allocation);
+    std::memcpy(m_uboBuffer[params.frameIndex].allocationInfo.pMappedData, &ubo, sizeof(FrameUBO));
+    vmaFlushAllocation(m_ctx->allocator(), m_uboBuffer[params.frameIndex].allocation, 0, sizeof(FrameUBO));
 
     updateRodStates(params);
 }
@@ -319,7 +334,7 @@ void RenderOrchestrator::recordCrystalPasses(PassRecorder& recorder, const Frame
     float hourAngle = CrystalMath::getClockRotationAngle(params.time.hour);
 
     // Pass 3 shimmer offsets — from param_3[0x2c] and param_3[0x2d]
-    // These are clock-state-driven. We approximate from time progression.
+    // These are clock-state-driven. We use time progression to approximate the exact PS2 offset values.
     float shimmerOffsetX = std::sin(smoothSeconds * 0.1f) * 0.15f;
     float shimmerOffsetY = std::cos(smoothSeconds * 0.07f) * 0.12f;
 
@@ -358,6 +373,8 @@ void RenderOrchestrator::recordCrystalPasses(PassRecorder& recorder, const Frame
             glm::mat4 orbitMatrix;
             if (passIndex == 0 || passIndex == 3 || passIndex == 4) {
                 // Pass 1/4/5: glass — use hour angle + rod placement
+                // Note: The PS2 draws pass 1, 4, 5 with angle steps just like P2, but here
+                // we adhere to the current logic which positions the glass based on hour/rod indices.
                 float rodPlacement = hourAngle + static_cast<float>(i) * (-CrystalMath::TAU / 12.0f);
                 orbitMatrix = CrystalMath::buildRodMatrix(rodPlacement, rodPlacement);
             } else if (passIndex == 1) {

@@ -206,7 +206,7 @@ int main(int argc, char* argv[]) {
             params.device = vulkan.device();
             params.currentImageView = mainColorImage.imageView;
             params.tunnelImageView = tunnelImage.imageView;
-            params.frameIndex = frameNumber % FrameOverlap;
+            params.frameIndex = frameNumber % 2;
 
             // Update UBO with viewProj, viewPos, prismColor
             orchestrator.updateUBO(params);
@@ -331,12 +331,12 @@ int main(int argc, char* argv[]) {
             VkSemaphoreSubmitInfo waitSemInfo{};
             waitSemInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
             waitSemInfo.semaphore = acquireSem;
-            waitSemInfo.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+            waitSemInfo.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
 
             VkSemaphoreSubmitInfo signalSemInfo{};
             signalSemInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
             signalSemInfo.semaphore = renderSem;
-            signalSemInfo.stageMask = VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT;
+            signalSemInfo.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
 
             VkSubmitInfo2 submitInfo{};
             submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;

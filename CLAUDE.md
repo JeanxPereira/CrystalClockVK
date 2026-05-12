@@ -13,9 +13,10 @@ The codebase is structured into four strict layers:
 4. `app/`: Crystal Clock orchestration and pass dispatch.
 
 ## Build System
-- **CMake 4.3.1**, C++26 standard
+- **CMake 4.3.1**, C++23 standard (cross-platform compatible with MSVC/Clang/GCC)
 - SDL3, VulkanMemoryAllocator (VMA), vk-bootstrap, GLM, Dear ImGui via `FetchContent`/Submodules
-- Target Environment: Windows (AMD RDNA2 / RX 6750 XT baseline). Support for macOS exists via MoltenVK automatically injected by vk-bootstrap portability subset.
+- Target Environment: Windows (AMD RDNA2 / RX 6750 XT baseline) + macOS (Apple Silicon via MoltenVK/KosmicKrisp)
+- **CI**: GitHub Actions auto-builds Windows + macOS on every push (`.github/workflows/build.yml`)
 
 ## Documentation Reference
 To guarantee a 1:1 cleanroom port of the OSDSYS effects, rely on these resources:
@@ -35,6 +36,37 @@ The PS2 GS renders the clock in 5 distinct passes using the same `DAT_002973*` p
 | **5** | `(0,1,1)` - Active Rod Slider Fill | `VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA` / `SRC_ALPHA` (Reverse Alpha fill) |
 
 *Always follow PascalCase boundaries, explicit RHI-less lean wrappers, and strictly isolated GS testability.*
+
+## Commit Convention
+Format: `Type(Scope): Short imperative description`
+
+**Types** (PascalCase):
+| Type | When |
+|---|---|
+| `Fix` | Bug fix, broken rendering, crash |
+| `Feat` | New feature, pass, shader, mesh |
+| `Refactor` | Code restructure, no behavior change |
+| `Perf` | Performance optimization |
+| `Build` | CMake, CI, dependencies, SDK |
+| `Docs` | MEMORY.md, CLAUDE.md, comments |
+| `GS` | PS2 GS/VU0 reverse-engineering changes |
+
+**Scopes** (PascalCase, match directory/module):
+`Core`, `Renderer`, `App`, `GS`, `Shaders`, `CI`, `Project`
+
+**Rules**:
+- Max 72 chars in subject line
+- Imperative mood ("Fix" not "Fixed", "Add" not "Added")
+- Body optional, separated by blank line, explains *why* not *what*
+
+**Examples**:
+```
+Fix(Shaders): Restore actual lighting output from debug hardcodes
+Feat(CI): Add GitHub Actions Windows+macOS build pipeline
+GS(App): Implement VU0 azimuth rotation from OSDSYS decode
+Build(Project): Downgrade C++26 to C++23 for MSVC compat
+Refactor(Renderer): Extract depth transition into PassRecorder
+```
 
 ## Code Directives
 - **English Only**: The codebase (variables, structures) and all text must be strictly in English.

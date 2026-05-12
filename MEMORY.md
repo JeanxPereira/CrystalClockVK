@@ -23,7 +23,8 @@ Following a debate tracking the official `/Users/jeanxpereira/CodingProjects/Vul
 
 ## 3. Scope & Target Constraints
 - **Hardware Target**: Windows / AMD RDNA2 (RX 6750 XT). 
-- **macOS Exception**: Developed partly on a Hackintosh. Vulkan portability on Mac relies on **MoltenVK**. Instead of building bloated multi-platform fallback RHI interfaces (Rendering Hardware Interfaces), we use `vk-bootstrap` which natively requests `VK_KHR_portability_subset` enabling MoltenVK directly transparently. We assume no ultra-low-end fallback; `VK_KHR_dynamic_rendering_local_read` is preferred and assumed native on RDNA2/Apple Silicon.
+- **macOS Support**: Vulkan portability on Mac relies on **MoltenVK** or **KosmicKrisp** (Mesa-based, Apple Silicon only, Vulkan 1.3 conformant). The Vulkan Loader in SDK 1.4+ selects the best ICD at runtime — no code changes needed. We use `vk-bootstrap` which natively requests `VK_KHR_portability_subset` enabling MoltenVK directly transparently.
+- **CI Pipeline**: GitHub Actions builds both Windows and macOS on every push via `jakoch/install-vulkan-sdk-action`.
 
 ## 4. The 4-Tier Zero-Bloat Architecture
 *See `CrystalClockVK-ImplPlan.md` for full structure.*
@@ -40,7 +41,7 @@ Through deep decompilation of `OSDSYS.elf`, we discovered several critical flaws
 3. **Color & Meshes:** The PS2 uses a **single mesh structural definition**. Early analysis spotted two memory buffers (`0x375250` and `0x377e50`), but deep decompilation of `ui_render_3d_objects` revealed this is merely an array split: the first array holds the default 4:3 rods, and the second array holds *extra rods* appended at runtime to fill the edges of the Widescreen mode. We can achieve identical visual output using a single vertex buffer and disabling depth-write for the additive passes. The color cycles `Deep Blue -> Violet -> Teal` every 10 seconds.
 4. **Hour Slider (Prism Scale):** The OSDSYS uses `0x150` flag to mark the active hour rod, enabling Passes 4 and 5 which apply a `yScale` that counts down over the span of the 3600 seconds.
 
-## 6. Current Implementation Status (Updated 2026-04-11)
+## 6. Current Implementation Status (Updated 2026-05-11)
 
 ### ✅ Milestones 1 & 2 — Complete
 - Vulkan 1.3 / Sync2 / Dynamic Rendering / VMA enabled.
@@ -54,9 +55,19 @@ Through deep decompilation of `OSDSYS.elf`, we discovered several critical flaws
 | `app/CrystalMath` | Procedural math wrapper (Currently needs Azimuth/VU0 update) |
 | GS Passes | P1 (Glass), P2 (Specular), P3 (Offset), P4/P5 (Fill/Highlight) established |
 
+### ✅ Bug Fixes Applied (2026-05-11)
+- Removed hardcoded debug colors from Crystal.frag (GREEN) and Tunnel.frag (BLUE)
+- Restored proper model matrix in push constants (was overwritten with identity+10x scale hack)
+- Fixed glass pipeline blend mode (Opaque → AlphaBlend)
+- Fixed tunnel clear color (RED → BLACK)
+- Updated VMA memory usage (CPU_TO_GPU → AUTO)
+- C++ standard reduced to C++23 for cross-platform MSVC compatibility
+- GitHub Actions CI pipeline added (.github/workflows/build.yml)
+
 ### 🚧 Remaining Constraints / Next Steps
 - Implement VU0 Azimuth Matrix Math in `CrystalMath`.
 - Implement Orbs/Trails and FXAA shaders.
+- Fix projection aspect ratio (currently hardcoded to 16:9 or 4:3).
 
 *Note (Updated Framebuffer Refraction):* `VK_KHR_dynamic_rendering_local_read` has been successfully implemented using SubpassLoad on the exact Tile pixel for Pass 1 Glass. We learned that `VK_EXT_attachment_feedback_loop_layout` is largely unsupported on macOS/MoltenVK, so we enforce the feedback loop behavior explicitly without it to bypass device selector validation errors. We simulate refraction via an algorithmic chromatic displacement directly on the fetched pixel's luminance instead of physical UV offsets, due to TBDR `subpassLoad()` constraints.
 
@@ -70,4 +81,5 @@ Through deep decompilation of `OSDSYS.elf`, we discovered several critical flaws
 | 4 | Crystal Geometry & Math | 🟢 Low | 🟡 Partial |
 | 5 | **5-Pass Render Pipeline** | 🔴 High | ✅ Complete |
 | 6 | ImGui Debug Overlay | 🟢 Low | ✅ Complete |
-| 7 | Polish & Final Parity | 🟡 Med | ❌ |
+| 7 | CI Pipeline (Win+Mac) | 🟢 Low | ✅ Complete |
+| 8 | Polish & Final Parity | 🟡 Med | ❌ |

@@ -3,13 +3,16 @@ build/
 build-release/
 bin/
 
-# IDE / Editor
+# IDE / Editor / Agent
 .vscode/
 .idea/
+.cache/
+.claude/
 *.swp
 *.swo
 *~
 .DS_Store
+imgui.ini
 
 # Compile commands (generated, useful for clangd but shouldn't be committed from root)
 compile_commands.json
