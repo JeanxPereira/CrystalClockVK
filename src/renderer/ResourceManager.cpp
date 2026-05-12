@@ -28,7 +28,10 @@ AllocatedBuffer ResourceManager::createBuffer(VkDeviceSize size, VkBufferUsageFl
 
     VmaAllocationCreateInfo allocInfo{};
     allocInfo.usage = memUsage;
-    allocInfo.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT; // Keep mapped for CPU-visible buffers
+    allocInfo.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
+    if (memUsage == VMA_MEMORY_USAGE_AUTO) {
+        allocInfo.flags |= VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
+    }
 
     AllocatedBuffer result{};
     result.size = size;
