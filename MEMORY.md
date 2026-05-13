@@ -34,14 +34,14 @@ Following a debate tracking the official `/Users/jeanxpereira/CodingProjects/Vul
 3. **`gs/`**: STRICTLY PS2 logic. No Vulkan definitions `Vk*` exist here. `SwizzleEngine`, `TextureDecoder`, `GsRegisterState`. Returns decoded VRAM vectors `std::vector<uint8_t>` to be consumed by `ResourceManager`. Perfect unit-testability.
 4. **`app/`**: Application state loop. Uses push constants (< 128 bytes limit!) for generic variables (`renderPass` ID, `rodAlpha`) and an object-level UBO for matrices (`model`, `mNormal`).
 
-## 5. Ghidra MCP Analysis Discoveries (New Truths vs Raylib)
-Through deep decompilation of `OSDSYS.elf`, we discovered several critical flaws in the old Raylib math:
-1. **Rotation Matrix (Azimuth/Elevation):** The PS2 `BuildRotation` uses two angles fed into a VU0 macro utilizing `VOPMSUB` (Cross Product) for proper orthogonalization. **The rods are NOT laid out as a radial ring with tangent tilts.** They use a proper 2-angle Azimuth/Elevation matrix.
-2. **The Shimmer Ghosting Effect:** Pass 2 receives two IDENTICAL angles. Pass 3 receives two DIFFERENT angles offset by system clock parameters (`param_3[0x2c/0x2d]`). This difference forces the VU0 cross-product to generate a slightly skewed rotation, creating the native PS2 "double image" shimmer.
-3. **Color & Meshes:** The PS2 uses a **single mesh structural definition**. Early analysis spotted two memory buffers (`0x375250` and `0x377e50`), but deep decompilation of `ui_render_3d_objects` revealed this is merely an array split: the first array holds the default 4:3 rods, and the second array holds *extra rods* appended at runtime to fill the edges of the Widescreen mode. We can achieve identical visual output using a single vertex buffer and disabling depth-write for the additive passes. The color cycles `Deep Blue -> Violet -> Teal` every 10 seconds.
-4. **Hour Slider (Prism Scale):** The OSDSYS uses `0x150` flag to mark the active hour rod, enabling Passes 4 and 5 which apply a `yScale` that counts down over the span of the 3600 seconds.
+## 5. Ghidra MCP Analysis Discoveries (Re-evaluated 2026-05-13)
+Through deep decompilation of `OSDSYS.elf` AND patent US6,693,606 analysis, key findings:
+1. **Rotation Chain (REVISED)**: VU0 azimuth/elevation rotation theory from `FUN_002732d8` decode (see `docs/ghidra_analysis/vu0_decode.md`) was visually invalid — produced rod clustering not radial ring. **Patent US6,693,606 claim 8 governs:** ring rotates around longitudinal axis of HIGHLIGHTED block (1 rev/60s for OSDSYS single-group variant). Current chain: `X(25° tilt) * Rotate(groupRot, highlightAxis) * Z(i*-30°)`. Per-rod axial spin layered separately.
+2. **Shimmer / Pass 3 (DROPPED)**: Pass 3 with offset rotation produced 12 visible ghost rods in output. Patent does not describe shimmer effect. Raylib also disabled it (commented out). Permanently removed from pipeline.
+3. **Color & Meshes**: PS2 uses single mesh definition. Two memory buffers (`0x375250` / `0x377e50`) = array split: first holds 4:3 rods, second holds extra widescreen edge rods. Single vertex buffer + depth-write disabled on additive passes matches. Patent specifies blue-AM / red-PM coloring (not implemented yet).
+4. **Hour Slider (REVISED)**: Patent S304 — coloring amount based on **minute data** (drain over 60-minute hour), NOT secondsInHour over 3600s. yScale = `1 - minutesInHour/60`. The `0x150` flag in OSDSYS marks active hour rod (P4/P5 routing).
 
-## 6. Current Implementation Status (Updated 2026-05-11)
+## 6. Current Implementation Status (Updated 2026-05-13)
 
 ### ✅ Milestones 1 & 2 — Complete
 - Vulkan 1.3 / Sync2 / Dynamic Rendering / VMA enabled.
@@ -51,25 +51,30 @@ Through deep decompilation of `OSDSYS.elf`, we discovered several critical flaws
 ### ✅ Milestone 3 & 4 & 5 — Partial / Mostly Complete
 | Component | Description |
 |-----------|-------------|
-| `app/RenderOrchestrator` | Extracted from main.cpp; owns pipelines + mesh + 5-pass recording |
-| `app/CrystalMath` | Procedural math wrapper (Currently needs Azimuth/VU0 update) |
-| GS Passes | P1 (Glass), P2 (Specular), P3 (Offset), P4/P5 (Fill/Highlight) established |
+| `app/RenderOrchestrator` | Extracted from main.cpp; owns pipelines + mesh + pass recording |
+| `app/CrystalMath` | Patent-aligned: forward X tilt, rotation around highlighted rod axis, per-rod axial spin |
+| GS Passes | P1 (Glass), P2 (Specular), P4/P5 (Selected Glass + Reverse Fill). **P3 dropped** — visible doubling, no patent backing. |
 
-### ✅ Bug Fixes Applied (2026-05-11)
-- Removed hardcoded debug colors from Crystal.frag (GREEN) and Tunnel.frag (BLUE)
-- Restored proper model matrix in push constants (was overwritten with identity+10x scale hack)
-- Fixed glass pipeline blend mode (Opaque → AlphaBlend)
-- Fixed tunnel clear color (RED → BLACK)
-- Updated VMA memory usage (CPU_TO_GPU → AUTO)
-- C++ standard reduced to C++23 for cross-platform MSVC compatibility
-- GitHub Actions CI pipeline added (.github/workflows/build.yml)
+### ✅ Bug Fixes Applied (2026-05-13 — Patent Alignment Pass)
+- **Rotation Chain**: `buildRodMatrix(rodIndex, groupRot, highlightIndex)` = `X(25°) * Rotate(groupRot, highlightAxis) * Z(rodIndex * -30°)`. Group rotates around longitudinal axis of highlighted rod per patent US6,693,606 claim 8. Replaced earlier VU0 azimuth/elevation chain (caused cone clustering) and raylib Z-Y-Z chain (caused dynamic edge-on tilts).
+- **Highlight Index**: `getHighlightedRod(hour) = hour % 12` (was hardcoded 0).
+- **Selected Rod Fill**: yScale = `1 - minutesInHour/60` (was secondsInHour/3600). Patent: fill drains over 60-minute hour.
+- **Bottom-up Fill**: `buildFullRodModel` order changed to `rodMatrix * transMat * scaleMat * axialSpin` so rod base stays fixed at ring radius and tip drains toward base (raylib was top-to-base anchored).
+- **Rod Geometry Scale**: Width 1.3×, Length 0.95× via `ROD_WIDTH_SCALE` / `ROD_LENGTH_SCALE`. PS2 reference aspect ~3:1.
+- **Tunnel Mesh Axis**: cylinder mesh regenerated along local Y (was local Z). After `translate(0,0,30) * rotateX(270°)` matrix, tunnel correctly extends along world -Z from camera. Without this fix tunnel rendered along world Y (above camera, invisible).
+- **Projection**: `buildGsProjection(fov, aspect, near, far)` uses real window aspect from `params.aspect`. Removed bogus halfWidth/`(2hw/(2hw/16:9))` collapse formula that hardcoded 16:9.
+- **Per-rod Axial Spin**: `buildAxialSpin(i, totalTime)` rotates each rod around its local Y at `TAU/8` rad/s with `i*PI/6` phase offset. Visible individual rotation.
+- **Pass Color/Alpha**: highlighted rod color = `prismColor * 2.2 + 0.4` with alpha 0.85/0.9. Was dark blue (invisible highlight).
+- **Dropped Pass 3**: shimmer offset rotation was producing 12 ghost rods visible in output. Patent has no shimmer concept; raylib also disabled it. Draw count: 25 (was 39).
 
 ### 🚧 Remaining Constraints / Next Steps
-- Implement VU0 Azimuth Matrix Math in `CrystalMath`.
-- Implement Orbs/Trails and FXAA shaders.
-- Fix projection aspect ratio (currently hardcoded to 16:9 or 4:3).
+- **Refraction**: `Crystal.frag` rod color renders near-white instead of glass-blue sampling tunnel. Refraction UV (`fragScreenUV + N.xy * 0.05`) likely broken — Vulkan Y-flip or bgTexture binding. Needs raw-sample debug.
+- **Bump Mapping**: Patent S208/S309 requires bump map on blocks. Currently no normal sampling.
+- **AM/PM Color**: Patent — blue AM, red PM. Currently 3-color cycle (Deep Blue → Violet → Teal).
+- **Inner Sphere + Light Spot Orbs**: Patent FIG. 10 element. Math exists in `CrystalMath::ORBS` but no pipeline/mesh hooked up.
+- **FXAA Shader**: Deferred.
 
-*Note (Updated Framebuffer Refraction):* `VK_KHR_dynamic_rendering_local_read` has been successfully implemented using SubpassLoad on the exact Tile pixel for Pass 1 Glass. We learned that `VK_EXT_attachment_feedback_loop_layout` is largely unsupported on macOS/MoltenVK, so we enforce the feedback loop behavior explicitly without it to bypass device selector validation errors. We simulate refraction via an algorithmic chromatic displacement directly on the fetched pixel's luminance instead of physical UV offsets, due to TBDR `subpassLoad()` constraints.
+*Note (Updated Framebuffer Refraction):* `VK_KHR_dynamic_rendering_local_read` available but Crystal pipeline currently samples `tunnelImageView` as combined image sampler (via Copy → SHADER_READ_ONLY) — simpler path than feedback loop. Switch to subpassLoad once refraction visually verified.
 
 ## 7. Milestone Roadmap Summary
 

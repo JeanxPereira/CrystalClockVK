@@ -51,39 +51,8 @@ inline glm::mat4 buildRotation(float angleA, float angleB) {
     );
 }
 
-// ──────────────────────────────────────────────────────────────────────────
-// VU0 Projection Builder (FUN_002730a8 — 92 VU0 instructions)
-//
-// The PS2 does NOT use a standard camera projection. It builds a custom
-// per-rod projection that maps directly into GS screen coordinates:
-//   - far = 2048.0 (GS drawing area maximum)
-//   - aspect = 1.0 (square, corrected by screen ratio later)
-//   - scale = 65536.0 (GS fixed-point Q16.16 precision)
-//   - Widescreen-dependent half-width
-//
-// For the Vulkan port we use a standard perspective projection since
-// we're rendering to a modern framebuffer, not GS VRAM. The GS-specific
-// coordinate transform is unnecessary — our vertex shader + Vulkan NDC
-// handle the mapping. We preserve the FOV and aspect behavior.
-// ──────────────────────────────────────────────────────────────────────────
-inline glm::mat4 buildGsProjection(float fov, float halfWidth, float nearPlane, bool isWidescreen) {
-    float aspect = isWidescreen
-        ? (halfWidth * 2.0f) / (halfWidth * 2.0f / (16.0f / 9.0f))
-        : (halfWidth * 2.0f) / (halfWidth * 2.0f / (4.0f / 3.0f));
-
-    return glm::perspective(fov, aspect, nearPlane, GsConstants::GS_FAR_PLANE);
-}
-
-// ──────────────────────────────────────────────────────────────────────────
-// Combined Transform (FUN_002738a0 — matrix multiply)
-// result = projection x rotation
-// ──────────────────────────────────────────────────────────────────────────
-inline glm::mat4 buildCombinedTransform(float angleA, float angleB,
-                                         float fov, float halfWidth,
-                                         float nearPlane, bool isWidescreen) {
-    glm::mat4 rotation = buildRotation(angleA, angleB);
-    glm::mat4 projection = buildGsProjection(fov, halfWidth, nearPlane, isWidescreen);
-    return projection * rotation;
+inline glm::mat4 buildGsProjection(float fov, float aspect, float nearPlane, float farPlane) {
+    return glm::perspective(fov, aspect, nearPlane, farPlane);
 }
 
 // ──────────────────────────────────────────────────────────────────────────

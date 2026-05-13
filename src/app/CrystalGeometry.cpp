@@ -118,16 +118,14 @@ std::vector<CrystalVertex> CrystalGeometry::generateCylinderMesh(
         float u0 = static_cast<float>(i) / static_cast<float>(slices);
         float u1 = static_cast<float>(i + 1) / static_cast<float>(slices);
 
-        glm::vec3 p00 = {radius * c0, radius * s0, 0.0f};
-        glm::vec3 p01 = {radius * c0, radius * s0, length};
-        glm::vec3 p10 = {radius * c1, radius * s1, 0.0f};
-        glm::vec3 p11 = {radius * c1, radius * s1, length};
+        glm::vec3 p00 = {radius * c0, 0.0f,   radius * s0};
+        glm::vec3 p01 = {radius * c0, length, radius * s0};
+        glm::vec3 p10 = {radius * c1, 0.0f,   radius * s1};
+        glm::vec3 p11 = {radius * c1, length, radius * s1};
 
-        // Inward-facing normals (camera is inside the cylinder)
-        glm::vec3 n0 = {-c0, -s0, 0.0f};
-        glm::vec3 n1 = {-c1, -s1, 0.0f};
+        glm::vec3 n0 = {-c0, 0.0f, -s0};
+        glm::vec3 n1 = {-c1, 0.0f, -s1};
 
-        // Quad as two triangles (CCW winding for inward faces)
         vertices.push_back({p00, n0, {u0, 0.0f}});
         vertices.push_back({p10, n1, {u1, 0.0f}});
         vertices.push_back({p01, n0, {u0, 1.0f}});

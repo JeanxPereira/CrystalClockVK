@@ -16,7 +16,11 @@ constexpr float PI = glm::pi<float>();
 constexpr float TAU = glm::two_pi<float>();
 constexpr float DEG2RAD = PI / 180.0f;
 
-constexpr float ROD_RING_RADIUS = 6.5f;
+constexpr float ROD_RING_RADIUS = 4.5f;
+constexpr float ROD_LENGTH_SCALE = 0.95f;
+constexpr float ROD_WIDTH_SCALE = 1.3f;
+constexpr float GROUP_TILT_X = 25.0f * DEG2RAD;
+constexpr float AXIAL_SPIN_RATE = TAU / 8.0f;
 
 constexpr float CAMERA_FOV = 70.0f;
 constexpr float CAMERA_Z = 30.0f;
@@ -33,36 +37,33 @@ inline glm::mat4 buildTunnelMatrix() {
     return M;
 }
 
-// ──────────────────────────────────────────────────────────────────────────
-// Rod Matrix Builder — VU0-accurate Azimuth/Elevation rotation
-//
-// Replaces old Euler Z→Y→Z chain with OSDSYS-accurate axis-angle rotation
-// built from cross-product orthogonalization (VOPMSUB).
-//
-// angleA and angleB are the two rotation inputs:
-//   Pass 2: angleA == angleB (symmetric)
-//   Pass 3: angleA != angleB (shimmer offset from param_3[0x2c]/[0x2d])
-// ──────────────────────────────────────────────────────────────────────────
-inline glm::mat4 buildRodMatrix(float angleA, float angleB) {
-    return GsCrystalMath::buildRotation(angleA, angleB);
+inline glm::mat4 buildRodMatrix(int rodIndex, float groupRot, int highlightIndex) {
+    float angle_i = static_cast<float>(rodIndex) * (-PI / 6.0f);
+    float angle_h = static_cast<float>(highlightIndex) * (-PI / 6.0f);
+
+    glm::vec3 highlightAxis(-std::sin(angle_h), std::cos(angle_h), 0.0f);
+
+    glm::mat4 M(1.0f);
+    M = glm::rotate(M, GROUP_TILT_X, glm::vec3(1.0f, 0.0f, 0.0f));
+    M = glm::rotate(M, groupRot, highlightAxis);
+    M = glm::rotate(M, angle_i, glm::vec3(0.0f, 0.0f, 1.0f));
+    return M;
 }
 
-// ──────────────────────────────────────────────────────────────────────────
-// Per-pass angle for a rod
-// OSDSYS: baseAngle + rodIndex * passAngleStep
-// ──────────────────────────────────────────────────────────────────────────
+inline glm::mat4 buildAxialSpin(int rodIndex, float totalTime) {
+    float phase = totalTime * AXIAL_SPIN_RATE + static_cast<float>(rodIndex) * (PI / 6.0f);
+    return glm::rotate(glm::mat4(1.0f), phase, glm::vec3(0.0f, 1.0f, 0.0f));
+}
+
 inline float computeRodAngle(float baseAngle, int rodIndex, float angleStep) {
     return GsCrystalMath::computePassAngle(baseAngle, rodIndex, angleStep);
 }
 
-// ──────────────────────────────────────────────────────────────────────────
-// Build the full model matrix for a rod including translation and scale.
-// ──────────────────────────────────────────────────────────────────────────
-inline glm::mat4 buildFullRodModel(const glm::mat4& orbitMatrix, float yScale) {
-    glm::mat4 localTransform = glm::mat4(1.0f);
-    localTransform = glm::scale(localTransform, glm::vec3(1.0f, yScale, 1.0f));
-    localTransform = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, ROD_RING_RADIUS, 0.0f)) * localTransform;
-    return orbitMatrix * localTransform;
+inline glm::mat4 buildFullRodModel(const glm::mat4& rodMatrix, const glm::mat4& axialSpin, float yScale) {
+    glm::mat4 scaleMat = glm::scale(glm::mat4(1.0f),
+        glm::vec3(ROD_WIDTH_SCALE, yScale * ROD_LENGTH_SCALE, ROD_WIDTH_SCALE));
+    glm::mat4 transMat = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, ROD_RING_RADIUS, 0.0f));
+    return rodMatrix * transMat * scaleMat * axialSpin;
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -88,8 +89,10 @@ inline float getClockRotationAngle(int hour) {
 
 // Highlighted rod — the OSDSYS uses a per-rod flag at +0x150.
 // For now, rod 0 sits at the current hour position after rotation.
-inline int getHighlightedRod(int) {
-    return 0;
+inline int getHighlightedRod(int hour) {
+    int h = hour % 12;
+    if (h < 0) h += 12;
+    return h;
 }
 
 // ──────────────────────────────────────────────────────────────────────────

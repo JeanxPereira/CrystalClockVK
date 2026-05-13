@@ -236,45 +236,28 @@ void RenderOrchestrator::loadTextures(ResourceManager& resources) {
 void RenderOrchestrator::updateRodStates(const FrameParams& params) {
     int highlightedRod = CrystalMath::getHighlightedRod(params.time.hour);
     bool isWidescreen = params.aspect > 1.5f;
-    int hourCounter = static_cast<int>(params.time.secondsInHour);
+    float minutesInHour = static_cast<float>(params.time.minute) + params.time.secondsInMinute / 60.0f;
+    float selectedFill = 1.0f - (minutesInHour / 60.0f);
 
     for (int i = 0; i < CrystalMath::ROD_COUNT; i++) {
         m_rodState[i].selected = (i == highlightedRod);
         m_rodState[i].screenRatio = isWidescreen
             ? GsConstants::SCREEN_RATIO_16_9
             : GsConstants::SCREEN_RATIO_4_3;
-        m_rodState[i].yScale = GsCrystalMath::computeRodScale(
-            i, GsConstants::INITIAL_SCALE_FACTOR, isWidescreen,
-            m_rodState[i].screenRatio, m_rodState[i].selected, hourCounter);
+        m_rodState[i].yScale = m_rodState[i].selected ? selectedFill : 1.0f;
     }
 }
 
 void RenderOrchestrator::updateUBO(const FrameParams& params) {
     float fov = glm::radians(CrystalMath::CAMERA_FOV);
-    bool isWidescreen = params.aspect > 1.5f;
-    float halfWidth = isWidescreen ? GsConstants::GS_HALF_WIDTH_16_9 : GsConstants::GS_HALF_WIDTH_4_3;
-    glm::mat4 proj = GsCrystalMath::buildGsProjection(fov, halfWidth, CrystalMath::CAMERA_NEAR, isWidescreen);
+    glm::mat4 proj = GsCrystalMath::buildGsProjection(
+        fov, params.aspect, CrystalMath::CAMERA_NEAR, CrystalMath::CAMERA_FAR);
     proj[1][1] *= -1.0f;
 
     glm::mat4 view = glm::lookAt(
         glm::vec3(0.0f, 0.0f, CrystalMath::CAMERA_Z),
         glm::vec3(0.0f, 0.0f, -1.0f),
         glm::vec3(0.0f, 1.0f, 0.0f));
-
-    static bool printed = false;
-    if (!printed) {
-        printf("Proj:\n%f %f %f %f\n%f %f %f %f\n%f %f %f %f\n%f %f %f %f\n",
-            proj[0][0], proj[0][1], proj[0][2], proj[0][3],
-            proj[1][0], proj[1][1], proj[1][2], proj[1][3],
-            proj[2][0], proj[2][1], proj[2][2], proj[2][3],
-            proj[3][0], proj[3][1], proj[3][2], proj[3][3]);
-        printf("View:\n%f %f %f %f\n%f %f %f %f\n%f %f %f %f\n%f %f %f %f\n",
-            view[0][0], view[0][1], view[0][2], view[0][3],
-            view[1][0], view[1][1], view[1][2], view[1][3],
-            view[2][0], view[2][1], view[2][2], view[2][3],
-            view[3][0], view[3][1], view[3][2], view[3][3]);
-        printed = true;
-    }
 
     float smoothSeconds = params.time.minute * 60.0f + params.time.secondsInMinute;
 
@@ -328,24 +311,12 @@ void RenderOrchestrator::recordCrystalPasses(PassRecorder& recorder, const Frame
     float smoothSeconds = params.time.minute * 60.0f + params.time.secondsInMinute;
     glm::vec3 globalPrismColor = CrystalMath::lerpPrismColor(smoothSeconds);
 
-    // OSDSYS base angle: (float)*param_3 * in_f1
-    // We derive from clock time — the base rotation from elapsed seconds
-    float baseAngle = CrystalMath::lerpClockRotation(smoothSeconds / 60.0f);
-    float hourAngle = CrystalMath::getClockRotationAngle(params.time.hour);
-
-    // Pass 3 shimmer offsets — from param_3[0x2c] and param_3[0x2d]
-    // These are clock-state-driven. We use time progression to approximate the exact PS2 offset values.
-    float shimmerOffsetX = std::sin(smoothSeconds * 0.1f) * 0.15f;
-    float shimmerOffsetY = std::cos(smoothSeconds * 0.07f) * 0.12f;
+    float groupRot = (params.time.secondsInMinute / 60.0f) * CrystalMath::TAU;
+    int highlightIndex = CrystalMath::getHighlightedRod(params.time.hour);
 
     float w = static_cast<float>(params.extent.width);
     float h = static_cast<float>(params.extent.height);
 
-    // ═══════════════════════════════════════════════════════════════════════
-    // Draw helper — OSDSYS-accurate rod filtering
-    // Pass 1-3: only rods with flag==0 (unselected)
-    // Pass 4-5: only rods with flag!=0 (selected)
-    // ═══════════════════════════════════════════════════════════════════════
     enum class PassMode { Unselected, SelectedOnly };
 
     auto drawRods = [&](VkPipeline pipeline, glm::vec4 color, float alpha,
@@ -354,44 +325,18 @@ void RenderOrchestrator::recordCrystalPasses(PassRecorder& recorder, const Frame
         recorder.bindDescriptorSet(m_pipelineLayout, 0, m_crystalDescSet[params.frameIndex]);
         recorder.bindVertexBuffer(m_rodVertexBuffer.buffer);
 
-        float angleStep = GsConstants::ANGLE_STEP_P2_STATIC;
-        if (passIndex == 2) angleStep = GsConstants::ANGLE_STEP_P3_STATIC;
-
         for (int i = 0; i < CrystalMath::ROD_COUNT; i++) {
             bool isSelected = m_rodState[i].selected;
 
-            // OSDSYS rod filtering: flag==0 for P1-3, flag!=0 for P4-5
             if (mode == PassMode::Unselected && isSelected) continue;
             if (mode == PassMode::SelectedOnly && !isSelected) continue;
 
             float yScale = m_rodState[i].yScale;
 
-            // Compute per-rod angle for this pass
-            float rodAngle = CrystalMath::computeRodAngle(baseAngle, i, angleStep);
+            glm::mat4 rodMatrix = CrystalMath::buildRodMatrix(i, groupRot, highlightIndex);
+            glm::mat4 axialSpin = CrystalMath::buildAxialSpin(i, params.totalTime);
+            glm::mat4 model = CrystalMath::buildFullRodModel(rodMatrix, axialSpin, yScale);
 
-            // Build rotation matrix based on pass
-            glm::mat4 orbitMatrix;
-            if (passIndex == 0 || passIndex == 3 || passIndex == 4) {
-                // Pass 1/4/5: glass — use hour angle + rod placement
-                // Note: The PS2 draws pass 1, 4, 5 with angle steps just like P2, but here
-                // we adhere to the current logic which positions the glass based on hour/rod indices.
-                float rodPlacement = hourAngle + static_cast<float>(i) * (-CrystalMath::TAU / 12.0f);
-                orbitMatrix = CrystalMath::buildRodMatrix(rodPlacement, rodPlacement);
-            } else if (passIndex == 1) {
-                // Pass 2: specular — SAME angle for both params
-                // OSDSYS: FUN_00232e38(angle, angle, ...)
-                orbitMatrix = CrystalMath::buildRodMatrix(rodAngle, rodAngle);
-            } else {
-                // Pass 3: shimmer — DIFFERENT angles
-                // OSDSYS: FUN_00232e38(angle + param_3[0x2c], angle + param_3[0x2d])
-                float angleA = rodAngle + shimmerOffsetX;
-                float angleB = rodAngle + shimmerOffsetY;
-                orbitMatrix = CrystalMath::buildRodMatrix(angleA, angleB);
-            }
-
-            glm::mat4 model = CrystalMath::buildFullRodModel(orbitMatrix, yScale);
-
-            // Pass 5: alpha override 0xFF
             float passAlpha = alpha;
             if (passIndex == 4) passAlpha = static_cast<float>(GsConstants::PASS5_ALPHA_OVERRIDE) / 255.0f;
 
@@ -405,46 +350,14 @@ void RenderOrchestrator::recordCrystalPasses(PassRecorder& recorder, const Frame
         }
     };
 
-    // ═══════════════════════════════════════════════════════════════════════
-    // Pass 1: Base transparent glass (FB refraction)
-    // OSDSYS: FUN_002324e8(1,0,1) — Cs*As + Cd*(1-As) — unselected rods
-    // ═══════════════════════════════════════════════════════════════════════
-    drawRods(m_glassPipeline,
-             glm::vec4(0.15f, 0.25f, 0.45f, 1.0f), 0.4f,
-             PassMode::Unselected, 0);
+    glm::vec4 glassColor(globalPrismColor * 0.6f, 1.0f);
+    glm::vec4 specColor(globalPrismColor * 1.0f, 1.0f);
+    glm::vec4 highlightColor(globalPrismColor * 2.2f + glm::vec3(0.4f), 1.0f);
 
-    // ═══════════════════════════════════════════════════════════════════════
-    // Pass 2: Additive specular highlights — SAME angles
-    // OSDSYS: FUN_00230fe8(2,1,2) — Cs + Cd — unselected rods
-    // FUN_00232e38(angle, angle, ...) ← both params identical
-    // ═══════════════════════════════════════════════════════════════════════
-    drawRods(m_specularPipeline,
-             glm::vec4(globalPrismColor * 0.8f, 1.0f), 0.7f,
-             PassMode::Unselected, 1);
-
-    // ═══════════════════════════════════════════════════════════════════════
-    // Pass 3: Offset rotation shimmer — DIFFERENT angles (THE GHOSTING)
-    // OSDSYS: FUN_00232e38(angle+param_3[0x2c], angle+param_3[0x2d])
-    // ═══════════════════════════════════════════════════════════════════════
-    drawRods(m_specularPipeline,
-             glm::vec4(globalPrismColor * 0.8f, 1.0f), 0.7f,
-             PassMode::Unselected, 2);
-
-    // ═══════════════════════════════════════════════════════════════════════
-    // Pass 4: Selected rod glass (alpha blend) — ONLY active rod
-    // OSDSYS: FUN_00232538(1,0,1) — rods with flag!=0
-    // ═══════════════════════════════════════════════════════════════════════
-    drawRods(m_glassPipeline,
-             glm::vec4(0.15f, 0.25f, 0.45f, 1.0f), 0.5f,
-             PassMode::SelectedOnly, 3);
-
-    // ═══════════════════════════════════════════════════════════════════════
-    // Pass 5: Selected rod fill (reverse alpha) — ONLY active rod
-    // OSDSYS: FUN_002324e8(0,1,1) + param=0xFF — rods with flag!=0
-    // ═══════════════════════════════════════════════════════════════════════
-    drawRods(m_reversePipeline,
-             glm::vec4(globalPrismColor * 1.5f, 1.0f), 0.8f,
-             PassMode::SelectedOnly, 4);
+    drawRods(m_glassPipeline,    glassColor,     0.45f, PassMode::Unselected,    0);
+    drawRods(m_specularPipeline, specColor,      0.55f, PassMode::Unselected,    1);
+    drawRods(m_glassPipeline,    highlightColor, 0.85f, PassMode::SelectedOnly,  3);
+    drawRods(m_reversePipeline,  highlightColor, 0.9f,  PassMode::SelectedOnly,  4);
 }
 
 void RenderOrchestrator::destroy(VkDevice device, ResourceManager& resources) {

@@ -297,8 +297,8 @@ int main(int argc, char* argv[]) {
             ImGui::Text("Hour Scale Slide: %.3f", fillAmt);
             ImGui::Text("Sec in Min: %.2f", timeInfo.secondsInMinute);
             ImGui::Separator();
-            ImGui::Text("Tunnel(1) + Glass(12) + Spec(12) + Shimmer(12) + P4/P5(2)");
-            ImGui::Text("Draw Calls: %d", 1 + 12 + 12 + 12 + 2);
+            ImGui::Text("Tunnel(1) + Glass(11) + Spec(11) + P4/P5(2)");
+            ImGui::Text("Draw Calls: %d", 1 + 11 + 11 + 2);
             ImGui::End();
 
             // Render ImGui to mainColorImage (already in COLOR_ATTACHMENT_OPTIMAL)
