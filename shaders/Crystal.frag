@@ -5,18 +5,21 @@
 // Samples tunnel background texture with normal-based UV distortion.
 
 layout(location = 0) in vec3 fragPosition;
-layout(location = 1) in vec3 fragNormal;
+layout(location = 1) flat in vec3 fragNormal;
 layout(location = 2) in vec2 fragUV;
 layout(location = 3) in vec2 fragScreenUV;
 layout(location = 4) in float fragAlpha;
+layout(location = 5) flat in vec3 fragViewNormal;
 
 layout(set = 0, binding = 0) uniform FrameUBO {
     mat4 viewProj;
+    mat4 view;
     vec4 viewPos;
     vec4 prismColor;
 } ubo;
 
 layout(set = 0, binding = 1) uniform sampler2D bgTexture;
+layout(set = 0, binding = 2) uniform sampler2D normalMap;
 
 layout(push_constant) uniform PushConstants {
     mat4 model;
@@ -27,17 +30,14 @@ layout(push_constant) uniform PushConstants {
 layout(location = 0) out vec4 outColor;
 
 void main() {
-    vec3 N = normalize(fragNormal);
+    vec3 N = normalize(fragViewNormal);
+    N.y = -N.y;
 
-    // PS2-accurate refraction: offset screen UV by normal.xy
-    // Matches Raylib: distortedUV = screenUV + (norm.xy * 0.05)
-    vec2 distortedUV = fragScreenUV + N.xy * 0.05;
+    vec2 displacement = N.xy * 0.07;
+    vec3 bgSample = texture(bgTexture, fragScreenUV + displacement).rgb;
 
-    // Sample the tunnel background (Vulkan UV is NOT flipped like OpenGL FBOs)
-    vec3 bgSample = texture(bgTexture, distortedUV).rgb;
-
-    // Tint with the cycling prism color — matches Raylib: mix(bgSample, prismColor, 0.4)
-    vec3 tint = mix(bgSample, ubo.prismColor.rgb, 0.4);
+    vec3 prismTint = ubo.prismColor.rgb * 1.4 + pc.rodColor.rgb * 0.4;
+    vec3 tint = mix(bgSample * 1.3, prismTint, 0.22);
 
     outColor = vec4(tint, fragAlpha);
 }

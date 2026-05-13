@@ -17,6 +17,7 @@
 
 struct FrameUBO {
     glm::mat4 viewProj;
+    glm::mat4 view;
     glm::vec4 viewPos;     // xyz = camera position, w = unused
     glm::vec4 prismColor;  // rgb = cycling color, a = time
 };
@@ -76,6 +77,7 @@ private:
 
     // Textures
     AllocatedImage m_noiseTexture{};
+    AllocatedImage m_normalTexture{};
 
     // Pipelines
     VkPipelineLayout m_pipelineLayout{VK_NULL_HANDLE};

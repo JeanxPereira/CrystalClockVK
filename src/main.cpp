@@ -262,9 +262,42 @@ int main(int argc, char* argv[]) {
             VkClearValue crystalClear{};
             // Don't clear — we just copied the tunnel content
 
-            recorder.beginDebugLabel("Crystal Clock", 0.2f, 0.4f, 1.0f);
+            recorder.beginDebugLabel("Crystal Clock (Pass 1)", 0.2f, 0.4f, 1.0f);
             recorder.beginRendering(mainColorImage.imageView, depthImage.imageView,
-                                    swapchain.extent(), nullptr); // nullptr = no clear
+                                    swapchain.extent(), nullptr);
+            recorder.setViewportScissor(swapchain.extent());
+
+            orchestrator.recordCrystalPasses(recorder, params);
+
+            recorder.endRendering();
+            recorder.endDebugLabel();
+
+            // ═══════════════════════════════════════════════════════════════
+            // Inter-rod refraction: copy mainColor → tunnelImage,
+            // then re-render rods refracting now-updated bg (rods + tunnel).
+            // ═══════════════════════════════════════════════════════════════
+            recorder.transitionImage(mainColorImage.image,
+                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+            recorder.transitionImage(tunnelImage.image,
+                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+            VkImageCopy interRodCopy{};
+            interRodCopy.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+            interRodCopy.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+            interRodCopy.extent = {swapchain.extent().width, swapchain.extent().height, 1};
+            vkCmdCopyImage(frame.commandBuffer,
+                           mainColorImage.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                           tunnelImage.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                           1, &interRodCopy);
+
+            recorder.transitionImage(tunnelImage.image,
+                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+            recorder.transitionImage(mainColorImage.image,
+                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+
+            recorder.beginDebugLabel("Crystal Clock (Pass 2: Inter-Rod)", 0.4f, 0.6f, 1.0f);
+            recorder.beginRendering(mainColorImage.imageView, depthImage.imageView,
+                                    swapchain.extent(), nullptr);
             recorder.setViewportScissor(swapchain.extent());
 
             orchestrator.recordCrystalPasses(recorder, params);
@@ -297,8 +330,8 @@ int main(int argc, char* argv[]) {
             ImGui::Text("Hour Scale Slide: %.3f", fillAmt);
             ImGui::Text("Sec in Min: %.2f", timeInfo.secondsInMinute);
             ImGui::Separator();
-            ImGui::Text("Tunnel(1) + Glass(11) + Spec(11) + P4/P5(2)");
-            ImGui::Text("Draw Calls: %d", 1 + 11 + 11 + 2);
+            ImGui::Text("Tunnel(1) + Glass(12) + Spec(12) + Fill(1)");
+            ImGui::Text("Draw Calls: %d", 1 + 12 + 12 + 1);
             ImGui::End();
 
             // Render ImGui to mainColorImage (already in COLOR_ATTACHMENT_OPTIMAL)

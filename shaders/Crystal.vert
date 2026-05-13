@@ -10,8 +10,9 @@ layout(location = 2) in vec2 inUV;
 
 layout(set = 0, binding = 0) uniform FrameUBO {
     mat4 viewProj;
-    vec4 viewPos;      // xyz = camera position, w = unused
-    vec4 prismColor;   // rgb = cycling color, a = time
+    mat4 view;
+    vec4 viewPos;
+    vec4 prismColor;
 } ubo;
 
 layout(push_constant) uniform PushConstants {
@@ -21,10 +22,11 @@ layout(push_constant) uniform PushConstants {
 } pc;
 
 layout(location = 0) out vec3 fragPosition;
-layout(location = 1) out vec3 fragNormal;
+layout(location = 1) flat out vec3 fragNormal;
 layout(location = 2) out vec2 fragUV;
 layout(location = 3) out vec2 fragScreenUV;
 layout(location = 4) out float fragAlpha;
+layout(location = 5) flat out vec3 fragViewNormal;
 
 void main() {
     vec4 worldPos = pc.model * vec4(inPosition, 1.0);
@@ -35,6 +37,7 @@ void main() {
     // Proper normal transform: inverse-transpose of upper 3x3 of model matrix
     mat3 normalMatrix = transpose(inverse(mat3(pc.model)));
     fragNormal = normalize(normalMatrix * inNormal);
+    fragViewNormal = normalize(mat3(ubo.view) * fragNormal);
 
     fragUV = inUV * 2.0; // Match Raylib's fragTexCoord = vertexTexCoord * 2.0
 

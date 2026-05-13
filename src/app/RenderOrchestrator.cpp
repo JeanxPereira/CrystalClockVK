@@ -65,17 +65,23 @@ void RenderOrchestrator::createDescriptorResources(const VulkanContext& ctx) {
     samplerBinding.descriptorCount = 1;
     samplerBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
-    VkDescriptorSetLayoutBinding bindings[] = { uboBinding, samplerBinding };
+    VkDescriptorSetLayoutBinding normalBinding{};
+    normalBinding.binding = 2;
+    normalBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    normalBinding.descriptorCount = 1;
+    normalBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+    VkDescriptorSetLayoutBinding bindings[] = { uboBinding, samplerBinding, normalBinding };
 
     VkDescriptorSetLayoutCreateInfo layoutInfo{};
     layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    layoutInfo.bindingCount = 2;
+    layoutInfo.bindingCount = 3;
     layoutInfo.pBindings = bindings;
     vkCreateDescriptorSetLayout(ctx.device(), &layoutInfo, nullptr, &m_descriptorLayout);
 
     std::vector<DescriptorAllocator::PoolSizeRatio> ratios = {
         {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1.0f},
-        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1.0f}
+        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2.0f}
     };
     m_descriptorAllocator[0].init(ctx.device(), 10, ratios);
     m_descriptorAllocator[1].init(ctx.device(), 10, ratios);
@@ -200,37 +206,44 @@ void RenderOrchestrator::uploadMeshes(ResourceManager& resources) {
 }
 
 void RenderOrchestrator::loadTextures(ResourceManager& resources) {
-    std::vector<std::string> texPaths = {
+    auto loadOne = [&](const std::vector<std::string>& paths, const char* label,
+                       AllocatedImage& dst, glm::u8vec4 fallback) {
+        int w = 0, h = 0, channels = 0;
+        unsigned char* data = nullptr;
+        for (auto& path : paths) {
+            data = stbi_load(path.c_str(), &w, &h, &channels, 4);
+            if (data) {
+                std::cout << "[OK] Loaded " << label << ": " << path << " (" << w << "x" << h << ")\n";
+                break;
+            }
+        }
+        if (!data) {
+            std::cerr << "[WARN] Could not load " << label << ", creating fallback\n";
+            w = 64; h = 64;
+            data = new unsigned char[w * h * 4];
+            for (int i = 0; i < w * h * 4; i += 4) {
+                data[i+0] = fallback.r; data[i+1] = fallback.g;
+                data[i+2] = fallback.b; data[i+3] = fallback.a;
+            }
+        }
+        VkExtent2D texExtent = { static_cast<uint32_t>(w), static_cast<uint32_t>(h) };
+        dst = resources.createImage(texExtent, VK_FORMAT_R8G8B8A8_UNORM,
+            VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
+        resources.uploadToImage(dst, data, texExtent, VK_FORMAT_R8G8B8A8_UNORM);
+        stbi_image_free(data);
+    };
+
+    loadOne({
         "resources/textures/noiseTexture.png",
         "../resources/textures/noiseTexture.png",
         "bin/resources/textures/noiseTexture.png",
-    };
+    }, "noise texture", m_noiseTexture, {128, 128, 128, 255});
 
-    int w, h, channels;
-    unsigned char* data = nullptr;
-    for (auto& path : texPaths) {
-        data = stbi_load(path.c_str(), &w, &h, &channels, 4);
-        if (data) {
-            std::cout << "[OK] Loaded noise texture: " << path << " (" << w << "x" << h << ")\n";
-            break;
-        }
-    }
-
-    if (!data) {
-        std::cerr << "[WARN] Could not load noiseTexture.png, creating fallback\n";
-        w = 64; h = 64;
-        data = new unsigned char[w * h * 4];
-        for (int i = 0; i < w * h * 4; i += 4) {
-            unsigned char v = static_cast<unsigned char>(rand() % 128 + 64);
-            data[i] = v; data[i+1] = v; data[i+2] = v; data[i+3] = 255;
-        }
-    }
-
-    VkExtent2D texExtent = { static_cast<uint32_t>(w), static_cast<uint32_t>(h) };
-    m_noiseTexture = resources.createImage(texExtent, VK_FORMAT_R8G8B8A8_UNORM,
-        VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
-    resources.uploadToImage(m_noiseTexture, data, texExtent, VK_FORMAT_R8G8B8A8_UNORM);
-    stbi_image_free(data);
+    loadOne({
+        "resources/textures/normal.jpg",
+        "../resources/textures/normal.jpg",
+        "bin/resources/textures/normal.jpg",
+    }, "normal map", m_normalTexture, {128, 128, 255, 255});
 }
 
 void RenderOrchestrator::updateRodStates(const FrameParams& params) {
@@ -263,6 +276,7 @@ void RenderOrchestrator::updateUBO(const FrameParams& params) {
 
     FrameUBO ubo{};
     ubo.viewProj = proj * view;
+    ubo.view = view;
     ubo.viewPos = glm::vec4(0.0f, 0.0f, CrystalMath::CAMERA_Z, 1.0f);
     ubo.prismColor = glm::vec4(CrystalMath::lerpPrismColor(smoothSeconds), 1.0f);
 
@@ -280,6 +294,7 @@ void RenderOrchestrator::recordTunnelPass(PassRecorder& recorder, const FramePar
     DescriptorWriter writer;
     writer.writeBuffer(0, m_uboBuffer[params.frameIndex].buffer, sizeof(FrameUBO), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
     writer.writeImage(1, m_noiseTexture.imageView, m_sampler, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+    writer.writeImage(2, m_normalTexture.imageView, m_sampler, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
     writer.updateSet(params.device, m_tunnelDescSet[params.frameIndex]);
 
     float w = static_cast<float>(params.extent.width);
@@ -306,6 +321,7 @@ void RenderOrchestrator::recordCrystalPasses(PassRecorder& recorder, const Frame
     DescriptorWriter writer;
     writer.writeBuffer(0, m_uboBuffer[params.frameIndex].buffer, sizeof(FrameUBO), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
     writer.writeImage(1, params.tunnelImageView, m_sampler, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+    writer.writeImage(2, m_normalTexture.imageView, m_sampler, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
     writer.updateSet(params.device, m_crystalDescSet[params.frameIndex]);
 
     float smoothSeconds = params.time.minute * 60.0f + params.time.secondsInMinute;
@@ -317,33 +333,28 @@ void RenderOrchestrator::recordCrystalPasses(PassRecorder& recorder, const Frame
     float w = static_cast<float>(params.extent.width);
     float h = static_cast<float>(params.extent.height);
 
-    enum class PassMode { Unselected, SelectedOnly };
+    enum class PassMode { All, SelectedOnly };
 
     auto drawRods = [&](VkPipeline pipeline, glm::vec4 color, float alpha,
-                        PassMode mode, int passIndex) {
+                        PassMode mode, bool applyYScale) {
         recorder.bindPipeline(pipeline);
         recorder.bindDescriptorSet(m_pipelineLayout, 0, m_crystalDescSet[params.frameIndex]);
         recorder.bindVertexBuffer(m_rodVertexBuffer.buffer);
 
         for (int i = 0; i < CrystalMath::ROD_COUNT; i++) {
             bool isSelected = m_rodState[i].selected;
-
-            if (mode == PassMode::Unselected && isSelected) continue;
             if (mode == PassMode::SelectedOnly && !isSelected) continue;
 
-            float yScale = m_rodState[i].yScale;
+            float yScale = applyYScale ? m_rodState[i].yScale : 1.0f;
 
             glm::mat4 rodMatrix = CrystalMath::buildRodMatrix(i, groupRot, highlightIndex);
             glm::mat4 axialSpin = CrystalMath::buildAxialSpin(i, params.totalTime);
             glm::mat4 model = CrystalMath::buildFullRodModel(rodMatrix, axialSpin, yScale);
 
-            float passAlpha = alpha;
-            if (passIndex == 4) passAlpha = static_cast<float>(GsConstants::PASS5_ALPHA_OVERRIDE) / 255.0f;
-
             CrystalPushConstants pc{};
             pc.model = model;
             pc.rodColor = color;
-            pc.screenParams = glm::vec4(w, h, params.totalTime, passAlpha);
+            pc.screenParams = glm::vec4(w, h, params.totalTime, alpha);
 
             recorder.pushConstants(m_pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, &pc, sizeof(pc));
             recorder.draw(m_rodVertexCount);
@@ -352,18 +363,18 @@ void RenderOrchestrator::recordCrystalPasses(PassRecorder& recorder, const Frame
 
     glm::vec4 glassColor(globalPrismColor * 0.6f, 1.0f);
     glm::vec4 specColor(globalPrismColor * 1.0f, 1.0f);
-    glm::vec4 highlightColor(globalPrismColor * 2.2f + glm::vec3(0.4f), 1.0f);
+    glm::vec4 fillColor(globalPrismColor * 2.5f + glm::vec3(0.45f), 1.0f);
 
-    drawRods(m_glassPipeline,    glassColor,     0.45f, PassMode::Unselected,    0);
-    drawRods(m_specularPipeline, specColor,      0.55f, PassMode::Unselected,    1);
-    drawRods(m_glassPipeline,    highlightColor, 0.85f, PassMode::SelectedOnly,  3);
-    drawRods(m_reversePipeline,  highlightColor, 0.9f,  PassMode::SelectedOnly,  4);
+    drawRods(m_glassPipeline,    glassColor, 0.65f, PassMode::All,          false);
+    drawRods(m_specularPipeline, specColor,  0.30f, PassMode::All,          false);
+    drawRods(m_specularPipeline, fillColor,  0.85f, PassMode::SelectedOnly, true);
 }
 
 void RenderOrchestrator::destroy(VkDevice device, ResourceManager& resources) {
     resources.destroyBuffer(m_rodVertexBuffer);
     resources.destroyBuffer(m_tunnelVertexBuffer);
     resources.destroyImage(m_noiseTexture);
+    resources.destroyImage(m_normalTexture);
     for (int i = 0; i < 2; i++) {
         vmaDestroyBuffer(m_ctx->allocator(), m_uboBuffer[i].buffer, m_uboBuffer[i].allocation);
     }
