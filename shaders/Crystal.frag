@@ -33,11 +33,19 @@ void main() {
     vec3 N = normalize(fragViewNormal);
     N.y = -N.y;
 
-    vec2 displacement = N.xy * 0.07;
+    // PS2 reference: rod struct +0xC0 displacement scalars ~0.008..0.03 (live capture).
+    vec2 displacement = N.xy * 0.025;
     vec3 bgSample = texture(bgTexture, fragScreenUV + displacement).rgb;
 
-    vec3 prismTint = ubo.prismColor.rgb * 1.4 + pc.rodColor.rgb * 0.4;
-    vec3 tint = mix(bgSample * 1.3, prismTint, 0.22);
+    // Tint = desaturated cool-blue from rod RGBA(45,87,102) at struct +0x90.
+    // Modulate bg sample rather than mixing toward bright color — the rod IS the tunnel,
+    // just colored by the glass transmission.
+    vec3 glassTint = pc.rodColor.rgb;
+    vec3 result = bgSample * (vec3(1.0) - (vec3(1.0) - glassTint) * 0.65);
 
-    outColor = vec4(tint, fragAlpha);
+    // Subtle internal-reflection brightening at edges (Fresnel-ish on view normal).
+    float edge = pow(1.0 - clamp(abs(N.z), 0.0, 1.0), 2.5);
+    result += glassTint * edge * 0.18;
+
+    outColor = vec4(result, fragAlpha);
 }

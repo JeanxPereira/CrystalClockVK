@@ -76,7 +76,64 @@ Through deep decompilation of `OSDSYS.elf` AND patent US6,693,606 analysis, key 
 
 *Note (Updated Framebuffer Refraction):* `VK_KHR_dynamic_rendering_local_read` available but Crystal pipeline currently samples `tunnelImageView` as combined image sampler (via Copy → SHADER_READ_ONLY) — simpler path than feedback loop. Switch to subpassLoad once refraction visually verified.
 
-## 7. Milestone Roadmap Summary
+## 7. PCSX2 Live Trace Findings (2026-05-14)
+
+Live RAM/register dump via PCSX2 DebugServer (MCP `pcsx2`) while OSDSYS rendered the crystal clock. **Corrects multiple errors in `docs/ghidra_analysis/rod_analysis.md`**.
+
+### Key live values
+- **GP register = `0x002AF070`** (captured at BP inside OSDSYS thread)
+- **Real master clock render = `0x00225E80`** (`clock_orb_rendering_func` in CrystalOSD decomp at `D:\CodingProjects\CrystalOSD\asm\clock\clock_orb_rendering_func.s`). The docs' `0x00223f78` was a mid-function tail.
+- **Rod render entries = `func_00232640` and `func_00232878`** (called from `clock_orb_rendering_func`).
+
+### GP-relative constants — REAL values
+| Symbol | Absolute | Float value | Purpose |
+|--------|----------|-------------|---------|
+| `fGpffff832c` | `0x002A739C` | **0.26 rad (~15°)** | Pass 2 specular angle step / rod |
+| `fGpffff8330` | `0x002A73A0` | **0.33 rad (~19°)** | Pass 3 offset angle step / rod |
+| `fGpffff8334` | `0x002A73A4` | 0.38 rad | (unknown 4th step) |
+| `fGpffff8338` | `0x002A73A8` | 0.80 | scalar |
+| `fGpffff833c` | `0x002A73AC` | 0.65 | scalar |
+| `fGpffff8340` | `0x002A73B0` | **π = 3.14159** | literal |
+| `fGpffff8358` | `0x002A73D8` | 0.037 | refraction displacement candidate |
+| `fGpffff835c` | `0x002A73DC` | 0.031 | refraction displacement candidate |
+| `fGpffff8360` | `0x002A73E0` | 0.028 | refraction displacement candidate |
+
+### CORRECTIONS to prior docs
+1. **`DAT_002973a0` / `DAT_002973c0` are NOT GS primitive packets.** They are pointer tables into a Shift-JIS Japanese UI text block (e.g. `"初期化"`, `"%04d/%02d/%02d  %2d:%02d:%02d"`, `"キロバイト"`). Used for OSDSYS clock-screen text formatting, not crystal rod render. `rod_analysis.md` Section 3 / `ANALYSIS-Raylib-vs-Vulkan-vs-OSDSYS.md` Section 2 are wrong about these addresses.
+2. **`fGpffff8c28` (= `0x002A7C98`) is NOT FOV.** It holds the ASCII string `"Reset"`. Old documentation extrapolated this address from incomplete Ghidra context.
+3. **Per-pass angle step is NOT 30° (360/12) per rod.** It is `0.26 rad` (P2) / `0.33 rad` (P3) — much smaller, creating subtle specular shimmer not full re-rotation. Old `ANGLE_STEP = 360/60 = 6°` and current `rodIndex * (-PI/6) = -30°` in `app/CrystalMath::buildRodMatrix` are both wrong inputs for the specular passes.
+4. **Master render entry is at `0x00225E80`, not `0x00223f78`.** Decomp confirms the call chain: `clock_orb_rendering_func` → `func_00232640` (rod glass) + `func_00232878` (rod specular) + orb/trail functions.
+
+### Live rod struct layout (0x0034F9C0, stride 0x140)
+**Corrects** `rod_analysis.md` which claimed 0x160 stride and active flag at +0x150.
+| Offset | Type | Meaning |
+|--------|------|---------|
+| +0x00 | ptr | next/prev rod (linked list) |
+| +0x04 | float | (probably radius or sort key) |
+| +0x10 | int | counter |
+| +0x18..0x24 | 3×ptr | per-rod resource handles (0x0027Exxx) |
+| +0x30..0x5F | 12×float | 3×4 transform matrix (3 basis rows × xyzw) |
+| +0x60..0x6F | vec4 | Position in world (matches a2 arg passed to render) |
+| +0x70..0x77 | 2×ptr | (0x00348Dxx range) |
+| +0x78..0x84 | vec3+pad | Scale (1,1,1) |
+| +0x90..0x9F | RGBA u32×4 | **Pass 1 glass color (45,87,102,128)** — desaturated, NOT bright blue |
+| +0xB0..0xBF | u32×4 | (8,8,8,128) – possibly per-rod multiplier flags |
+| +0xC0..0xCF | float×4 | (-0.008, -0.008, 1.0, ...) – tiny displacement |
+| +0xD0..0xDF | RGBA u32×4 | (60,60,60,128) – additive pass color |
+| +0xE0..0xEF | RGBA u32×4 | (40,40,40,128) – offset pass color |
+| **+0xF0** | **int** | **Selection flag (active hour rod = 1)** |
+
+**Rod array base in live RAM = `0x0034E980`** (which holds pointer `0x0034F9C0` to actual rod data linked list). Stride between rod structs = `0x140` bytes.
+
+### Real GS primitive color (from rod struct +0x90)
+First rod's Pass 1 glass tint: `RGBA(45, 87, 102, 128)` ≈ `(0.176, 0.341, 0.400, 0.502)` normalized. Desaturated cool-blue, NOT the bright `(0.04, 0.23, 0.46)` Deep Blue currently lerped in `CrystalMath::lerpPrismColor`. The PS2 rod is far less saturated than current Vulkan port.
+
+### PCSX2 MCP usage notes
+- BP-by-address works (after one warm-up frame). Setting BP at function entry sometimes fails to hit if Ghidra-named start is mid-function — pick an address that contains a real prologue (`addiu sp, -N` + `sd ra, ...`).
+- `pcsx2_pause` always reports PC=`0x00081fc0` (BIOS idle wait) regardless of game state — the EE yields between frames. To read live GPR / GP from OSDSYS context, set a BP inside OSDSYS code and let it fire.
+- `.mcp.json` at project root contains the server config: `node D:\DownloadLibrary\PCSX2-MCP-v1.0.0-win64\...\index.js`.
+
+## 8. Milestone Roadmap Summary
 
 | # | Milestone | Risk | Status |
 |---|-----------|------|--------|

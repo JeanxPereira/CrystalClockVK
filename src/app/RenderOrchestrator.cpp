@@ -361,13 +361,20 @@ void RenderOrchestrator::recordCrystalPasses(PassRecorder& recorder, const Frame
         }
     };
 
-    glm::vec4 glassColor(globalPrismColor * 0.6f, 1.0f);
-    glm::vec4 specColor(globalPrismColor * 1.0f, 1.0f);
-    glm::vec4 fillColor(globalPrismColor * 2.5f + glm::vec3(0.45f), 1.0f);
+    // PS2 live capture (rod struct +0x90/+0xD0/+0xE0): rod tints are DESATURATED.
+    //   P1 glass : RGBA(45, 87,102,128) ≈ (0.176,0.341,0.400)  cool blue-gray
+    //   P2 spec  : RGBA(60, 60, 60,128) ≈ (0.235,0.235,0.235)  near-grey additive
+    //   P3/fill  : RGBA(40, 40, 40,128) ≈ (0.157,0.157,0.157)  dimmer offset/fill
+    // The bright `globalPrismColor * 2.5 + 0.45` mix here washed out the refraction.
+    glm::vec4 glassColor(0.176f, 0.341f, 0.400f, 1.0f);
+    glm::vec4 specColor (0.235f, 0.235f, 0.235f, 1.0f);
+    glm::vec4 fillColor (globalPrismColor * 1.4f, 1.0f);
 
-    drawRods(m_glassPipeline,    glassColor, 0.65f, PassMode::All,          false);
-    drawRods(m_specularPipeline, specColor,  0.30f, PassMode::All,          false);
-    drawRods(m_specularPipeline, fillColor,  0.85f, PassMode::SelectedOnly, true);
+    // PS2 GS alpha: P1 = SRC_ALPHA/ONE_MINUS_SRC_ALPHA (0.5 alpha from rod +0x93=128).
+    // P5 must use reversePipeline (was incorrectly using specularPipeline = additive).
+    drawRods(m_glassPipeline,    glassColor, 0.50f, PassMode::All,          false);
+    drawRods(m_specularPipeline, specColor,  0.50f, PassMode::All,          false);
+    drawRods(m_reversePipeline,  fillColor,  0.85f, PassMode::SelectedOnly, true);
 }
 
 void RenderOrchestrator::destroy(VkDevice device, ResourceManager& resources) {
