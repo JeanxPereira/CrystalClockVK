@@ -1,10 +1,9 @@
 # VU0 Micro-instruction Decode — OSDSYS Crystal Clock
 
-> **QUARANTINE (Phase 0 audit 2026-06-12):** The raw VU0 instruction decode below is hardware
-> fact and safe to reference. The GLM `BuildRotation` reconstruction is UNVERIFIED — it is the
-> same azimuth/elevation chain amputated from `GsCrystalMath` (it produced rod clustering, not a
-> radial ring). Do not port it; re-validate against `sceVu0*` PS2SDK semantics first. The FOV
-> address claim may actually be the `"Reset"` string (see MEMORY §7 / live PCSX2 trace).
+> **SUPERSEDED (2026-06-13):** The GLM pseudocode below is UNVERIFIED and must not be ported.
+> The verified replacement is `docs/ghidra_analysis/vu0-math-pipeline.md` — derived from full
+> instruction decode via decode_vu0.py + Ghidra disassembly. The raw instruction observations
+> below remain valid background; the GLM section is kept for history only.
 
 ## TL;DR: Can we decode them?
 

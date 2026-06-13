@@ -4,7 +4,8 @@
 > from `OSDSYS.elf` via ghidra-mcp. Goal: 100% comprehension of every module so the procedural
 > Vulkan rebuild is read from evidence, never guessed. Every claim cites `name @ address`.
 >
-> Status: **IN PROGRESS** — this turn anchored the clock render spine. Open items in §7.
+> Status: **STRUCTURE COMPLETE** — render spine + all 5 subsystems mined (deep-dive docs in §7).
+> Remaining gaps are runtime numeric constants, listed in §7 (one live PCSX2 pass fills them).
 
 ## 0. Method & ground rules
 
@@ -84,18 +85,25 @@ the group transform inputs.
 
 ## 4. `draw_crystal_rod = FUN_00232e38` — matrix pipeline
 
-3-step (confirmed callees), detail in `docs/ghidra_analysis/vu0_decode.md`:
+**FULLY DECODED** — see `docs/ghidra_analysis/vu0-math-pipeline.md` for verified GLM pseudocode,
+full instruction listing, sceVu0 port surface table, and port notes. Summary below.
 
 ```mermaid
 graph LR
-    ROT["rotation_build @ 002732d8<br/>axis-angle, 2 angles, VOPMSUB cross-product"] --> MUL
-    PROJ["projection_build @ 002730a8<br/>GS-native, far=2048, scale=65536"] --> MUL
-    MUL["matrix_multiply @ 002738a0<br/>proj × rot"] --> OUT["combined 4×4"]
+    ROT["FUN_002732d8 @ 002732d8<br/>rotation_build<br/>44 VU0 instrs, 2× VOPMSUB cross-product<br/>direct orthonormal basis build"] --> MUL
+    PROJ["FUN_002730a8 @ 002730a8<br/>projection_build (CUSTOM, not sceVu0ViewScreenMatrix)<br/>92 VU0 instrs, GS-native<br/>far=2048, scale=65536, aspect=1.0"] --> MUL
+    MUL["sceVu0MulMatrix @ 002638a0<br/>alias FUN_002738a0<br/>proj × rot"] --> OUT["combined 4×4 @ 0x29BD90"]
 ```
 
-Rotation is **NOT Euler** — proper axis-angle from azimuth/elevation via cross product. Projection
-maps directly into GS screen coords (0–2048), aspect hardcoded 1.0 (square), corrected by widescreen
-flag. **These are the procedural-geometry funcs to port first** (sceVu0 macro math, known semantics).
+Key confirmed facts:
+- Rotation: NOT Euler, NOT Rodrigues — two sequential cross products to build orthonormal basis
+  (forward, right, up) from two input direction vectors. Inputs are sin/cos of rod's two angles
+  pre-computed in the temp buffer at `0x29BCF0` by the caller.
+- Projection: custom GS-native matrix; encodes viewport transform inline (maps NDC→GS 0–2048).
+  `sceVu0ViewScreenMatrix @ 0x002630a8` is a stub; NOT what the clock calls.
+- `bc1t → memclr @ 0x00272fc8`: NaN/overflow guard in rotation_build; zeroes output on FP exception.
+- `VFTOI12.yz vf7, vf12` in rotation_build: 12.4 fixed-point encode mid-pipeline.
+- Blockers: FOV + near values need live PCSX2 read; temp buffer layout needs caller trace.
 
 ## 5. Settings / config subsystem (inventory)
 
@@ -119,21 +127,29 @@ change-cbs `clock_config_change_cb_{spdif_mode,ps1drv,dvdp_reset_progressive}`,
 `module_clock_set_anim_offset @ 00221f88`, `clock_timezone_str_related @ 00218ed0`,
 plus ~40 `module_clock_<runtimeAddr> @ <ghidraAddr>` helpers (skew-named) — to be classified in §7.
 
-## 7. Open items / next targets (the campaign)
+## 7. Subsystem deep-dives (fan-out complete)
 
-Spine is anchored; remaining work to reach 100%:
+Each subsystem was mined into its own cited doc (mermaid + function index + struct maps + port notes):
 
-1. **Resolve render-state helpers** (`FUN_002324e8/00232538/00230518/00230fe8/0022f720/00235350/00232da0`)
-   → confirm each maps to a GS blend/test/packet op. These ARE the style, in code.
-2. **Decode the rod & clock-state structs** (rod = 0x160 bytes; `+0x150` flag; clockState `[1]` count,
-   `[0x1b]` scale, `[0x28..]` transform block). Field-map them.
-3. **sceVu0 math port surface** — the 42-func macro lib actually used (RotTransPers, Clip, Light,
-   FTOI/ITOF). List + semantics.
-4. **Orbs/particles pass** (`ui_render_orbs_particles`, `clock_orb_rendering_func`) — motion math.
-5. **Menu/UI layout** (`ui_render_menu_animation`) — 1:1 layout + transitions.
-6. **Settings menu** — per-option behavior + the config-item table.
-7. **Map the skew-named `module_clock_*` helpers** to their roles.
+| Subsystem | Doc | Headline finding |
+|-----------|-----|------------------|
+| Rod pipeline & GS state | [`rod-pipeline.md`](rod-pipeline.md) | **5 passes** (not 3): front-glow src-over, back-glow α=0, back-glow α=0xFF, prism additive, refraction subtractive. ROD struct 0x160 (`+0x04` angle, `+0x60` glow_alpha, `+0x150` face-flag). |
+| VU0 / matrix math | [`vu0-math-pipeline.md`](vu0-math-pipeline.md) | rotation = **2× cross-product orthonormal basis** (NOT Euler/Rodrigues); projection custom GS-native (far=2048, scale=65536, aspect=1.0); `matrix_multiply = sceVu0MulMatrix @ 002638a0`. |
+| Orbs / particles | [`orbs-particles.md`](orbs-particles.md) | real render = `FUN_00225be8` (the `0x00211558` name is a stub). **Trail ring buffer 50×32B**, α=`128-floor(i/49·3)`. 3 sub-passes (trail additive, halo ×30, core ×4.5). Orbit angle `fGpffff8b88`. |
+| Menu / UI | [`menu-ui.md`](menu-ui.md) | 4-state dispatcher `FUN_0022af60` (hidden/CD/menu/confirm). Aspect-dependent timing. **Layout table `DAT_00274c00`** (stride 0x50, `+0x10/+0x14` = XY px). Text via SIF RPC, atlas TBP0=8960. |
+| Settings / config | [`settings-config.md`](settings-config.md) | **Two-word bit-field model** (`_var_mechacon_config_param_1` syscall 0x4b + `uRam002c9684` syscall 0x6f). Visual opts: aspect/video/timezone/DST/time-fmt/date-fmt/lang. RTC dirty-write BCD @ `0x00375118`. |
 
-**Proposed execution:** fan out one Sonnet sub-agent per subsystem (rod-pipeline / sceVu0-math /
-orbs / menu-ui / settings), each ghidra-mcp-capable, decompiling + documenting + citing into a
-section here, then synthesize. Keeps breadth without one mega-context. (Awaiting go-ahead.)
+**Status: structure ~complete; exact runtime NUMBERS pending.** The static RE nailed every
+data-flow, struct layout, blend sequence, and math derivation. What remains is a recurring class of
+blocker — **values that only exist at runtime** — best filled in ONE live PCSX2 (pcsx2-mcp) session:
+
+1. **GS register templates** `DAT_002973a0/c0`, `DAT_00297420/430` (ALPHA/TEST bit-patterns) — zero
+   in ELF, built by init. `pcsx2_read_memory` on a live clock frame.
+2. **Projection FOV / near** = `gp[-0x73d8]` / `gp[-0x7b78]` (float globals).
+3. **Orbit integrate fn-table** `DAT_0029b3c0` (angular velocity / radius / tilt) + true orb count.
+4. **Config storage** `var_config_aspect_ratio` base addr + item-index→option map (function-pointer
+   driven; one BP on `module_clock_get_config_item` resolves it).
+5. **Menu layout records** `DAT_00274c00` (XY positions) + the text/glyph DMA kick `FUN_00267c28`.
+
+→ **NEXT: a live pcsx2-mcp trace pass** to read these, then begin the procedural `src/clock/` port
+(geometry first: rotation/projection from `vu0-math-pipeline.md`, validated against the dump).
