@@ -88,50 +88,8 @@ PipelineBuilder& PipelineBuilder::setDepthTest(bool enable, bool writeEnable, Vk
     return *this;
 }
 
-PipelineBuilder& PipelineBuilder::setBlendMode(BlendMode mode) {
-    m_colorBlendAttachment.colorWriteMask =
-        VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
-        VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-
-    switch (mode) {
-        case BlendMode::Opaque:
-            m_colorBlendAttachment.blendEnable = VK_FALSE;
-            break;
-
-        case BlendMode::AlphaBlend:
-            // GS: (Cs - Cd) * As + Cd → standard src-over alpha blend
-            m_colorBlendAttachment.blendEnable = VK_TRUE;
-            m_colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
-            m_colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-            m_colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
-            m_colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
-            m_colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
-            m_colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
-            break;
-
-        case BlendMode::Additive:
-            // GS: Cs * FIX + Cd * 1 → additive glow for edge highlights
-            m_colorBlendAttachment.blendEnable = VK_TRUE;
-            m_colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
-            m_colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE;
-            m_colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
-            m_colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
-            m_colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
-            m_colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
-            break;
-
-        case BlendMode::ReverseAlpha:
-            // GS: (Cd - Cs) * As + Cs → reverse blend for solid fill
-            m_colorBlendAttachment.blendEnable = VK_TRUE;
-            m_colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-            m_colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
-            m_colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
-            m_colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
-            m_colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
-            m_colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
-            break;
-    }
-
+PipelineBuilder& PipelineBuilder::setBlendState(const VkPipelineColorBlendAttachmentState& state) {
+    m_colorBlendAttachment = state;
     return *this;
 }
 

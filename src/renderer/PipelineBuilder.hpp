@@ -3,17 +3,7 @@
 #include <vulkan/vulkan.h>
 #include <vector>
 
-// The 4 blend modes needed by the 5-pass Crystal Clock pipeline.
-// Maps directly to the GS ALPHA register configurations from opus-rod-analysis.md.
-enum class BlendMode {
-    Opaque,        // No blending (tunnel background)
-    AlphaBlend,    // Standard alpha: srcAlpha * src + (1-srcAlpha) * dst  (Pass 1, 4)
-    Additive,      // Additive glow: one * src + one * dst                 (Pass 2, 3)
-    ReverseAlpha,  // Reverse fill: (1-srcAlpha) * src + srcAlpha * dst    (Pass 5)
-};
-
 // Builder pattern for VkPipeline construction using VK_KHR_dynamic_rendering.
-// Designed for the Crystal Clock's specific pipeline needs.
 class PipelineBuilder {
 public:
     PipelineBuilder();
@@ -36,8 +26,8 @@ public:
     // Depth
     PipelineBuilder& setDepthTest(bool enable, bool writeEnable = true, VkCompareOp op = VK_COMPARE_OP_LESS_OR_EQUAL);
 
-    // Blending — maps to GS ALPHA register per-pass
-    PipelineBuilder& setBlendMode(BlendMode mode);
+    // Blending — explicit VK blend state derived from decoded GS ALPHA
+    PipelineBuilder& setBlendState(const VkPipelineColorBlendAttachmentState& state);
 
     // Dynamic rendering color format
     PipelineBuilder& setColorFormat(VkFormat format);

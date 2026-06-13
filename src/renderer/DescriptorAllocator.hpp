@@ -5,10 +5,6 @@
 #include <cstdint>
 
 // Pool-based descriptor set allocator with per-frame reset.
-// Supports the descriptor types needed by the Crystal Clock pipeline:
-//   - UNIFORM_BUFFER (per-object UBOs)
-//   - COMBINED_IMAGE_SAMPLER (textures)
-//   - INPUT_ATTACHMENT (local_read for refraction)
 class DescriptorAllocator {
 public:
     // Pool size ratio: how many descriptors of each type per pool
