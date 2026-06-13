@@ -21,8 +21,9 @@ constexpr uint32_t kFbW = 640;
 constexpr uint32_t kFbH = 224;
 constexpr bool isOffscreenRodBuffer(uint32_t fbp) { return fbp == 210 || fbp == 280; }
 
-// Diagnostic toggle: force all draws opaque (no blend) to verify geometry/texture.
+// Diagnostic toggles.
 constexpr bool sForceOpaque = false;
+constexpr bool sRodSpritesOnly = true;  // skip large feedback-quad textures (tw>6)
 
 struct PushConstants {
     float alphaRef;
@@ -183,13 +184,18 @@ void GsRenderer::init(const VulkanContext& ctx, ResourceManager& res, const GsSc
             texW = float(1 << p.tex0.tw);
             texH = float(1 << p.tex0.th);
         }
+        if (sRodSpritesOnly && r.textured && p.tex0.tw > 6) continue;  // skip large feedback textures
 
         auto mkVertex = [&](const GsVertex& v) {
             gsvk::ClipPos c = gsvk::toClip(v.x, v.y, v.z, kFbW, kFbH);
             GpuVertex g{};
             g.pos[0] = c.x; g.pos[1] = c.y; g.pos[2] = c.z;
             g.color[0] = v.r; g.color[1] = v.g; g.color[2] = v.b; g.color[3] = v.a;
-            g.uv[0] = v.u / texW; g.uv[1] = v.v / texH;
+            if (p.prim.fst) {            // UV: texel coords -> normalized
+                g.uv[0] = v.u / texW; g.uv[1] = v.v / texH;
+            } else {                     // STQ: already normalized [0,1]
+                g.uv[0] = v.s; g.uv[1] = v.t;
+            }
             return g;
         };
 
