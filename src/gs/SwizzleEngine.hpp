@@ -6,6 +6,7 @@
 // PS2 GS pixel storage formats used by OSDSYS Crystal Clock
 enum class GsPixelFormat {
     PSMCT32,  // 32-bit RGBA (page: 64×32, block: 8×8)
+    PSMCT24,  // 24-bit RGB, same swizzle as PSMCT32; alpha expanded via TEXA (0x80 default)
     PSMT8,    // 8-bit indexed (page: 128×64, block: 16×16)
     PSMT4,    // 4-bit indexed (page: 128×128, block: 32×16)
 };
@@ -32,9 +33,12 @@ public:
     //
     // For indexed formats (PSMT8), a CLUT (Color Lookup Table) must be provided.
     // The CLUT is expected as 256 × 4 bytes (RGBA32).
+    //
+    // `bufferWidth` is the GS buffer stride in pixels (TBW*64), used for swizzle
+    // addressing; the output is `width` × `height` (the texture dimensions, 2^TW × 2^TH).
     static std::vector<uint8_t> deswizzle(
         const uint8_t* src,
-        int width, int height,
+        int width, int height, int bufferWidth,
         GsPixelFormat format,
         const uint8_t* clut = nullptr);
 

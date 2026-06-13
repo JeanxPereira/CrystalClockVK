@@ -53,7 +53,7 @@ int main(int argc, char** argv) {
     }
 
     const std::vector<uint8_t> rgba =
-        SwizzleEngine::deswizzle(s.freeze.data() + start, W, H, GsPixelFormat::PSMCT32, nullptr);
+        SwizzleEngine::deswizzle(s.freeze.data() + start, W, H, W, GsPixelFormat::PSMCT32, nullptr);
 
     std::ofstream o(out, std::ios::binary);
     o.write(reinterpret_cast<const char*>(rgba.data()), rgba.size());

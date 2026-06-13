@@ -109,7 +109,7 @@ void GsRenderer::init(const VulkanContext& ctx, ResourceManager& res, const GsSc
             // see the real content before the replay overwrites it.
             const size_t fbBase = kVramFreezeOffset + size_t(fbp) * 8192;
             std::vector<uint8_t> seedRgba = SwizzleEngine::deswizzle(
-                m_freeze + fbBase, kFbW, kFbH, GsPixelFormat::PSMCT32, nullptr);
+                m_freeze + fbBase, kFbW, kFbH, kFbW, GsPixelFormat::PSMCT32, nullptr);
             t.seed = res.createImage({kFbW, kFbH}, VK_FORMAT_R8G8B8A8_UNORM,
                 VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
                 VK_IMAGE_USAGE_TRANSFER_DST_BIT);
@@ -120,12 +120,14 @@ void GsRenderer::init(const VulkanContext& ctx, ResourceManager& res, const GsSc
     m_displayTarget = targetIndexFor(0);  // FBP 0 = display buffer
     if (m_displayTarget < 0 && !m_targets.empty()) m_displayTarget = 0;
 
-    // --- decode resident textures (non-framebuffer PSMCT32) ---
-    auto decodeTexture = [&](uint32_t tbp0, uint32_t tw, uint32_t th) {
+    // --- decode resident textures (non-framebuffer PSMCT32/24) ---
+    // Swizzle addresses by buffer stride TBW*64 (PCSX2 PixelAddress32), not texW.
+    auto decodeTexture = [&](uint32_t tbp0, uint32_t tw, uint32_t th, uint32_t tbw, uint32_t psm) {
         const int w = 1 << tw, h = 1 << th;
+        const int stride = int(tbw) * 64;
         const size_t base = kVramFreezeOffset + size_t(tbp0) * 256;
-        std::vector<uint8_t> rgba = SwizzleEngine::deswizzle(
-            m_freeze + base, w, h, GsPixelFormat::PSMCT32, nullptr);
+        const GsPixelFormat fmt = (psm == 1) ? GsPixelFormat::PSMCT24 : GsPixelFormat::PSMCT32;
+        std::vector<uint8_t> rgba = SwizzleEngine::deswizzle(m_freeze + base, w, h, stride, fmt, nullptr);
         AllocatedImage img = res.createImage({uint32_t(w), uint32_t(h)},
             VK_FORMAT_R8G8B8A8_UNORM,
             VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
@@ -135,10 +137,12 @@ void GsRenderer::init(const VulkanContext& ctx, ResourceManager& res, const GsSc
     };
     for (size_t i = 0; i < prims.size(); i++) {
         if (prims[i].prim.type != 4 && prims[i].prim.type != 6) continue;
-        if (!recipes[i].textured || prims[i].tex0.psm != 0) continue;
+        const uint32_t psm = prims[i].tex0.psm;
+        if (!recipes[i].textured || (psm != 0 && psm != 1)) continue;  // PSMCT32/24
         const uint32_t tbp0 = prims[i].tex0.tbp0;
         if (feedbackFbp(tbp0) != 0xffffffffu && targetIndexFor(feedbackFbp(tbp0)) >= 0) continue;
-        if (textureIndexFor(tbp0, 0, 0) < 0) decodeTexture(tbp0, prims[i].tex0.tw, prims[i].tex0.th);
+        if (textureIndexFor(tbp0, 0, 0) < 0)
+            decodeTexture(tbp0, prims[i].tex0.tw, prims[i].tex0.th, prims[i].tex0.tbw, psm);
     }
 
     const uint8_t white[4] = {255, 255, 255, 255};
@@ -217,7 +221,7 @@ void GsRenderer::init(const VulkanContext& ctx, ResourceManager& res, const GsSc
 
         int texIdx = -1, texTgt = -1;
         float texW = 1.0f, texH = 1.0f;
-        if (r.textured && p.tex0.psm == 0) {
+        if (r.textured && (p.tex0.psm == 0 || p.tex0.psm == 1)) {
             const uint32_t fb = feedbackFbp(p.tex0.tbp0);
             if (fb != 0xffffffffu && targetIndexFor(fb) >= 0) {
                 texTgt = targetIndexFor(fb);

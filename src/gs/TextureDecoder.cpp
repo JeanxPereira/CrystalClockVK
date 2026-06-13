@@ -36,7 +36,7 @@ std::vector<uint8_t> TextureDecoder::decodeFromMemory(
             " bytes, expected at least " + std::to_string(expected));
     }
 
-    return SwizzleEngine::deswizzle(data, width, height, format, clut);
+    return SwizzleEngine::deswizzle(data, width, height, width, format, clut);
 }
 
 size_t TextureDecoder::expectedSize(int width, int height, GsPixelFormat format) {

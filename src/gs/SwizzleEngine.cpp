@@ -120,19 +120,23 @@ uint32_t SwizzleEngine::pixelAddress(int x, int y, int bufferWidth, GsPixelForma
 // ──────────────────────────────────────────────────────────────────────────────
 
 std::vector<uint8_t> SwizzleEngine::deswizzle(
-    const uint8_t* src, int width, int height,
+    const uint8_t* src, int width, int height, int bufferWidth,
     GsPixelFormat format, const uint8_t* clut) {
 
     std::vector<uint8_t> output(width * height * 4);
 
     switch (format) {
         case GsPixelFormat::PSMCT32:
+        case GsPixelFormat::PSMCT24:
+            // Same block/column swizzle; PSMCT24 ignores the stored alpha and
+            // expands it via TEXA — default TA0=0x80 when AEM=0 (GSLocalMemory
+            // Expand24To32 / ReadFrame24). Address by the buffer stride, not texW.
             for (int y = 0; y < height; y++) {
                 for (int x = 0; x < width; x++) {
-                    uint32_t addr = psmct32Address(x, y, width);
+                    uint32_t addr = psmct32Address(x, y, bufferWidth);
                     uint32_t dstIdx = static_cast<uint32_t>((y * width + x) * 4);
-                    // Copy RGBA directly (GS stores as RGBA32)
                     std::memcpy(&output[dstIdx], &src[addr], 4);
+                    if (format == GsPixelFormat::PSMCT24) output[dstIdx + 3] = 0x80;
                 }
             }
             break;
@@ -143,10 +147,9 @@ std::vector<uint8_t> SwizzleEngine::deswizzle(
             }
             for (int y = 0; y < height; y++) {
                 for (int x = 0; x < width; x++) {
-                    uint32_t addr = psmt8Address(x, y, width);
+                    uint32_t addr = psmt8Address(x, y, bufferWidth);
                     uint8_t index = src[addr];
                     uint32_t dstIdx = static_cast<uint32_t>((y * width + x) * 4);
-                    // Look up CLUT color (256 entries × 4 bytes each)
                     std::memcpy(&output[dstIdx], &clut[index * 4], 4);
                 }
             }
