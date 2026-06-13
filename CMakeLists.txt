@@ -165,16 +165,24 @@ elseif (UNIX)
 endif()
 
 # ──────────────────────────────────────────────────────────────────────────────
-# TESTS (CTest). gsvk_tests: GS->VK blend translator (Phase 1 W3). Headers only,
-# no Vulkan device — links Vulkan::Vulkan for the enum/struct definitions.
+# gsvk — GS->VK translator library (Phase 1 W3). Depends on gs/ structs +
+# Vulkan headers (enums/structs only; no device). The bridge layer.
 # ──────────────────────────────────────────────────────────────────────────────
-enable_testing()
-
-add_executable(gsvk_tests
-    tests/GsBlendTest.cpp
+add_library(gsvk STATIC
     src/gsvk/GsBlendTranslator.cpp
+    src/gsvk/GsDrawRecipe.cpp
 )
-target_include_directories(gsvk_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(gsvk_tests PRIVATE Vulkan::Vulkan)
-set_target_properties(gsvk_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
-add_test(NAME gsvk_blend COMMAND gsvk_tests)
+target_include_directories(gsvk PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(gsvk PUBLIC Vulkan::Vulkan)
+
+# Tests (CTest).
+enable_testing()
+foreach(t gsvk_blend:GsBlendTest gsvk_recipe:GsRecipeTest)
+    string(REPLACE ":" ";" parts ${t})
+    list(GET parts 0 tname)
+    list(GET parts 1 tsrc)
+    add_executable(${tname}_tests tests/${tsrc}.cpp)
+    target_link_libraries(${tname}_tests PRIVATE gsvk)
+    set_target_properties(${tname}_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
+    add_test(NAME ${tname} COMMAND ${tname}_tests)
+endforeach()
