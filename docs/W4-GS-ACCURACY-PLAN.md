@@ -50,6 +50,25 @@ is GS-memory/texture faithfulness, not the pipeline (which works).
   current contents with correct stride+offset, NOT separate clamped 224 images).
   This is the substantial GS-core mile.
 
+## Decision: A then B (2026-06-13)
+"Style IS the GS rasterizer", so faithful refraction/glow/blend are the clock's
+VISUAL STYLE, not just UI. Build the faithful GS memory model (A) first; W2 (B)
+then feeds generated geometry into the SAME renderer — inherently hybrid (A is B's
+backend; the GS style carries into B).
+
+## A — VRAM texture-cache model (the root fix)
+1. **VRAM = one mutable buffer** (4MB, init from freeze) — source of truth.
+2. **Deswizzle on-demand**: before sampling a texture (TBP0/TBW/PSM), decode the
+   VRAM region → linear VkImage (SwizzleEngine math).
+3. **Write-back (swizzle)**: after rendering a framebuffer, re-encode it into VRAM,
+   so later texture reads crossing that region see current content (kills the bleed).
+4. **Ordered replay** with deswizzle-before-read / swizzle-after-write → refraction,
+   trail, and the glyph atlas resolve correctly.
+Impl options: GPU (2 compute shaders, port SwizzleEngine address math to GLSL) or
+CPU (per-run readback + re-swizzle, render once & cache — simpler, slower, fine for
+a static dump). First verifiable step either way: a deswizzle that matches
+`tools/vramdump` output, then wire write-back into the replay.
+
 ## Task order
 1. Pixel-diff harness (render→PNG→compare to the `.png`). The measurement gate.
 2. Texture read: `bufferWidth` swizzle + PSMCT24(+TEXA). Re-verify assets via vramdump.
