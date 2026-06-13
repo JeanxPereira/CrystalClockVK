@@ -28,6 +28,9 @@ struct PushConstants {
     int alphaEnable;
     int alphaGreater;
     int textured;
+    int texaExpand24;
+    float texaTA0;
+    int texaAEM;
 };
 
 uint64_t blendKey(const gsvk::GsBlendRecipe& b) {
@@ -287,6 +290,12 @@ void GsRenderer::init(const VulkanContext& ctx, ResourceManager& res, const GsSc
         d.alphaGreater = (r.alphaTest.pass == VK_COMPARE_OP_GREATER) ? 1 : 0;
         d.alphaRef = float(r.alphaTest.ref) / 255.0f;
         d.textured = (texIdx >= 0 || feedback) ? 1 : 0;
+        // PSMCT24 framebuffer feedback: the framebuffer stores no alpha (we write
+        // 1.0), so the GS texture read expands it via TEXA in the shader. Resident
+        // PSMCT24 textures are already TEXA-expanded on the CPU (deswizzle).
+        d.texaExpand24 = (feedback && p.tex0.psm == 1) ? 1 : 0;
+        d.texaTa0 = float(p.texa.ta0) / 255.0f;
+        d.texaAem = p.texa.aem ? 1 : 0;
         m_draws.push_back(d);
     }
 
@@ -297,8 +306,10 @@ void GsRenderer::init(const VulkanContext& ctx, ResourceManager& res, const GsSc
         VMA_MEMORY_USAGE_GPU_ONLY);
     res.uploadToBuffer(m_vbo, verts.data(), m_vertexCount * sizeof(GpuVertex));
 
-    std::fprintf(stderr, "GsRenderer: %zu draws, %u verts, %zu textures, %zu pipelines (VRAM %ux%u)\n",
-                 m_draws.size(), m_vertexCount, m_textures.size(), m_pipelines.size(), kVramW, kVramH);
+    size_t texa24 = 0;
+    for (const auto& d : m_draws) texa24 += d.texaExpand24;
+    std::fprintf(stderr, "GsRenderer: %zu draws (%zu PSMCT24-feedback TEXA), %u verts, %zu textures, %zu pipelines (VRAM %ux%u)\n",
+                 m_draws.size(), texa24, m_vertexCount, m_textures.size(), m_pipelines.size(), kVramW, kVramH);
     std::fflush(stderr);
     m_ready = true;
 }
@@ -356,7 +367,8 @@ void GsRenderer::record(PassRecorder& rec, VkImage dst, VkExtent2D dstExtent) {
                                   : d.textureIndex >= 0 ? m_textureSets[d.textureIndex]
                                                         : m_whiteSet;
             rec.bindDescriptorSet(m_pipelineLayout, 0, set);
-            PushConstants pc{d.alphaRef, d.alphaEnable, d.alphaGreater, d.textured};
+            PushConstants pc{d.alphaRef, d.alphaEnable, d.alphaGreater, d.textured,
+                             d.texaExpand24, d.texaTa0, d.texaAem};
             rec.pushConstants(m_pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, &pc, sizeof(pc));
             vkCmdDraw(cmd, d.vertexCount, 1, d.firstVertex, 0);
         }

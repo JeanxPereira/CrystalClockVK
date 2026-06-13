@@ -15,6 +15,9 @@ layout(push_constant) uniform PC {
     int   alphaEnable;
     int   alphaGreater;  // 1 = GREATER (the clock's only ATST); else treat as pass
     int   textured;
+    int   texaExpand24;  // 1 = PSMCT24 framebuffer feedback: alpha from TEXA, not stored
+    float texaTA0;       // TA0 / 255
+    int   texaAEM;       // AEM: when 1, RGB==0 texels get alpha 0 (transparent)
 } pc;
 
 // GS divides the (A-B)*C product by 128; tex MODULATE also uses >>7. Vertex/tex
@@ -25,6 +28,13 @@ void main() {
     vec4 c = vColor;
     if (pc.textured == 1) {
         vec4 t = texture(tex, vUV);
+        // PSMCT24 has no stored alpha: the GS texture read expands it via TEXA
+        // (Expand24To32). AEM=1 makes black texels transparent. Applied after the
+        // bilinear fetch (PCSX2 expands per-texel pre-filter; close enough here).
+        if (pc.texaExpand24 == 1) {
+            bool rgbNonZero = any(greaterThan(t.rgb, vec3(0.0)));
+            t.a = (pc.texaAEM == 0 || rgbNonZero) ? pc.texaTA0 : 0.0;
+        }
         c.rgb = t.rgb * vColor.rgb * GS;  // MODULATE
         c.a   = t.a   * vColor.a;
     }

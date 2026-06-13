@@ -46,6 +46,9 @@ private:
         int alphaEnable;
         int alphaGreater;
         int textured;
+        int texaExpand24;   // PSMCT24 feedback: expand alpha via TEXA in-shader
+        float texaTa0;      // TA0 / 255
+        int texaAem;        // AEM
     };
 
     int textureIndexFor(uint32_t tbp0);
