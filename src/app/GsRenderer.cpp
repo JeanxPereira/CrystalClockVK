@@ -117,12 +117,14 @@ void GsRenderer::init(const VulkanContext& ctx, ResourceManager& res, const GsSc
     }
 
     // --- resident (non-framebuffer) textures, PSMCT32/24, swizzle by TBW*64 ---
-    auto decodeTexture = [&](uint32_t tbp0, uint32_t tw, uint32_t th, uint32_t tbw, uint32_t psm) {
+    auto decodeTexture = [&](uint32_t tbp0, uint32_t tw, uint32_t th, uint32_t tbw, uint32_t psm,
+                             const GsTexa& texa) {
         const int w = 1 << tw, h = 1 << th;
         const int stride = int(tbw) * 64;
         const size_t base = kVramFreezeOffset + size_t(tbp0) * 256;
         const GsPixelFormat fmt = (psm == 1) ? GsPixelFormat::PSMCT24 : GsPixelFormat::PSMCT32;
-        std::vector<uint8_t> rgba = SwizzleEngine::deswizzle(m_freeze + base, w, h, stride, fmt, nullptr);
+        // PSMCT24 is the GS texture read: expand alpha via TEXA (Expand24To32).
+        std::vector<uint8_t> rgba = SwizzleEngine::deswizzle(m_freeze + base, w, h, stride, fmt, nullptr, texa);
         AllocatedImage img = res.createImage({uint32_t(w), uint32_t(h)}, VK_FORMAT_R8G8B8A8_UNORM,
             VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
         res.uploadToImage(img, rgba.data(), {uint32_t(w), uint32_t(h)}, VK_FORMAT_R8G8B8A8_UNORM);
@@ -136,7 +138,7 @@ void GsRenderer::init(const VulkanContext& ctx, ResourceManager& res, const GsSc
         const uint32_t tbp0 = prims[i].tex0.tbp0;
         if (isFeedback(tbp0)) continue;  // framebuffer-aliased -> feedback path
         if (textureIndexFor(tbp0) < 0)
-            decodeTexture(tbp0, prims[i].tex0.tw, prims[i].tex0.th, prims[i].tex0.tbw, psm);
+            decodeTexture(tbp0, prims[i].tex0.tw, prims[i].tex0.th, prims[i].tex0.tbw, psm, prims[i].texa);
     }
 
     const uint8_t white[4] = {255, 255, 255, 255};

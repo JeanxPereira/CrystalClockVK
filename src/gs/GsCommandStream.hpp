@@ -56,6 +56,7 @@ struct GsPrimitive {
     GsPrim prim;
     GsAlpha alpha;
     GsTest test;
+    GsTexa texa;
     GsTex0 tex0;
     GsTex1 tex1;
     GsFrame frame;

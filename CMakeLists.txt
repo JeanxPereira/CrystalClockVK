@@ -220,3 +220,9 @@ add_executable(gs_texa_tests tests/TexaExpandTest.cpp)
 target_link_libraries(gs_texa_tests PRIVATE gs)
 set_target_properties(gs_texa_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
 add_test(NAME gs_texa COMMAND gs_texa_tests)
+
+# gs PSMCT24 texture-read applies TEXA (ReadTexel24), not a constant 0x80.
+add_executable(gs_texa_deswizzle_tests tests/DeswizzleTexa24Test.cpp)
+target_link_libraries(gs_texa_deswizzle_tests PRIVATE gs)
+set_target_properties(gs_texa_deswizzle_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
+add_test(NAME gs_texa_deswizzle COMMAND gs_texa_deswizzle_tests)

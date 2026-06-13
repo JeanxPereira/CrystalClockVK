@@ -1,4 +1,4 @@
-// Code-parity test: TextureDecoder TEXA expansion must equal PCSX2's
+// Code-parity test: SwizzleEngine TEXA expansion must equal PCSX2's
 // GSLocalMemory::Expand24To32 / Expand16To32 for every input over a sweep of
 // TEXA configs (AEM, TA0, TA1).
 //
@@ -14,7 +14,7 @@
 #include <vector>
 
 #include "gs/GsRegisterState.hpp"
-#include "gs/TextureDecoder.hpp"
+#include "gs/SwizzleEngine.hpp"
 
 namespace pcsx2 {
 
@@ -58,7 +58,7 @@ void check24() {
         for (uint32_t rgb : kRgb24) {
             // Stored word may carry stale alpha in bits 24-31; expansion must mask it.
             const uint32_t stored = rgb | 0x55000000u;
-            const uint32_t ours = TextureDecoder::expand24To32(stored, texa);
+            const uint32_t ours = SwizzleEngine::expand24To32(stored, texa);
             const uint32_t ref = pcsx2::expand24To32(stored, cfg.ta0, cfg.aem);
             g_checked++;
             if (ours != ref) {
@@ -75,7 +75,7 @@ void check16() {
     for (const auto& cfg : kConfigs) {
         GsTexa texa{cfg.ta0, cfg.ta1, cfg.aem};
         for (uint32_t c = 0; c <= 0xFFFF; c++) {  // exhaustive 16-bit sweep
-            const uint32_t ours = TextureDecoder::expand16To32(static_cast<uint16_t>(c), texa);
+            const uint32_t ours = SwizzleEngine::expand16To32(static_cast<uint16_t>(c), texa);
             const uint32_t ref = pcsx2::expand16To32(static_cast<uint16_t>(c), cfg.ta0, cfg.ta1, cfg.aem);
             g_checked++;
             if (ours != ref) {

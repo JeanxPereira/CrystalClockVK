@@ -106,6 +106,20 @@ uint32_t SwizzleEngine::psmt8Address(int x, int y, int bufferWidth) {
     return static_cast<uint32_t>(page * 2048 * 4 + block * 256 + column);
 }
 
+// GS GSLocalMemory::Expand24To32: alpha = (AEM==0 || RGB!=0) ? TA0 : 0.
+uint32_t SwizzleEngine::expand24To32(uint32_t c, const GsTexa& texa) {
+    return (((!texa.aem | (c & 0xffffff)) ? texa.ta0 : 0u) << 24) | (c & 0xffffff);
+}
+
+// GS GSLocalMemory::Expand16To32: 5551 -> 8888 (no low-bit replication),
+// alpha = bit15 ? TA1 : (AEM==0 || c!=0) ? TA0 : 0.
+uint32_t SwizzleEngine::expand16To32(uint16_t c, const GsTexa& texa) {
+    return (((c & 0x8000) ? texa.ta1 : (!texa.aem | c) ? texa.ta0 : 0u) << 24)
+        | ((c & 0x7c00) << 9)
+        | ((c & 0x03e0) << 6)
+        | ((c & 0x001f) << 3);
+}
+
 uint32_t SwizzleEngine::pixelAddress(int x, int y, int bufferWidth, GsPixelFormat format) {
     switch (format) {
         case GsPixelFormat::PSMCT32: return psmct32Address(x, y, bufferWidth);
@@ -121,22 +135,30 @@ uint32_t SwizzleEngine::pixelAddress(int x, int y, int bufferWidth, GsPixelForma
 
 std::vector<uint8_t> SwizzleEngine::deswizzle(
     const uint8_t* src, int width, int height, int bufferWidth,
-    GsPixelFormat format, const uint8_t* clut) {
+    GsPixelFormat format, const uint8_t* clut, const GsTexa& texa) {
 
     std::vector<uint8_t> output(width * height * 4);
 
     switch (format) {
         case GsPixelFormat::PSMCT32:
         case GsPixelFormat::PSMCT24:
-            // Same block/column swizzle; PSMCT24 ignores the stored alpha and
-            // expands it via TEXA — default TA0=0x80 when AEM=0 (GSLocalMemory
-            // Expand24To32 / ReadFrame24). Address by the buffer stride, not texW.
+            // Same block/column swizzle; address by the buffer stride, not texW.
+            // PSMCT32 keeps the stored RGBA word. PSMCT24 has no stored alpha:
+            // the GS texture read (ReadTexel24) expands it via TEXA Expand24To32
+            // (AEM=1 makes black texels transparent). The default texa = 0x80 is
+            // the display ReadFrame24 behaviour.
             for (int y = 0; y < height; y++) {
                 for (int x = 0; x < width; x++) {
                     uint32_t addr = psmct32Address(x, y, bufferWidth);
                     uint32_t dstIdx = static_cast<uint32_t>((y * width + x) * 4);
-                    std::memcpy(&output[dstIdx], &src[addr], 4);
-                    if (format == GsPixelFormat::PSMCT24) output[dstIdx + 3] = 0x80;
+                    if (format == GsPixelFormat::PSMCT24) {
+                        uint32_t stored;
+                        std::memcpy(&stored, &src[addr], 4);
+                        uint32_t rgba = expand24To32(stored, texa);
+                        std::memcpy(&output[dstIdx], &rgba, 4);
+                    } else {
+                        std::memcpy(&output[dstIdx], &src[addr], 4);
+                    }
                 }
             }
             break;

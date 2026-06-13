@@ -100,6 +100,7 @@ int verifyClock(const GsCommandStream& s) {
         check(!p.dthe, "DTHE off");
         check(p.colclamp, "COLCLAMP on");
         check(p.frame.psm == 0, "FRAME PSMCT32");
+        check(p.texa.ta0 == 0x7f && p.texa.aem && p.texa.ta1 == 0x81, "TEXA TA0=0x7f AEM=1 TA1=0x81");
         check(p.alpha.c == 0, "blend C = As");  // As/128 scaling is universal
         blend[(p.alpha.a << 6) | (p.alpha.b << 4) | (p.alpha.c << 2) | p.alpha.d]++;
         vtotal += p.verts.size();

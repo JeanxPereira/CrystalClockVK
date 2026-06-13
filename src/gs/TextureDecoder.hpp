@@ -4,7 +4,6 @@
 #include <filesystem>
 #include <vector>
 #include "SwizzleEngine.hpp"
-#include "GsRegisterState.hpp"
 
 // Decodes raw binary texture data dumped from PS2 VRAM into linear RGBA8.
 // Handles GS swizzle layout and CLUT expansion for indexed formats.
@@ -30,11 +29,4 @@ public:
 
     // Utility: compute expected raw data size for a given format and dimensions
     static size_t expectedSize(int width, int height, GsPixelFormat format);
-
-    // TEXA alpha expansion (GS GSLocalMemory). Input/output u32 are packed
-    // R(0..7) G(8..15) B(16..23) A(24..31) — little-endian byte order R,G,B,A.
-    // expand24To32: 24-bit RGB (stored alpha ignored) -> RGBA via TEXA.
-    static uint32_t expand24To32(uint32_t c, const GsTexa& texa);
-    // expand16To32: 16-bit 5551 -> RGBA via TEXA (TA0/TA1).
-    static uint32_t expand16To32(uint16_t c, const GsTexa& texa);
 };

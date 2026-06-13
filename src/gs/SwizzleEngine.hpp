@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <vector>
 
+#include "GsRegisterState.hpp"  // GsTexa
+
 // PS2 GS pixel storage formats used by OSDSYS Crystal Clock
 enum class GsPixelFormat {
     PSMCT32,  // 32-bit RGBA (page: 64×32, block: 8×8)
@@ -27,6 +29,13 @@ public:
     static uint32_t psmct32Address(int x, int y, int bufferWidth);
     static uint32_t psmt8Address(int x, int y, int bufferWidth);
 
+    // TEXA alpha expansion (GS GSLocalMemory). Input/output u32 are packed
+    // R(0..7) G(8..15) B(16..23) A(24..31) — little-endian byte order R,G,B,A.
+    // expand24To32: 24-bit RGB (stored alpha ignored) -> RGBA via TEXA.
+    static uint32_t expand24To32(uint32_t c, const GsTexa& texa);
+    // expand16To32: 16-bit 5551 -> RGBA via TEXA (TA0/TA1).
+    static uint32_t expand16To32(uint16_t c, const GsTexa& texa);
+
     // De-swizzle an entire texture from GS VRAM layout to linear RGBA.
     // Input: raw swizzled bytes from VRAM
     // Output: linear RGBA8 pixel data (width × height × 4 bytes)
@@ -36,11 +45,17 @@ public:
     //
     // `bufferWidth` is the GS buffer stride in pixels (TBW*64), used for swizzle
     // addressing; the output is `width` × `height` (the texture dimensions, 2^TW × 2^TH).
+    //
+    // `texa` drives alpha for the formats with no full stored alpha: PSMCT24
+    // expands via expand24To32 (this is the GS texture read, ReadTexel24). The
+    // default {0x80,0x80,AEM=0} yields a constant 0x80 — the display ReadFrame24
+    // behaviour — so existing frame-read callers are unchanged.
     static std::vector<uint8_t> deswizzle(
         const uint8_t* src,
         int width, int height, int bufferWidth,
         GsPixelFormat format,
-        const uint8_t* clut = nullptr);
+        const uint8_t* clut = nullptr,
+        const GsTexa& texa = {0x80, 0x80, false});
 
     // Swizzle linear pixel data into GS VRAM layout (write-back / encoding / testing).
     // `bufferWidth` is the GS buffer stride in pixels (TBW*64), matching deswizzle.

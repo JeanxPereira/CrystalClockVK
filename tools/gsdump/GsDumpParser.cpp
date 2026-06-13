@@ -69,6 +69,12 @@ GsAlpha decAlpha(uint64_t v) {
             static_cast<uint8_t>((l >> 4) & 3), static_cast<uint8_t>((l >> 6) & 3),
             static_cast<uint8_t>(hi32(v) & 0xff)};
 }
+// TEXA: TA0 = bits 0-7, AEM = bit 15, TA1 = bits 32-39 (GSRegs.h GIFRegTEXA).
+GsTexa decTexa(uint64_t v) {
+    return {static_cast<uint8_t>(lo32(v) & 0xff),
+            static_cast<uint8_t>(hi32(v) & 0xff),
+            bool((lo32(v) >> 15) & 1)};
+}
 GsTest decTest(uint64_t v) {
     uint32_t l = lo32(v);
     GsTest t{};
@@ -139,6 +145,7 @@ enum : uint8_t {
     REG_TEX1_1 = 0x14, REG_TEX1_2 = 0x15,
     REG_XYOFFSET_1 = 0x18, REG_XYOFFSET_2 = 0x19,
     REG_SCISSOR_1 = 0x40, REG_SCISSOR_2 = 0x41,
+    REG_TEXA = 0x3b,
     REG_ALPHA_1 = 0x42, REG_ALPHA_2 = 0x43,
     REG_DTHE = 0x45, REG_COLCLAMP = 0x46,
     REG_TEST_1 = 0x47, REG_TEST_2 = 0x48,
@@ -195,6 +202,7 @@ GsCommandStream GsDumpParser::parse(const uint8_t* data, size_t size) {
                    bool((primField >> 10) & 1)};
         pr.alpha = decAlpha(gsState[pick(REG_ALPHA_1, REG_ALPHA_2)]);
         pr.test = decTest(gsState[pick(REG_TEST_1, REG_TEST_2)]);
+        pr.texa = decTexa(gsState[REG_TEXA]);  // TEXA is not context-banked
         pr.tex0 = decTex0(gsState[pick(REG_TEX0_1, REG_TEX0_2)]);
         pr.tex1 = decTex1(gsState[pick(REG_TEX1_1, REG_TEX1_2)]);
         pr.frame = decFrame(gsState[pick(REG_FRAME_1, REG_FRAME_2)]);
