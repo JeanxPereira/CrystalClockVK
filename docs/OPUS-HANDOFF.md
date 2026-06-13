@@ -5,12 +5,31 @@
 > delegating bulk work to smaller agents (Sonnet/Haiku). Token discipline: fan-out agents
 > never run on the top-tier model.
 
-## 0. Current state (2026-06-12)
-- Audit DONE: `docs/PHASE0-AUDIT.md` (verdicts + evidence + entanglement).
-- Cuts NOT executed. Executable plan: `docs/superpowers/plans/2026-06-12-phase0-surgical-cuts.md`
-  (8 tasks, build green per commit, exact code included).
-- After cuts the app intentionally renders black + ImGui. That is the correct Phase 0 exit.
+## 0. Current state (UPDATED 2026-06-12 — Phase 0 COMPLETE, on main)
+- Audit DONE (`docs/PHASE0-AUDIT.md`). Phase 1 architecture spec APPROVED
+  (`docs/superpowers/specs/2026-06-12-phase1-gs-vk-architecture-design.md`).
+- **Phase 0 surgical cuts EXECUTED + merged to main** (11 commits). Builds green; app renders
+  black + ImGui (intended exit). `gs/` constants live-verified, `RenderOrchestrator` stubbed,
+  `PipelineBuilder`→`setBlendState`, poison docs deleted, MEMORY/CLAUDE rewritten.
+- Foundation VERIFIED LIVE (`docs/FOUNDATION-STATUS.md`): ghidra (`program="OSDSYS.elf"`),
+  CrystalOSD decomp, pcsx2-mcp (bundled patched `pcsx2-qt.exe` + DebugServer), `clock_viewer.gs`
+  captured + validated, `pcsx2-ref` GS source cloned.
 - User approved this direction; do NOT re-litigate the audit.
+
+### → IMMEDIATE NEXT: Phase 1 W1 (GS dump parser)
+Parse `C:\Users\dell04\Documents\PCSX2\snaps\clock_viewer.gs` (decompressed, 6.3 MB) into the GS
+command stream (spec §4.1). Format grounded in `pcsx2-ref`:
+- `pcsx2-ref\pcsx2\GS\GSDump.h` — `0xFFFFFFFF` + `GSDumpHeader` (9×u32) + state freeze +
+  `[id/1][data]` packets (0=Transfer GIF, 1=VSync, 2=ReadFIFO2, 3=Regs). Read `GSDump.cpp::AddHeader`
+  for exact field offsets. GIFtag/register decode: `GSRegs.h`. Swizzle/PSM: `GSLocalMemory.cpp`.
+- First milestone: header fields + transfer/primitive counts from `clock_viewer.gs` (a quick Node
+  pass validates the format before the C++ `tools/gsdump/`). `.gs.zst` → Node `zlib.zstdDecompressSync`.
+
+### Build on this machine (Windows)
+Vulkan SDK `C:/VulkanSDK/1.4.350.0` does NOT propagate to a running process — set inline:
+`VULKAN_SDK="C:/VulkanSDK/1.4.350.0" PATH="$PATH:/c/VulkanSDK/1.4.350.0/Bin"`. ImGui submodule:
+`git submodule update --init --recursive 3rdparty/imgui`. Presets are macOS-pathed → plain config:
+`cmake -B build && cmake --build build --config Debug -j` (VS generator). Binary `bin/CrystalClockVK.exe`.
 
 ## 1. Mission invariants (never violate)
 1. Style = GS rasterizer. Replicate `(A-B)*C/128+D` blend, COLCLAMP, dither, framebuffer-feedback
