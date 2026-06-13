@@ -9,6 +9,7 @@
 #include "renderer/UIRenderer.hpp"
 #include "app/RenderOrchestrator.hpp"
 #include "app/TimeSync.hpp"
+#include "app/GsScene.hpp"
 #include <chrono>
 #include <imgui.h>
 #include <iostream>
@@ -100,6 +101,11 @@ int main(int argc, char* argv[]) {
         rdoc.init();
 
         orchestrator.init(vulkan, swapchain, resources);
+
+        // Load a GS dump if one is passed (W4: the scene the renderer will draw).
+        GsScene scene;
+        if (argc > 1)
+            scene.load(argv[1]);
 
         std::array<FrameData, FrameOverlap> frames;
         for (auto& frame : frames) {
@@ -227,6 +233,16 @@ int main(int argc, char* argv[]) {
 
             ImGui::Text("Time: %02d:%02d:%02d.%03d", timeInfo.hour, timeInfo.minute, timeInfo.second, timeInfo.millisecond);
             ImGui::Text("Sec in Min: %.2f", timeInfo.secondsInMinute);
+
+            ImGui::Separator();
+            const GsSceneStats& gs = scene.stats();
+            if (gs.loaded) {
+                ImGui::Text("GS scene: %u draws, %u verts", gs.draws, gs.verts);
+                ImGui::Text("blends: %u  | strips %u sprites %u lines %u",
+                            gs.blendModes, gs.triStrip, gs.sprite, gs.lineStrip);
+            } else {
+                ImGui::TextDisabled("No GS dump (pass .gs path as arg 1)");
+            }
             ImGui::End();
 
             ui.render(frame.commandBuffer, mainColorImage.imageView, swapchain.extent());

@@ -113,6 +113,7 @@ set(SOURCES
     src/gs/TextureDecoder.cpp
     src/app/RenderOrchestrator.cpp
     src/app/TimeSync.cpp
+    src/app/GsScene.cpp
 )
 
 # Output binary to bin/ at project root (not inside build/)
@@ -135,6 +136,8 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     VulkanMemoryAllocator
     glm::glm
     ImGui
+    gsdump_lib
+    gsvk
 )
 
 find_package(Vulkan REQUIRED)
@@ -144,16 +147,17 @@ if (Vulkan_FOUND)
 endif()
 
 # ──────────────────────────────────────────────────────────────────────────────
-# TOOLS: gsdump — standalone GS-dump parser (Phase 1 W1). No Vulkan, no SDL.
+# gsdump — GS-dump parser (Phase 1 W1). Pure: no Vulkan, no SDL. Built as a lib
+# (shared by the standalone tool and the app) plus the CLI front-end.
 # ──────────────────────────────────────────────────────────────────────────────
-add_executable(gsdump
-    tools/gsdump/main.cpp
-    tools/gsdump/GsDumpParser.cpp
-)
-target_include_directories(gsdump PRIVATE
+add_library(gsdump_lib STATIC tools/gsdump/GsDumpParser.cpp)
+target_include_directories(gsdump_lib PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/tools/gsdump
 )
+
+add_executable(gsdump tools/gsdump/main.cpp)
+target_link_libraries(gsdump PRIVATE gsdump_lib)
 set_target_properties(gsdump PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
 
 if (APPLE)
