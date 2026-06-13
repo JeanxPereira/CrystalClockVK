@@ -406,6 +406,13 @@ void GsRenderer::record(PassRecorder& rec, VkImage dst, VkExtent2D dstExtent) {
                    dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit, VK_FILTER_LINEAR);
 }
 
+VkExtent2D GsRenderer::displayExtent() const { return {kVramW, kFbH}; }
+
+std::vector<uint8_t> GsRenderer::readbackDisplay(ResourceManager& res) const {
+    // FBP 0 occupies VRAM rows [0, kFbH). m_writeLayout is TRANSFER_SRC after record().
+    return res.downloadImage(m_vramWrite, {0, 0}, {kVramW, kFbH}, m_writeLayout);
+}
+
 void GsRenderer::destroy(const VulkanContext& ctx, ResourceManager& res) {
     const VkDevice device = ctx.device();
     if (m_vbo.buffer) res.destroyBuffer(m_vbo);

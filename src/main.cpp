@@ -14,7 +14,9 @@
 #include <chrono>
 #include <imgui.h>
 #include <iostream>
+#include <fstream>
 #include <array>
+#include <string>
 #include <vector>
 
 struct SwapchainSync {
@@ -103,12 +105,22 @@ int main(int argc, char* argv[]) {
 
         orchestrator.init(vulkan, swapchain, resources);
 
+        // Args: first positional = .gs path; "--dump-rgba <file>" renders one frame,
+        // dumps the native FBP0 (640x224 RGBA8) to <file>, and exits (pixel-diff gate).
+        std::string gsArg;
+        std::string dumpRgbaPath;
+        for (int a = 1; a < argc; a++) {
+            std::string arg = argv[a];
+            if (arg == "--dump-rgba" && a + 1 < argc) dumpRgbaPath = argv[++a];
+            else if (gsArg.empty()) gsArg = arg;
+        }
+
         // Load a GS dump (W4: the scene the renderer draws). Defaults to the
         // captured clock dump when no path is passed (so double-click works).
         GsScene scene;
         GsRenderer gsRenderer;
-        const std::string dumpPath = argc > 1
-            ? argv[1]
+        const std::string dumpPath = !gsArg.empty()
+            ? gsArg
             : "C:/Users/dell04/Documents/PCSX2/snaps/clock_viewer.gs";
         if (scene.load(dumpPath))
             gsRenderer.init(vulkan, resources, scene,
@@ -312,6 +324,19 @@ int main(int argc, char* argv[]) {
             }
 
             frameNumber++;
+
+            // Pixel-diff gate: after one rendered frame, dump FBP0 and quit.
+            if (!dumpRgbaPath.empty() && gsRenderer.ready()) {
+                vkDeviceWaitIdle(vulkan.device());
+                const VkExtent2D e = gsRenderer.displayExtent();
+                const std::vector<uint8_t> px = gsRenderer.readbackDisplay(resources);
+                std::ofstream out(dumpRgbaPath, std::ios::binary);
+                out.write(reinterpret_cast<const char*>(px.data()),
+                          static_cast<std::streamsize>(px.size()));
+                std::cerr << "dumped FBP0 " << e.width << "x" << e.height << " RGBA8 -> "
+                          << dumpRgbaPath << " (" << px.size() << " bytes)\n";
+                break;
+            }
         }
 
         vkDeviceWaitIdle(vulkan.device());

@@ -29,6 +29,11 @@ public:
     bool ready() const { return m_ready; }
     uint32_t drawCount() const { return static_cast<uint32_t>(m_draws.size()); }
 
+    // Native GS display frame (FBP 0, 640x224) for numeric pixel-diff. Call after
+    // record() — m_vramWrite holds the rendered frame in TRANSFER_SRC layout.
+    VkExtent2D displayExtent() const;
+    std::vector<uint8_t> readbackDisplay(ResourceManager& res) const;
+
 private:
     struct GpuVertex {
         float pos[3];

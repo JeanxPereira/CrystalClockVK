@@ -3,7 +3,9 @@
 #include "core/VulkanContext.hpp"
 #include <vulkan/vulkan.h>
 #include <vk_mem_alloc.h>
+#include <cstdint>
 #include <functional>
+#include <vector>
 
 // GPU-allocated buffer with its VMA allocation handle
 struct AllocatedBuffer {
@@ -43,6 +45,11 @@ public:
 
     // Upload pixel data to a GPU image via staging + layout transition
     void uploadToImage(const AllocatedImage& dst, const void* data, VkExtent2D extent, VkFormat format);
+
+    // Read back a region of a GPU image (R8G8B8A8) to host memory as RGBA8.
+    // `srcLayout` is the image's current layout (transitioned to TRANSFER_SRC for the copy).
+    std::vector<uint8_t> downloadImage(const AllocatedImage& src, VkOffset2D offset,
+                                       VkExtent2D extent, VkImageLayout srcLayout);
 
     // Resource destruction
     void destroyBuffer(AllocatedBuffer& buffer);

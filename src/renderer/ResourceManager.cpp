@@ -170,6 +170,41 @@ void ResourceManager::uploadToImage(const AllocatedImage& dst, const void* data,
     vmaDestroyBuffer(m_ctx.allocator(), staging.buffer, staging.allocation);
 }
 
+std::vector<uint8_t> ResourceManager::downloadImage(const AllocatedImage& src, VkOffset2D offset,
+                                                    VkExtent2D extent, VkImageLayout srcLayout) {
+    const VkDeviceSize size = VkDeviceSize(extent.width) * extent.height * 4;
+    AllocatedBuffer readback = createBuffer(size, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                                            VMA_MEMORY_USAGE_CPU_ONLY);
+
+    immediateSubmit([&](VkCommandBuffer cmd) {
+        VkImageMemoryBarrier2 toSrc{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
+        toSrc.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+        toSrc.srcAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT;
+        toSrc.dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+        toSrc.dstAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT;
+        toSrc.oldLayout = srcLayout;
+        toSrc.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        toSrc.image = src.image;
+        toSrc.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        VkDependencyInfo dep{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+        dep.imageMemoryBarrierCount = 1;
+        dep.pImageMemoryBarriers = &toSrc;
+        vkCmdPipelineBarrier2(cmd, &dep);
+
+        VkBufferImageCopy region{};
+        region.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+        region.imageOffset = {offset.x, offset.y, 0};
+        region.imageExtent = {extent.width, extent.height, 1};
+        vkCmdCopyImageToBuffer(cmd, src.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                               readback.buffer, 1, &region);
+    });
+
+    std::vector<uint8_t> out(size);
+    std::memcpy(out.data(), readback.allocationInfo.pMappedData, size);
+    vmaDestroyBuffer(m_ctx.allocator(), readback.buffer, readback.allocation);
+    return out;
+}
+
 void ResourceManager::destroyBuffer(AllocatedBuffer& buffer) {
     vmaDestroyBuffer(m_ctx.allocator(), buffer.buffer, buffer.allocation);
     buffer = {};
