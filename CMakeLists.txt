@@ -163,3 +163,18 @@ elseif (WIN32)
 elseif (UNIX)
     target_compile_definitions(${PROJECT_NAME} PRIVATE VK_USE_PLATFORM_XCB_KHR)
 endif()
+
+# ──────────────────────────────────────────────────────────────────────────────
+# TESTS (CTest). gsvk_tests: GS->VK blend translator (Phase 1 W3). Headers only,
+# no Vulkan device — links Vulkan::Vulkan for the enum/struct definitions.
+# ──────────────────────────────────────────────────────────────────────────────
+enable_testing()
+
+add_executable(gsvk_tests
+    tests/GsBlendTest.cpp
+    src/gsvk/GsBlendTranslator.cpp
+)
+target_include_directories(gsvk_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(gsvk_tests PRIVATE Vulkan::Vulkan)
+set_target_properties(gsvk_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
+add_test(NAME gsvk_blend COMMAND gsvk_tests)
