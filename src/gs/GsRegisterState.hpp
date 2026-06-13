@@ -19,6 +19,15 @@ struct GsColClamp {
     bool clamp;
 };
 
+// GS TEXA register: alpha expansion for 24/16-bit texture formats.
+// 24-bit: alpha = (AEM==0 || RGB!=0) ? TA0 : 0.
+// 16-bit: alpha = bit15 ? TA1 : (AEM==0 || c!=0) ? TA0 : 0.
+struct GsTexa {
+    uint8_t ta0;
+    uint8_t ta1;
+    bool aem;
+};
+
 struct GsDthe {
     bool enable;
 };

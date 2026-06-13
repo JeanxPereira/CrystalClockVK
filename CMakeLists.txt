@@ -214,3 +214,9 @@ add_executable(gs_swizzle_addr_tests tests/SwizzleAddress32Test.cpp)
 target_link_libraries(gs_swizzle_addr_tests PRIVATE gs)
 set_target_properties(gs_swizzle_addr_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
 add_test(NAME gs_swizzle_addr COMMAND gs_swizzle_addr_tests)
+
+# gs TEXA expansion code-parity vs PCSX2 GSLocalMemory.
+add_executable(gs_texa_tests tests/TexaExpandTest.cpp)
+target_link_libraries(gs_texa_tests PRIVATE gs)
+set_target_properties(gs_texa_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
+add_test(NAME gs_texa COMMAND gs_texa_tests)

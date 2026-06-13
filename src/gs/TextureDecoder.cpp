@@ -39,6 +39,20 @@ std::vector<uint8_t> TextureDecoder::decodeFromMemory(
     return SwizzleEngine::deswizzle(data, width, height, width, format, clut);
 }
 
+// GS GSLocalMemory::Expand24To32: alpha = (AEM==0 || RGB!=0) ? TA0 : 0.
+uint32_t TextureDecoder::expand24To32(uint32_t c, const GsTexa& texa) {
+    return (((!texa.aem | (c & 0xffffff)) ? texa.ta0 : 0u) << 24) | (c & 0xffffff);
+}
+
+// GS GSLocalMemory::Expand16To32: 5551 -> 8888 (no low-bit replication),
+// alpha = bit15 ? TA1 : (AEM==0 || c!=0) ? TA0 : 0.
+uint32_t TextureDecoder::expand16To32(uint16_t c, const GsTexa& texa) {
+    return (((c & 0x8000) ? texa.ta1 : (!texa.aem | c) ? texa.ta0 : 0u) << 24)
+        | ((c & 0x7c00) << 9)
+        | ((c & 0x03e0) << 6)
+        | ((c & 0x001f) << 3);
+}
+
 size_t TextureDecoder::expectedSize(int width, int height, GsPixelFormat format) {
     switch (format) {
         case GsPixelFormat::PSMCT32:
