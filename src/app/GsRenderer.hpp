@@ -19,7 +19,10 @@ class GsRenderer {
 public:
     void init(const VulkanContext& ctx, ResourceManager& res, const GsScene& scene,
               VkFormat colorFormat, VkFormat depthFormat);
-    void record(PassRecorder& rec, VkExtent2D extent);
+    // Ordered multi-target replay into the GS framebuffers, then blit the display
+    // buffer into `dst` (the app's main color image, in TRANSFER_DST layout on entry,
+    // left in TRANSFER_DST on exit).
+    void record(PassRecorder& rec, VkImage dst, VkExtent2D dstExtent);
     void destroy(const VulkanContext& ctx, ResourceManager& res);
 
     bool ready() const { return m_ready; }
@@ -36,22 +39,37 @@ private:
         uint32_t firstVertex;
         uint32_t vertexCount;
         int pipelineIndex;
-        int textureIndex;  // -1 => untextured (white)
+        int targetIndex;     // GS framebuffer this draw renders to
+        int textureIndex;    // resident texture, or -1
+        int texTargetIndex;  // sample another framebuffer (feedback), or -1
         float alphaRef;
         int alphaEnable;
         int alphaGreater;
         int textured;
     };
 
+    // One GS framebuffer (FBP) as a VK render target + sampleable image.
+    struct Target {
+        uint32_t fbp = 0;
+        AllocatedImage img{};
+        VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
+        VkDescriptorSet set = VK_NULL_HANDLE;
+    };
+
     int textureIndexFor(uint32_t tbp0, uint32_t tw, uint32_t th);
     int pipelineIndexFor(const gsvk::GsBlendRecipe& blend);
+    int targetIndexFor(uint32_t fbp);
 
     bool m_ready = false;
     const uint8_t* m_freeze = nullptr;
+    VkFormat m_targetFormat = VK_FORMAT_R8G8B8A8_UNORM;
 
     std::vector<Draw> m_draws;
     AllocatedBuffer m_vbo{};
     uint32_t m_vertexCount = 0;
+
+    std::vector<Target> m_targets;
+    int m_displayTarget = -1;
 
     VkSampler m_sampler = VK_NULL_HANDLE;
     std::vector<AllocatedImage> m_textures;

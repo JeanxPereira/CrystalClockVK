@@ -205,21 +205,26 @@ int main(int argc, char* argv[]) {
 
             orchestrator.updateUBO(params);
 
-            recorder.transitionImage(mainColorImage.image,
-                VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-
-            VkClearValue clear{};
-            clear.color = {{0.0f, 0.0f, 0.0f, 1.0f}};
-
             recorder.beginDebugLabel("Frame", 0.2f, 0.4f, 1.0f);
-            recorder.beginRendering(mainColorImage.imageView, depthImage.imageView,
-                                    swapchain.extent(), &clear);
-            recorder.setViewportScissor(swapchain.extent());
-
-            orchestrator.recordFrame(recorder, params);
-            gsRenderer.record(recorder, params.extent);
-
-            recorder.endRendering();
+            if (gsRenderer.ready()) {
+                // GS multi-target replay renders into the framebuffers and blits the
+                // display buffer into mainColorImage; UI overlays it (LOAD) afterward.
+                recorder.transitionImage(mainColorImage.image,
+                    VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+                gsRenderer.record(recorder, mainColorImage.image, swapchain.extent());
+                recorder.transitionImage(mainColorImage.image,
+                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+            } else {
+                recorder.transitionImage(mainColorImage.image,
+                    VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+                VkClearValue clear{};
+                clear.color = {{0.0f, 0.0f, 0.0f, 1.0f}};
+                recorder.beginRendering(mainColorImage.imageView, depthImage.imageView,
+                                        swapchain.extent(), &clear);
+                recorder.setViewportScissor(swapchain.extent());
+                orchestrator.recordFrame(recorder, params);
+                recorder.endRendering();
+            }
             recorder.endDebugLabel();
 
             ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
