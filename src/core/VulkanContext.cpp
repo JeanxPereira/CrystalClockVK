@@ -32,9 +32,14 @@ VulkanContext::VulkanContext(const WindowContext& window) {
     localReadFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_LOCAL_READ_FEATURES_KHR;
     localReadFeatures.dynamicRenderingLocalRead = VK_TRUE;
 
+    // dualSrcBlend: required by the gsvk blend recipes (SRC1 = C/128 in-shader).
+    VkPhysicalDeviceFeatures features10{};
+    features10.dualSrcBlend = VK_TRUE;
+
     vkb::PhysicalDeviceSelector selector{m_instance};
     auto physRet = selector.set_surface(m_surface)
         .set_minimum_version(1, 3)
+        .set_required_features(features10)
         .set_required_features_13(features13)
         .add_required_extension(VK_KHR_DYNAMIC_RENDERING_LOCAL_READ_EXTENSION_NAME)
         .add_required_extension_features(localReadFeatures)

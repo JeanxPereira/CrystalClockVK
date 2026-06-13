@@ -10,6 +10,7 @@
 #include "app/RenderOrchestrator.hpp"
 #include "app/TimeSync.hpp"
 #include "app/GsScene.hpp"
+#include "app/GsRenderer.hpp"
 #include <chrono>
 #include <imgui.h>
 #include <iostream>
@@ -104,8 +105,10 @@ int main(int argc, char* argv[]) {
 
         // Load a GS dump if one is passed (W4: the scene the renderer will draw).
         GsScene scene;
-        if (argc > 1)
-            scene.load(argv[1]);
+        GsRenderer gsRenderer;
+        if (argc > 1 && scene.load(argv[1]))
+            gsRenderer.init(vulkan, resources, scene,
+                            swapchain.imageFormat(), VK_FORMAT_D32_SFLOAT);
 
         std::array<FrameData, FrameOverlap> frames;
         for (auto& frame : frames) {
@@ -214,6 +217,7 @@ int main(int argc, char* argv[]) {
             recorder.setViewportScissor(swapchain.extent());
 
             orchestrator.recordFrame(recorder, params);
+            gsRenderer.record(recorder, params.extent);
 
             recorder.endRendering();
             recorder.endDebugLabel();
@@ -301,6 +305,7 @@ int main(int argc, char* argv[]) {
 
         vkDeviceWaitIdle(vulkan.device());
 
+        gsRenderer.destroy(vulkan, resources);
         orchestrator.destroy(vulkan.device(), resources);
         resources.destroyImage(depthImage);
         resources.destroyImage(mainColorImage);

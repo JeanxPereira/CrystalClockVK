@@ -111,6 +111,7 @@ set(SOURCES
     src/app/RenderOrchestrator.cpp
     src/app/TimeSync.cpp
     src/app/GsScene.cpp
+    src/app/GsRenderer.cpp
 )
 
 # Output binary to bin/ at project root (not inside build/)
