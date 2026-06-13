@@ -2,27 +2,29 @@
 
 #include <cstdint>
 
-// Pure structs representing PS2 GS register state.
-// No methods — these are data containers that map the GS hardware registers
-// used by the Crystal Clock rendering pipeline.
+// GS register state containers. Values must come from decoded OSDSYS packets
+// (pktSetAlphaBlend, pktSetTEST_1, sceGsPutDrawEnv) — never hand-authored.
 
-// GS ALPHA register: blend equation (A - B) * C + D
-// Used to configure the 4 blend modes in the 5-pass pipeline.
+// ALPHA: Cv = ((A - B) * C >> 7) + D
+// A,B,D: 0=Cs 1=Cd 2=0 | C: 0=As 1=Ad 2=FIX
 struct GsAlpha {
-    uint8_t a;  // 0=Cs, 1=Cd, 2=0
-    uint8_t b;  // 0=Cs, 1=Cd, 2=0
-    uint8_t c;  // 0=As, 1=Ad, 2=FIX
-    uint8_t d;  // 0=Cs, 1=Cd, 2=0
-    uint8_t fix; // Fixed alpha value (when C=FIX)
+    uint8_t a;
+    uint8_t b;
+    uint8_t c;
+    uint8_t d;
+    uint8_t fix;
+};
 
-    // Predefined configs from opus-rod-analysis.md:
-    // (1,0,1) → AlphaBlend:    (Cd - Cs) * As + Cs  → actually standard src-over
-    // (2,1,2) → Additive:      (0 - Cd) * FIX + Cd  → pure additive
-    // (0,1,1) → ReverseAlpha:  (Cs - Cd) * As + Cd  → inverted blend for fill
+struct GsColClamp {
+    bool clamp;
+};
 
-    static GsAlpha alphaBlend()     { return {1, 0, 0, 1, 0}; }
-    static GsAlpha additive()       { return {2, 1, 2, 1, 0x80}; }
-    static GsAlpha reverseAlpha()   { return {0, 1, 0, 0, 0}; }
+struct GsDthe {
+    bool enable;
+};
+
+struct GsDimx {
+    int8_t dm[4][4];
 };
 
 // GS TEX0 register: texture configuration

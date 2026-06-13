@@ -3,53 +3,12 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/constants.hpp>
-#include <cmath>
 #include "GsConstants.hpp"
 
 // Pure PS2 GS math — NO Vulkan dependencies.
-// Reconstructed from VU0 microcode decode of OSDSYS.elf FUN_002732d8 / FUN_002730a8.
-// See docs/ghidra_analysis/vu0_decode.md for full instruction trace.
+// Sources: decomp FUN_00232da0 → 0x00242630 (rod scale), live PCSX2 trace (MEMORY.md §7).
 
 namespace GsCrystalMath {
-
-// ──────────────────────────────────────────────────────────────────────────
-// VU0 Rotation Builder (FUN_002732d8 — 43 VU0 instructions)
-//
-// The OSDSYS builds a rotation matrix from two angles using:
-//   1. sin/cos of both angles loaded into VU0 Q/I registers
-//   2. VOPMSUB cross-product for orthogonalization
-//   3. Column-by-column accumulator chain
-//
-// This is equivalent to an Azimuth/Elevation rotation:
-//   angleA = azimuth (horizontal rotation)
-//   angleB = elevation (vertical tilt)
-//
-// In Pass 2: angleA == angleB (same angle → symmetric rotation)
-// In Pass 3: angleA != angleB (offset → creates shimmer/ghosting)
-// ──────────────────────────────────────────────────────────────────────────
-inline glm::mat4 buildRotation(float angleA, float angleB) {
-    float sinA = std::sin(angleA);
-    float cosA = std::cos(angleA);
-    float sinB = std::sin(angleB);
-    float cosB = std::cos(angleB);
-
-    // Forward vector: direction the rod points
-    glm::vec3 forward(sinA * cosB, sinB, cosA * cosB);
-
-    // Up vector: perpendicular in the elevation plane
-    glm::vec3 up(-sinA * sinB, cosB, -cosA * sinB);
-
-    // Right vector: cross product (the VOPMSUB instruction)
-    glm::vec3 right = glm::cross(forward, up);
-
-    // Assemble rotation matrix (columns = basis vectors)
-    return glm::mat4(
-        glm::vec4(right, 0.0f),
-        glm::vec4(up, 0.0f),
-        glm::vec4(forward, 0.0f),
-        glm::vec4(0.0f, 0.0f, 0.0f, 1.0f)
-    );
-}
 
 inline glm::mat4 buildGsProjection(float fov, float aspect, float nearPlane, float farPlane) {
     return glm::perspective(fov, aspect, nearPlane, farPlane);
@@ -119,16 +78,10 @@ inline float computePassAngle(float baseAngle, int rodIndex, float angleStep) {
     return baseAngle + static_cast<float>(rodIndex) * angleStep;
 }
 
-// ──────────────────────────────────────────────────────────────────────────
-// Rod selection filter (OSDSYS checks rod+0x150)
-// Group A (0x375250): renders rods where index > 7
-// Group B (0x377e50): renders rods where (index - 8) > 1
-//
-// For our simplified 12-rod model, all rods are renderable.
-// The selection flag determines Pass 1-3 vs Pass 4-5 routing.
-// ──────────────────────────────────────────────────────────────────────────
+// Rod selection flag lives at rod+0xF0 (live trace, stride 0x140).
+// Routes the active hour rod to the selected-rod passes.
 struct RodState {
-    bool selected;     // flag at +0x150 (active hour rod)
+    bool selected;     // flag at +0xF0 (active hour rod)
     int screenRatio;   // value at +0xAC
     float yScale;      // computed at +0x60
 };
