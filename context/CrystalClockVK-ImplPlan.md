@@ -29,9 +29,9 @@ Can be unit-tested without a GPU context.
 
 ### 4. `app/` — CrystalClock App
 The orchestration layer.
-- **`RenderOrchestrator`**: Translates the 5-Pass logic into Vulkan draws using `PassRecorder`, and queues the ImGui draw data over the final Swapchain image.
-- **`CrystalMath`**: Pure inline `<glm>` matrix math for the rod placement.
-- **Push Constants & UBOs**: Rod matrices move to a UBO. Push Constants are restricted to 8-16 bytes (`renderPass`, `rodAlpha`) to fit all hardware limits natively.
+- **`RenderOrchestrator`**: Translates decoded GS packet state into Vulkan draws using `PassRecorder`, and queues the ImGui draw data over the final Swapchain image.
+- **Pass routing**: implicit in pipeline binding (the GS state per primitive selects the pipeline), not a push-constant pass index.
+- **Push Constants & UBOs**: Per-object matrices move to a UBO. Push Constants hold only small per-draw scalars to fit hardware limits.
 
 ---
 

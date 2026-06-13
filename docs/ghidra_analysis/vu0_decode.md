@@ -1,5 +1,11 @@
 # VU0 Micro-instruction Decode — OSDSYS Crystal Clock
 
+> **QUARANTINE (Phase 0 audit 2026-06-12):** The raw VU0 instruction decode below is hardware
+> fact and safe to reference. The GLM `BuildRotation` reconstruction is UNVERIFIED — it is the
+> same azimuth/elevation chain amputated from `GsCrystalMath` (it produced rod clustering, not a
+> radial ring). Do not port it; re-validate against `sceVu0*` PS2SDK semantics first. The FOV
+> address claim may actually be the `"Reset"` string (see MEMORY §7 / live PCSX2 trace).
+
 ## TL;DR: Can we decode them?
 
 **YES!** We successfully decoded the `cop1` hex values from Ghidra as COP2/VU0 macro instructions. Ghidra doesn't have a PS2 EE processor module, so it labels COP2 (VU0) instructions as `cop1` with raw hex operands. The bit layout is:
