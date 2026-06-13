@@ -34,6 +34,22 @@ is GS-memory/texture faithfulness, not the pipeline (which works).
   as regions of one taller VRAM image, or seed/sample with correct stride+offset.
 - **TEXA / TFX / COLCLAMP exactness**: fold in once the above land.
 
+## Progress / learnings (2026-06-13)
+- DONE: swizzle-by-buffer-width + PSMCT24 decode + PSMCT24-feedback routing → the
+  radial **tunnel background now renders** (was flat purple). Committed 86fa888.
+- The remaining broken assets (text, orbital rings, exact refraction) are the
+  **unified-memory feedback**: feedback textures sample v up to ~470, into the VRAM
+  rows BELOW a 224-tall framebuffer, where the glyph/sprite **atlas** lives (verified:
+  `tools/vramdump` of FBP 280 as 640×512 shows button glyphs + text + sprites at rows
+  224+). Two naive fixes were tried and REVERTED:
+  - seed-from-freeze (init the 224 target from VRAM): no visible text gain.
+  - tall 640×512 targets (let feedback read the atlas rows): **regressed** — the
+    scattered atlas pixels bleed onto the rods as colorful noise.
+  Conclusion: faithful feedback needs the proper VRAM model (PCSX2 texture-cache
+  style: VRAM as one memory; textures/framebuffers are regions; reads resolve to the
+  current contents with correct stride+offset, NOT separate clamped 224 images).
+  This is the substantial GS-core mile.
+
 ## Task order
 1. Pixel-diff harness (render→PNG→compare to the `.png`). The measurement gate.
 2. Texture read: `bufferWidth` swizzle + PSMCT24(+TEXA). Re-verify assets via vramdump.
