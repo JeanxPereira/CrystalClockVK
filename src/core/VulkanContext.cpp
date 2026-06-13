@@ -27,6 +27,7 @@ VulkanContext::VulkanContext(const WindowContext& window) {
     features13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
     features13.dynamicRendering = VK_TRUE;
     features13.synchronization2 = VK_TRUE;
+    features13.shaderDemoteToHelperInvocation = VK_TRUE;  // fragment shader `discard`
 
     VkPhysicalDeviceDynamicRenderingLocalReadFeaturesKHR localReadFeatures{};
     localReadFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_LOCAL_READ_FEATURES_KHR;
