@@ -36,6 +36,10 @@ the look; read it from evidence.
 - **PCSX2 software renderer**: bit-accurate reference frames for numeric pixel-diff. Never compare by photo.
 - **PCSX2 GS source** (`C:\CodingProjects\Personal\pcsx2-ref`, `pcsx2/GS/` only): reference for the
   `.gs` format, GS registers, GS→VK blend mapping, swizzle. Read on demand, never bulk-load.
+- **Patent digest** (`docs/clock_patent/US6693606-DIGEST.md`): canonical patent reference — scene
+  structure (rods + central sphere + light spots + after-image + optional blur), pass ORDERING
+  (refraction → additive spots → blur post), and time→visual semantics. Method/ordering ONLY,
+  never numbers (those come from decomp + trace). Read the digest, not the 88KB `US6693606.md`.
 - Clock/opening use ZERO VU1 microcode; "VU work" = the `sceVu0*` macro lib (known PS2SDK semantics).
 
 ## Build
