@@ -269,6 +269,27 @@ const float HALF_WIDTH_43  = 41.6f;  // 0x42266666 @ gp−0x7b80
 const float HALF_WIDTH_169 = 0.44f;  // 0x3ee147ae @ gp−0x7b7c
 const float NEAR           = 41.6f;  // 0x42266666 @ gp−0x7b78
 
-// RUNTIME-ONLY (BSS in ELF — live read required)
-// float FOV = ???;   // @ gp−0x73d8 — hypothesis: ~1.047f (60 degrees)
+// RUNTIME-ONLY (BSS in ELF) — FIT in W1, not read (see §7 outcome)
+// float FOV = <fit>;   // @ gp−0x73d8 — solved by ProjectionOracleTest from the rod0 oracle
 ```
+
+---
+
+## 7. Live-read attempt (session 2) — OUTCOME: FOV deferred to the W1 fit
+
+A second live pass (clock on screen, memory-only, no breakpoints) could NOT read FOV or fresh rods:
+- `0x375250` (and `0x377e50`) read **all zeros** — the rod array **heap-shifted after the
+  crash+reboot** (the earlier same-session capture at `0x375250` is now stale; rod arrays are per-boot
+  heap, FOUNDATION-STATUS).
+- `0x2c8b18` (FOV, `gp-0x73d8`) = **0.0** — BSS, computed only during active rod render; at pause all
+  11 OSDSYS threads are `status=4` (sleeping between frames), so FOV is unset.
+- Registers are unusable: every pause catches the EE kernel idle loop at `PC=0x00081fc0` (zeroed
+  context), so `gp` / the live rod-base pointer can't be read to relocate the moved array.
+
+**RESOLUTION — no further live read needed.** The master plan designs FOV + the projection
+column-order as **FIT parameters** (R1/R2), not reads. near/halfWidth/far/scale/aspect are resolved
+statically (§6); the rod0 world→screen oracle is already captured (`runtime-trace.md`: world
+`(-13.04, 14.67, 50.27)` → screen `(1915.2, 2118.2)` → 12.4 `0x77b3/0x8463`, + rod1-4 X spread). W1's
+`ProjectionOracleTest` solves `fov` (1 continuous) + column-order (1 discrete) from that pair.
+**W0 is complete enough to start W1.** (A future boot that leaves the visor rods live at a findable
+address can capture spread rods to upgrade the oracle from regression-lock to correctness-proof.)
