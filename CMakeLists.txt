@@ -143,6 +143,19 @@ if (Vulkan_FOUND)
     target_link_libraries(ImGui PRIVATE Vulkan::Vulkan SDL3::SDL3)
 endif()
 
+# ──────────────────────────────────────────────────────────────────────────────
+# TOOLS: gsdump — standalone GS-dump parser (Phase 1 W1). No Vulkan, no SDL.
+# ──────────────────────────────────────────────────────────────────────────────
+add_executable(gsdump
+    tools/gsdump/main.cpp
+    tools/gsdump/GsDumpParser.cpp
+)
+target_include_directories(gsdump PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/tools/gsdump
+)
+set_target_properties(gsdump PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
+
 if (APPLE)
     target_compile_definitions(${PROJECT_NAME} PRIVATE VK_USE_PLATFORM_METAL_EXT)
 elseif (WIN32)

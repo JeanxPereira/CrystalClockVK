@@ -2,14 +2,27 @@
 
 GS-dump parser for PCSX2 `.gs` captures. Phase 1 W1.
 
-`inspect.mjs` is the Node format-validation + decode pass that precedes the C++ tool.
-It decompresses (zstd), validates the dump layout against pcsx2-ref
-(`GSDump.cpp::AddHeader` / `GSLzma.cpp`), walks the GIF command stream byte-exact,
-decodes per-primitive resolved GS register state, and emits `clock_prims.json`.
+Two implementations, byte-identical output:
 
-```
-node tools/gsdump/inspect.mjs <dump.gs|dump.gs.zst>
-```
+- **`GsDumpParser.{hpp,cpp}` + `main.cpp`** — the C++ tool (canonical). Pure, zero Vulkan;
+  parses a DECOMPRESSED `.gs` into a `gs/GsCommandStream` (resolved per-primitive register
+  state). Built as the `gsdump` target.
+  ```
+  cmake --build build --target gsdump --config Debug
+  bin/gsdump <decompressed.gs> [--verify] [--json <out>]
+  ```
+  `--verify` asserts the known `clock_viewer.gs` invariants (CI/self-test). zstd is out of
+  scope — feed an already-decompressed dump (`clock_viewer.gs` is decompressed).
+
+- **`inspect.mjs`** — the Node format-validation pass that grounded the format first. Handles
+  `.zst` (`zlib.zstdDecompressSync`), prints the A+D register histogram, emits the full-field
+  `clock_prims.json` reference. Kept as the cross-check oracle.
+  ```
+  node tools/gsdump/inspect.mjs <dump.gs|dump.gs.zst>
+  ```
+
+Both validate the dump layout against pcsx2-ref (`GSDump.cpp::AddHeader` / `GSLzma.cpp`) and
+walk the GIF command stream byte-exact.
 
 ## `.gs` byte layout (new format)
 
