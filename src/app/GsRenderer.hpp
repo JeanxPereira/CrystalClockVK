@@ -48,11 +48,15 @@ private:
         int textured;
     };
 
-    // One GS framebuffer (FBP) as a VK render target + sampleable image.
+    // One GS framebuffer (FBP) as a VK render target + sampleable image. `seed`
+    // holds the framebuffer's freeze VRAM content (textures alias framebuffers in
+    // GS unified memory); it re-seeds `img` each frame instead of a black clear.
     struct Target {
         uint32_t fbp = 0;
         AllocatedImage img{};
+        AllocatedImage seed{};
         VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
+        VkImageLayout seedLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         VkDescriptorSet set = VK_NULL_HANDLE;
     };
 

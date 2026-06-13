@@ -104,6 +104,16 @@ void GsRenderer::init(const VulkanContext& ctx, ResourceManager& res, const GsSc
             t.img = res.createImage({kFbW, kFbH}, m_targetFormat,
                 VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
                 VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
+            // Seed = this framebuffer's freeze VRAM (FBP byte = fbp*8192), so draws
+            // sampling a framebuffer-aliased texture (e.g. the glyph atlas at FBP 280)
+            // see the real content before the replay overwrites it.
+            const size_t fbBase = kVramFreezeOffset + size_t(fbp) * 8192;
+            std::vector<uint8_t> seedRgba = SwizzleEngine::deswizzle(
+                m_freeze + fbBase, kFbW, kFbH, GsPixelFormat::PSMCT32, nullptr);
+            t.seed = res.createImage({kFbW, kFbH}, VK_FORMAT_R8G8B8A8_UNORM,
+                VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
+                VK_IMAGE_USAGE_TRANSFER_DST_BIT);
+            res.uploadToImage(t.seed, seedRgba.data(), {kFbW, kFbH}, VK_FORMAT_R8G8B8A8_UNORM);
             m_targets.push_back(t);
         }
     }
@@ -289,14 +299,19 @@ void GsRenderer::init(const VulkanContext& ctx, ResourceManager& res, const GsSc
 void GsRenderer::record(PassRecorder& rec, VkImage dst, VkExtent2D dstExtent) {
     if (!m_ready) return;
     const VkExtent2D fb{kFbW, kFbH};
-    const VkImageSubresourceRange range{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
 
-    // Clear all framebuffers to black at frame start.
-    const VkClearColorValue black{{0.0f, 0.0f, 0.0f, 1.0f}};
+    // Re-seed each framebuffer from its freeze VRAM content (textures alias
+    // framebuffers in GS unified memory) instead of clearing to black.
     for (auto& t : m_targets) {
+        rec.transitionImage(t.seed.image, t.seedLayout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+        t.seedLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
         rec.transitionImage(t.img.image, t.layout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-        vkCmdClearColorImage(rec.cmd(), t.img.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                             &black, 1, &range);
+        VkImageCopy copy{};
+        copy.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+        copy.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+        copy.extent = {kFbW, kFbH, 1};
+        vkCmdCopyImage(rec.cmd(), t.seed.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                       t.img.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
         t.layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
     }
 
@@ -361,7 +376,7 @@ void GsRenderer::destroy(const VulkanContext& ctx, ResourceManager& res) {
     const VkDevice device = ctx.device();
     if (m_vbo.buffer) res.destroyBuffer(m_vbo);
     for (auto& t : m_textures) res.destroyImage(t);
-    for (auto& t : m_targets) res.destroyImage(t.img);
+    for (auto& t : m_targets) { res.destroyImage(t.img); if (t.seed.image) res.destroyImage(t.seed); }
     if (m_white.image) res.destroyImage(m_white);
     for (auto p : m_pipelines) vkDestroyPipeline(device, p, nullptr);
     if (m_pipelineLayout) vkDestroyPipelineLayout(device, m_pipelineLayout, nullptr);
