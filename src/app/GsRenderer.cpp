@@ -1,6 +1,8 @@
 #include "app/GsRenderer.hpp"
 
 #include <cstdio>
+#include <filesystem>
+#include <string>
 
 #include "gs/SwizzleEngine.hpp"
 #include "gsvk/GsDrawRecipe.hpp"
@@ -31,6 +33,17 @@ uint64_t blendKey(const gsvk::GsBlendRecipe& b) {
 // FBP of a framebuffer that a texture base points at, or UINT32_MAX if not one.
 uint32_t feedbackFbp(uint32_t tbp0) {
     return (tbp0 % 32 == 0) ? (tbp0 / 32) : 0xffffffffu;
+}
+
+// Resolve a compiled shader path regardless of the working directory (the exe
+// runs from the project root or from bin/ on double-click).
+std::string findShader(const std::string& name) {
+    namespace fs = std::filesystem;
+    for (const char* base : {"bin/shaders/", "shaders/", "./shaders/"}) {
+        std::string p = std::string(base) + name;
+        if (fs::exists(p)) return p;
+    }
+    return "bin/shaders/" + name;
 }
 
 }  // namespace
@@ -139,8 +152,8 @@ void GsRenderer::init(const VulkanContext& ctx, ResourceManager& res, const GsSc
     m_whiteSet = makeSet(m_white.imageView);
 
     // --- shaders + layout ---
-    m_vert = ShaderLoader::loadModule(device, "bin/shaders/gsclock.vert.spv");
-    m_frag = ShaderLoader::loadModule(device, "bin/shaders/gsclock.frag.spv");
+    m_vert = ShaderLoader::loadModule(device, findShader("gsclock.vert.spv"));
+    m_frag = ShaderLoader::loadModule(device, findShader("gsclock.frag.spv"));
     VkPushConstantRange pcr{VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstants)};
     VkPipelineLayoutCreateInfo pli{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
     pli.setLayoutCount = 1;

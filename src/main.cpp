@@ -103,12 +103,18 @@ int main(int argc, char* argv[]) {
 
         orchestrator.init(vulkan, swapchain, resources);
 
-        // Load a GS dump if one is passed (W4: the scene the renderer will draw).
+        // Load a GS dump (W4: the scene the renderer draws). Defaults to the
+        // captured clock dump when no path is passed (so double-click works).
         GsScene scene;
         GsRenderer gsRenderer;
-        if (argc > 1 && scene.load(argv[1]))
+        const std::string dumpPath = argc > 1
+            ? argv[1]
+            : "C:/Users/dell04/Documents/PCSX2/snaps/clock_viewer.gs";
+        if (scene.load(dumpPath))
             gsRenderer.init(vulkan, resources, scene,
                             swapchain.imageFormat(), VK_FORMAT_D32_SFLOAT);
+        else
+            std::cerr << "No GS dump loaded (" << dumpPath << "). Pass a .gs path as arg 1.\n";
 
         std::array<FrameData, FrameOverlap> frames;
         for (auto& frame : frames) {
