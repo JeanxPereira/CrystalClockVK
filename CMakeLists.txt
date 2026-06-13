@@ -202,3 +202,9 @@ foreach(t gsvk_blend:GsBlendTest gsvk_recipe:GsRecipeTest)
     set_target_properties(${tname}_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
     add_test(NAME ${tname} COMMAND ${tname}_tests)
 endforeach()
+
+# gs swizzle round-trip (VRAM texture-cache foundation).
+add_executable(gs_swizzle_tests tests/SwizzleRoundTripTest.cpp)
+target_link_libraries(gs_swizzle_tests PRIVATE gs)
+set_target_properties(gs_swizzle_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
+add_test(NAME gs_swizzle COMMAND gs_swizzle_tests)

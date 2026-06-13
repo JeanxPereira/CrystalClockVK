@@ -167,35 +167,38 @@ std::vector<uint8_t> SwizzleEngine::deswizzle(
 // ──────────────────────────────────────────────────────────────────────────────
 
 std::vector<uint8_t> SwizzleEngine::swizzle(
-    const uint8_t* src, int width, int height,
+    const uint8_t* src, int width, int height, int bufferWidth,
     GsPixelFormat format) {
 
-    // Calculate output size based on the maximum address we'll write
     size_t maxAddr = 0;
     for (int y = 0; y < height; y++) {
         for (int x = 0; x < width; x++) {
-            uint32_t addr = pixelAddress(x, y, width, format);
-            size_t endAddr = addr;
-            if (format == GsPixelFormat::PSMCT32) endAddr += 4;
-            else endAddr += 1;
+            uint32_t addr = psmct32Address(x, y, bufferWidth);  // same swizzle for 32/24
+            size_t endAddr = addr + (format == GsPixelFormat::PSMT8 ? 1 : 4);
             if (endAddr > maxAddr) maxAddr = endAddr;
         }
     }
-
     std::vector<uint8_t> output(maxAddr, 0);
+    swizzleInto(output.data(), output.size(), src, width, height, bufferWidth, format);
+    return output;
+}
+
+void SwizzleEngine::swizzleInto(
+    uint8_t* vram, size_t vramSize, const uint8_t* src,
+    int width, int height, int bufferWidth, GsPixelFormat format) {
 
     for (int y = 0; y < height; y++) {
         for (int x = 0; x < width; x++) {
-            uint32_t addr = pixelAddress(x, y, width, format);
-            if (format == GsPixelFormat::PSMCT32) {
-                uint32_t srcIdx = static_cast<uint32_t>((y * width + x) * 4);
-                std::memcpy(&output[addr], &src[srcIdx], 4);
-            } else if (format == GsPixelFormat::PSMT8) {
-                uint32_t srcIdx = static_cast<uint32_t>(y * width + x);
-                output[addr] = src[srcIdx];
+            const uint32_t srcIdx = static_cast<uint32_t>((y * width + x) * 4);
+            if (format == GsPixelFormat::PSMT8) {
+                uint32_t addr = psmt8Address(x, y, bufferWidth);
+                if (addr < vramSize) vram[addr] = src[srcIdx];  // index byte
+                continue;
             }
+            // PSMCT32 / PSMCT24: write the 32-bit slot (PSMCT24 keeps RGB; alpha is
+            // ignored on read and re-expanded via TEXA).
+            uint32_t addr = psmct32Address(x, y, bufferWidth);
+            if (addr + 4 <= vramSize) std::memcpy(&vram[addr], &src[srcIdx], 4);
         }
     }
-
-    return output;
 }

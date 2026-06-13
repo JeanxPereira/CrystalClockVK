@@ -42,10 +42,20 @@ public:
         GsPixelFormat format,
         const uint8_t* clut = nullptr);
 
-    // Swizzle linear pixel data into GS VRAM layout (for encoding/testing).
+    // Swizzle linear pixel data into GS VRAM layout (write-back / encoding / testing).
+    // `bufferWidth` is the GS buffer stride in pixels (TBW*64), matching deswizzle.
     static std::vector<uint8_t> swizzle(
         const uint8_t* src,
-        int width, int height,
+        int width, int height, int bufferWidth,
+        GsPixelFormat format);
+
+    // Swizzle a linear RGBA region back into an existing VRAM buffer in place
+    // (the GS write-back: framebuffer -> unified memory). Writes only the
+    // width×height pixels at their swizzled addresses; other bytes untouched.
+    static void swizzleInto(
+        uint8_t* vram, size_t vramSize,
+        const uint8_t* src,
+        int width, int height, int bufferWidth,
         GsPixelFormat format);
 
 private:
