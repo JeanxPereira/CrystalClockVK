@@ -1,0 +1,7586 @@
+[
+ {
+  "idx": 0,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 0,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30984,
+   "OFX_px": 1728,
+   "OFY_px": 1936.5
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 1,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 0,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30984,
+   "OFX_px": 1728,
+   "OFY_px": 1936.5
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 2,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 0,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30984,
+   "OFX_px": 1728,
+   "OFY_px": 1936.5
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 3,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 0,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30984,
+   "OFX_px": 1728,
+   "OFY_px": 1936.5
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 4,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 0,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30984,
+   "OFX_px": 1728,
+   "OFY_px": 1936.5
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 5,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 0,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30984,
+   "OFX_px": 1728,
+   "OFY_px": 1936.5
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 6,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 0,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30984,
+   "OFX_px": 1728,
+   "OFY_px": 1936.5
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 7,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 0,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30984,
+   "OFX_px": 1728,
+   "OFY_px": 1936.5
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 8,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 0,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30984,
+   "OFX_px": 1728,
+   "OFY_px": 1936.5
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 9,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 0,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30984,
+   "OFX_px": 1728,
+   "OFY_px": 1936.5
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 10,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 0,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30984,
+   "OFX_px": 1728,
+   "OFY_px": 1936.5
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 11,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 0,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30984,
+   "OFX_px": 1728,
+   "OFY_px": 1936.5
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 12,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 0,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30984,
+   "OFX_px": 1728,
+   "OFY_px": 1936.5
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 13,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 0,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30984,
+   "OFX_px": 1728,
+   "OFY_px": 1936.5
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 14,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 0,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30984,
+   "OFX_px": 1728,
+   "OFY_px": 1936.5
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 15,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 0,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30984,
+   "OFX_px": 1728,
+   "OFY_px": 1936.5
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 16,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 0,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30984,
+   "OFX_px": 1728,
+   "OFY_px": 1936.5
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 17,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 0,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30984,
+   "OFX_px": 1728,
+   "OFY_px": 1936.5
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 18,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 0,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30984,
+   "OFX_px": 1728,
+   "OFY_px": 1936.5
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 19,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 11968,
+   "TBW": 1,
+   "PSM": 0,
+   "TW": 6,
+   "TH": 6,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 0,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30984,
+   "OFX_px": 1728,
+   "OFY_px": 1936.5
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 20,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 11968,
+   "TBW": 1,
+   "PSM": 0,
+   "TW": 6,
+   "TH": 6,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 0,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30984,
+   "OFX_px": 1728,
+   "OFY_px": 1936.5
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 21,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 11968,
+   "TBW": 1,
+   "PSM": 0,
+   "TW": 6,
+   "TH": 6,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 0,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30984,
+   "OFX_px": 1728,
+   "OFY_px": 1936.5
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 22,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 11968,
+   "TBW": 1,
+   "PSM": 0,
+   "TW": 6,
+   "TH": 6,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 0,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30984,
+   "OFX_px": 1728,
+   "OFY_px": 1936.5
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 23,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 11968,
+   "TBW": 1,
+   "PSM": 0,
+   "TW": 6,
+   "TH": 6,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 0,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30984,
+   "OFX_px": 1728,
+   "OFY_px": 1936.5
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 24,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 70,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30976,
+   "OFX_px": 1728,
+   "OFY_px": 1936
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 25,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 70,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30976,
+   "OFX_px": 1728,
+   "OFY_px": 1936
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 26,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 70,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30976,
+   "OFX_px": 1728,
+   "OFY_px": 1936
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 27,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 70,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30976,
+   "OFX_px": 1728,
+   "OFY_px": 1936
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 28,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 70,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30976,
+   "OFX_px": 1728,
+   "OFY_px": 1936
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 29,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 70,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30976,
+   "OFX_px": 1728,
+   "OFY_px": 1936
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 30,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 70,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30976,
+   "OFX_px": 1728,
+   "OFY_px": 1936
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 31,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 70,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30976,
+   "OFX_px": 1728,
+   "OFY_px": 1936
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 32,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 70,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30976,
+   "OFX_px": 1728,
+   "OFY_px": 1936
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 33,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 70,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30976,
+   "OFX_px": 1728,
+   "OFY_px": 1936
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 34,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 70,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30976,
+   "OFX_px": 1728,
+   "OFY_px": 1936
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 35,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 70,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30976,
+   "OFX_px": 1728,
+   "OFY_px": 1936
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 36,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 70,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30976,
+   "OFX_px": 1728,
+   "OFY_px": 1936
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 37,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 70,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30976,
+   "OFX_px": 1728,
+   "OFY_px": 1936
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 38,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 70,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30976,
+   "OFX_px": 1728,
+   "OFY_px": 1936
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 39,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 70,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30976,
+   "OFX_px": 1728,
+   "OFY_px": 1936
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 40,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 70,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30976,
+   "OFX_px": 1728,
+   "OFY_px": 1936
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 41,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 70,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30976,
+   "OFX_px": 1728,
+   "OFY_px": 1936
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 42,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 70,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30976,
+   "OFX_px": 1728,
+   "OFY_px": 1936
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 43,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 11968,
+   "TBW": 1,
+   "PSM": 0,
+   "TW": 6,
+   "TH": 6,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 70,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30976,
+   "OFX_px": 1728,
+   "OFY_px": 1936
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 44,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 11968,
+   "TBW": 1,
+   "PSM": 0,
+   "TW": 6,
+   "TH": 6,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 70,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30976,
+   "OFX_px": 1728,
+   "OFY_px": 1936
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 45,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 11968,
+   "TBW": 1,
+   "PSM": 0,
+   "TW": 6,
+   "TH": 6,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 70,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30976,
+   "OFX_px": 1728,
+   "OFY_px": 1936
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 46,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 11968,
+   "TBW": 1,
+   "PSM": 0,
+   "TW": 6,
+   "TH": 6,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 70,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30976,
+   "OFX_px": 1728,
+   "OFY_px": 1936
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 47,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 11968,
+   "TBW": 1,
+   "PSM": 0,
+   "TW": 6,
+   "TH": 6,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 70,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30976,
+   "OFX_px": 1728,
+   "OFY_px": 1936
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 48,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 0,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30984,
+   "OFX_px": 1728,
+   "OFY_px": 1936.5
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 49,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 0,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30984,
+   "OFX_px": 1728,
+   "OFY_px": 1936.5
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 50,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 0,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30984,
+   "OFX_px": 1728,
+   "OFY_px": 1936.5
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 51,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 0,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30984,
+   "OFX_px": 1728,
+   "OFY_px": 1936.5
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 52,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 0,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30984,
+   "OFX_px": 1728,
+   "OFY_px": 1936.5
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 53,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 0,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30984,
+   "OFX_px": 1728,
+   "OFY_px": 1936.5
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 54,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 0,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30984,
+   "OFX_px": 1728,
+   "OFY_px": 1936.5
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 55,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 0,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30984,
+   "OFX_px": 1728,
+   "OFY_px": 1936.5
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 56,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 0,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30984,
+   "OFX_px": 1728,
+   "OFY_px": 1936.5
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 57,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 0,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30984,
+   "OFX_px": 1728,
+   "OFY_px": 1936.5
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 58,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 0,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30984,
+   "OFX_px": 1728,
+   "OFY_px": 1936.5
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 59,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 0,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30984,
+   "OFX_px": 1728,
+   "OFY_px": 1936.5
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 60,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 0,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30984,
+   "OFX_px": 1728,
+   "OFY_px": 1936.5
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 61,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 0,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30984,
+   "OFX_px": 1728,
+   "OFY_px": 1936.5
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 62,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 0,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30984,
+   "OFX_px": 1728,
+   "OFY_px": 1936.5
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 63,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 0,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30984,
+   "OFX_px": 1728,
+   "OFY_px": 1936.5
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 64,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 0,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30984,
+   "OFX_px": 1728,
+   "OFY_px": 1936.5
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 65,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 0,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30984,
+   "OFX_px": 1728,
+   "OFY_px": 1936.5
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 66,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 0,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30984,
+   "OFX_px": 1728,
+   "OFY_px": 1936.5
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 67,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 11968,
+   "TBW": 1,
+   "PSM": 0,
+   "TW": 6,
+   "TH": 6,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 0,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30984,
+   "OFX_px": 1728,
+   "OFY_px": 1936.5
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 68,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 11968,
+   "TBW": 1,
+   "PSM": 0,
+   "TW": 6,
+   "TH": 6,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 0,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30984,
+   "OFX_px": 1728,
+   "OFY_px": 1936.5
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 69,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 11968,
+   "TBW": 1,
+   "PSM": 0,
+   "TW": 6,
+   "TH": 6,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 0,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30984,
+   "OFX_px": 1728,
+   "OFY_px": 1936.5
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 70,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 11968,
+   "TBW": 1,
+   "PSM": 0,
+   "TW": 6,
+   "TH": 6,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 0,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30984,
+   "OFX_px": 1728,
+   "OFY_px": 1936.5
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 71,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 11968,
+   "TBW": 1,
+   "PSM": 0,
+   "TW": 6,
+   "TH": 6,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 0,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30984,
+   "OFX_px": 1728,
+   "OFY_px": 1936.5
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 72,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 70,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30976,
+   "OFX_px": 1728,
+   "OFY_px": 1936
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 73,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 70,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30976,
+   "OFX_px": 1728,
+   "OFY_px": 1936
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 74,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 70,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30976,
+   "OFX_px": 1728,
+   "OFY_px": 1936
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 75,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 70,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30976,
+   "OFX_px": 1728,
+   "OFY_px": 1936
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 76,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 70,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30976,
+   "OFX_px": 1728,
+   "OFY_px": 1936
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 77,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 70,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30976,
+   "OFX_px": 1728,
+   "OFY_px": 1936
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 78,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 70,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30976,
+   "OFX_px": 1728,
+   "OFY_px": 1936
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 79,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 70,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30976,
+   "OFX_px": 1728,
+   "OFY_px": 1936
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 80,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 70,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30976,
+   "OFX_px": 1728,
+   "OFY_px": 1936
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 81,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 70,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30976,
+   "OFX_px": 1728,
+   "OFY_px": 1936
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 82,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 70,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30976,
+   "OFX_px": 1728,
+   "OFY_px": 1936
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 83,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 70,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30976,
+   "OFX_px": 1728,
+   "OFY_px": 1936
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 84,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 70,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30976,
+   "OFX_px": 1728,
+   "OFY_px": 1936
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 85,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 70,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30976,
+   "OFX_px": 1728,
+   "OFY_px": 1936
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 86,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 70,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30976,
+   "OFX_px": 1728,
+   "OFY_px": 1936
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 87,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 70,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30976,
+   "OFX_px": 1728,
+   "OFY_px": 1936
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 88,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 70,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30976,
+   "OFX_px": 1728,
+   "OFY_px": 1936
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 89,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 70,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30976,
+   "OFX_px": 1728,
+   "OFY_px": 1936
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 90,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 8960,
+   "TBW": 10,
+   "PSM": 0,
+   "TW": 10,
+   "TH": 8,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 70,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30976,
+   "OFX_px": 1728,
+   "OFY_px": 1936
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 91,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 11968,
+   "TBW": 1,
+   "PSM": 0,
+   "TW": 6,
+   "TH": 6,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 70,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30976,
+   "OFX_px": 1728,
+   "OFY_px": 1936
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 92,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 11968,
+   "TBW": 1,
+   "PSM": 0,
+   "TW": 6,
+   "TH": 6,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 70,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30976,
+   "OFX_px": 1728,
+   "OFY_px": 1936
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 93,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 11968,
+   "TBW": 1,
+   "PSM": 0,
+   "TW": 6,
+   "TH": 6,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 70,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30976,
+   "OFX_px": 1728,
+   "OFY_px": 1936
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 94,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 11968,
+   "TBW": 1,
+   "PSM": 0,
+   "TW": 6,
+   "TH": 6,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 70,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30976,
+   "OFX_px": 1728,
+   "OFY_px": 1936
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ },
+ {
+  "idx": 95,
+  "PRIM": {
+   "type": 6,
+   "IIP": 0,
+   "TME": 1,
+   "FGE": 0,
+   "ABE": 1,
+   "AA1": 0,
+   "FST": 1,
+   "CTXT": 0,
+   "FIX": 0
+  },
+  "ALPHA": {
+   "A": 0,
+   "B": 1,
+   "C": 0,
+   "D": 1,
+   "FIX": 128
+  },
+  "TEST": {
+   "ATE": 1,
+   "ATST": 6,
+   "AREF": 0,
+   "AFAIL": 0,
+   "DATE": 0,
+   "DATM": 0,
+   "ZTE": 1,
+   "ZTST": 1
+  },
+  "TEX0": {
+   "TBP0": 11968,
+   "TBW": 1,
+   "PSM": 0,
+   "TW": 6,
+   "TH": 6,
+   "TCC": 1,
+   "TFX": 0,
+   "CBP": 0,
+   "CPSM": 0,
+   "CSM": 0,
+   "CSA": 0,
+   "CLD": 0
+  },
+  "TEX1": {
+   "LCM": 1,
+   "MXL": 0,
+   "MMAG": 1,
+   "MMIN": 1,
+   "MTBA": 0
+  },
+  "FRAME": {
+   "FBP": 70,
+   "FBW": 10,
+   "PSM": 0,
+   "FBMSK": 0
+  },
+  "ZBUF": {
+   "ZBP": 140,
+   "PSM": 0,
+   "ZMSK": 0
+  },
+  "SCISSOR": {
+   "SCAX0": 0,
+   "SCAX1": 639,
+   "SCAY0": 0,
+   "SCAY1": 223
+  },
+  "XYOFFSET": {
+   "OFX": 27648,
+   "OFY": 30976,
+   "OFX_px": 1728,
+   "OFY_px": 1936
+  },
+  "DTHE": 0,
+  "COLCLAMP": 1,
+  "PABE": 0,
+  "FBA": 0
+ }
+]
