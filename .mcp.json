@@ -2,7 +2,7 @@
   "mcpServers": {
     "pcsx2": {
       "command": "node",
-      "args": ["D:\\DownloadLibrary\\PCSX2-MCP-v1.0.0-win64\\PCSX2-MCP-v1.0.0-win64\\pcsx2-mcp-server\\dist\\index.js"],
+      "args": ["C:\\CodingProjects\\Personal\\PCSX2-MCP\\pcsx2-mcp-server\\dist\\index.js"],
       "disabled": false
     }
   }
