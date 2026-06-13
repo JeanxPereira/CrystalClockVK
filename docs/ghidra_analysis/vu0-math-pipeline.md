@@ -503,20 +503,26 @@ glm::mat4 projection_build_glm(float fov, float aspect, float halfWidth,
 | Projection scale | `65536.0f` (`0x47800000`) | `lui at,0x4780` @ `0x00232e90`, stored sp[0] |
 | Aspect ratio | `1.0f` (`0x3f800000`) | `lui at,0x3f80; mtc1 at,f13` @ `0x00232e7c` |
 | unk1, unk2 | `1.0f` | `mov.S f17,f13` @ `0x00232e98`, `mov.S f19,f13` @ `0x00232ea8` |
-| FOV global | `*gp[-0x73d8]` | `lwc1 f12,-0x73d8(gp)` @ `0x00232e9c` |
-| Near global | `*gp[-0x7b78]` | `lwc1 f18,-0x7b78(gp)` @ `0x00232ea4` |
-| HalfWidth 4:3 | `*gp[-0x7b80]` = `uGpffff8480` | branch NOT taken path @ `0x00232e74` |
-| HalfWidth 16:9 | `*gp[-0x7b7c]` = `uGpffff8484` | taken path @ `0x00232e78` |
+| FOV global | `*gp[-0x73d8]` = `uGpffff8c28` | `lwc1 f12,-0x73d8(gp)` @ `0x00232e9c` — **BSS (0.0 in ELF), runtime only** |
+| Near global | `*gp[-0x7b78]` = `uGpffff8488` | `lwc1 f18,-0x7b78(gp)` @ `0x00232ea4` — **41.600f** (`0x42266666`, from decomp ELF .data) |
+| HalfWidth 4:3 | `*gp[-0x7b80]` = `uGpffff8480` | branch NOT taken path @ `0x00232e74` — **41.600f** (`0x42266666`, from decomp ELF .data) |
+| HalfWidth 16:9 | `*gp[-0x7b7c]` = `uGpffff8484` | taken path @ `0x00232e78` — **0.440f** (`0x3ee147ae`, from decomp ELF .data) |
+
+> GP base resolution: Ghidra OSDSYS.elf startup (`0x001f005c`) sets gp = `0x002cfef0`.
+> Decomp ELF gp = `0x00377970` (delta `0xa7a80`). Globals outside `.text` read from decomp ELF.
+> See `w0-projection-constants.md` for full derivation.
 
 ### Blockers
 
-1. **FOV and near values unknown:** `*gp[-0x73d8]` (FOV) and `*gp[-0x7b78]` (near) are runtime
-   globals. Need a PCSX2 live read at `fGpffff8c28` / `fGpffff8488` while clock is running to
-   get numeric values. Hypothesis: FOV ≈ 60° (1.047 rad), near ≈ 1.0 or 16.0.
+1. **FOV value unknown:** `*gp[-0x73d8]` (FOV) is BSS in both ELFs — zero in static binary,
+   written by clock init at runtime. Need PCSX2 live read at `0x002c8b18` (Ghidra space).
+   Hypothesis: ~1.047 rad (60°). `near` and `halfWidth_4:3` are NOW RESOLVED = **41.6f**.
 
-2. **Temp buffer layout at 0x29BCF0 unknown:** The 8 floats passed as `a1` to rotation_build
-   contain the pre-computed angle data (forward/up vectors or sin/cos values). Need to trace
-   what the caller (`draw_crystal_rod`'s prologue, `s5`-relative writes) stores there before
+2. **Temp buffer layout at 0x29BCF0 partially known:** draw_crystal_rod does NOT pre-fill the
+   buffer before `jal 0x002732d8`. The buffer is passed as `a1`; the two angle inputs arrive
+   as `a2 = angleA` (from caller s3) and `a3 = rod*` (rotation_build reads `*(a3+0x04)`). The
+   buffer is used internally by rotation_build. No `swc1` stores to `0x29BCF0` area appear in
+   draw_crystal_rod's body before the jal — see `w0-projection-constants.md §3`.
    the `jal 0x002732d8`.
 
 3. **projection_build exact column arrangement unconfirmed:** The `.xy` SIMD pairing means

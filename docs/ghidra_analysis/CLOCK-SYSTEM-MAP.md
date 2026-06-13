@@ -139,17 +139,22 @@ Each subsystem was mined into its own cited doc (mermaid + function index + stru
 | Menu / UI | [`menu-ui.md`](menu-ui.md) | 4-state dispatcher `FUN_0022af60` (hidden/CD/menu/confirm). Aspect-dependent timing. **Layout table `DAT_00274c00`** (stride 0x50, `+0x10/+0x14` = XY px). Text via SIF RPC, atlas TBP0=8960. |
 | Settings / config | [`settings-config.md`](settings-config.md) | **Two-word bit-field model** (`_var_mechacon_config_param_1` syscall 0x4b + `uRam002c9684` syscall 0x6f). Visual opts: aspect/video/timezone/DST/time-fmt/date-fmt/lang. RTC dirty-write BCD @ `0x00375118`. |
 
-**Status: structure ~complete; exact runtime NUMBERS pending.** The static RE nailed every
-data-flow, struct layout, blend sequence, and math derivation. What remains is a recurring class of
-blocker — **values that only exist at runtime** — best filled in ONE live PCSX2 (pcsx2-mcp) session:
+**Status: structure ~complete; exact runtime NUMBERS mostly resolved.** The static RE nailed every
+data-flow, struct layout, blend sequence, and math derivation. Remaining blockers:
 
-1. **GS register templates** `DAT_002973a0/c0`, `DAT_00297420/430` (ALPHA/TEST bit-patterns) — zero
-   in ELF, built by init. `pcsx2_read_memory` on a live clock frame.
-2. **Projection FOV / near** = `gp[-0x73d8]` / `gp[-0x7b78]` (float globals).
-3. **Orbit integrate fn-table** `DAT_0029b3c0` (angular velocity / radius / tilt) + true orb count.
-4. **Config storage** `var_config_aspect_ratio` base addr + item-index→option map (function-pointer
-   driven; one BP on `module_clock_get_config_item` resolves it).
-5. **Menu layout records** `DAT_00274c00` (XY positions) + the text/glyph DMA kick `FUN_00267c28`.
+1. **GS register templates** `DAT_002973a0/c0`, `DAT_00297420/430` — RESOLVED in `runtime-trace.md`.
+2. **Projection near / halfWidth** — RESOLVED by W0-1 static analysis (`w0-projection-constants.md`):
+   `near = 41.6f`, `halfWidth_4:3 = 41.6f`, `halfWidth_16:9 = 0.44f` (from decomp ELF .data).
+   `far = 2048.0f`, `scale = 65536.0f`, `aspect = 1.0f` confirmed from instruction immediates.
+   **Still unknown: FOV** (`gp[-0x73d8]`) — BSS, requires live PCSX2 read. Hypothesis: ~1.047 rad.
+3. **rod+0x04 / world-position offsets — W0-Q1 OPEN** (controller review downgraded the W0-1 "it's
+   intensity" claim: fragile `f0` trace + conflicts with the angle-read and the trace `+0x08≠0`).
+   Resolve by the SAFE live two-snapshot read of `0x375250` (stable=world, changing=scratch) — also
+   pins the true projection-oracle input offsets. No watchpoint (those crash PCSX2).
+4. **Orbit integrate fn-table** `DAT_0029b3c0` — pointers `0x00239440` / `0x00238d60` found in
+   `runtime-trace.md`. Decompile these statically for angular velocity / radius / tilt constants.
+5. **Config storage** `var_config_aspect_ratio` base addr: one BP on `module_clock_get_config_item`.
+6. **Menu layout records** `DAT_00274c00` — structure decoded in `runtime-trace.md`. Follow pointers.
 
-→ **NEXT: a live pcsx2-mcp trace pass** to read these, then begin the procedural `src/clock/` port
-(geometry first: rotation/projection from `vu0-math-pipeline.md`, validated against the dump).
+→ **NEXT: W1 — build projection oracle using confirmed constants; validate against GS dump pixel-diff.**
+→ **FOV:** add one live PCSX2 read at `0x002c8b18` (Ghidra runtime space) to close the last gap.
