@@ -9,8 +9,6 @@
 #include "renderer/UIRenderer.hpp"
 #include "app/RenderOrchestrator.hpp"
 #include "app/TimeSync.hpp"
-#include "app/CrystalMath.hpp"
-#include "gs/GsConstants.hpp"
 #include <chrono>
 #include <imgui.h>
 #include <iostream>
@@ -114,13 +112,7 @@ int main(int argc, char* argv[]) {
             VK_FORMAT_D32_SFLOAT,
             VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
 
-        // Tunnel render target — renders tunnel to this, then crystal reads it as sampled texture
-        AllocatedImage tunnelImage = resources.createImage(
-            swapchain.extent(),
-            swapchain.imageFormat(),
-            VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
-
-        // Main color target — crystals render here, then blit to swapchain
+        // Main color target — rendered here, then blit to swapchain
         AllocatedImage mainColorImage = resources.createImage(
             swapchain.extent(),
             swapchain.imageFormat(),
@@ -141,7 +133,7 @@ int main(int argc, char* argv[]) {
             auto now = std::chrono::high_resolution_clock::now();
             float dt = std::chrono::duration<float>(now - lastFrameTime).count();
             lastFrameTime = now;
-            fps = fps * 0.95f + (1.0f / std::max(dt, 0.0001f)) * 0.05f;
+            fps = fps * 0.95f + (1.0f / (dt > 0.0001f ? dt : 0.0001f)) * 0.05f;
 
             int w, h;
             SDL_GetWindowSize(window.getHandle(), &w, &h);
@@ -154,16 +146,11 @@ int main(int argc, char* argv[]) {
                 swapSync = SwapchainSync::create(vulkan.device(), swapchain.imageCount());
 
                 resources.destroyImage(depthImage);
-                resources.destroyImage(tunnelImage);
                 resources.destroyImage(mainColorImage);
 
                 depthImage = resources.createImage(
                     swapchain.extent(), VK_FORMAT_D32_SFLOAT,
                     VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
-
-                tunnelImage = resources.createImage(
-                    swapchain.extent(), swapchain.imageFormat(),
-                    VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
 
                 mainColorImage = resources.createImage(
                     swapchain.extent(), swapchain.imageFormat(),
@@ -205,112 +192,25 @@ int main(int argc, char* argv[]) {
             params.totalTime = std::chrono::duration<float>(now - appStartTime).count();
             params.device = vulkan.device();
             params.currentImageView = mainColorImage.imageView;
-            params.tunnelImageView = tunnelImage.imageView;
             params.frameIndex = frameNumber % 2;
 
-            // Update UBO with viewProj, viewPos, prismColor
             orchestrator.updateUBO(params);
 
-            // ═══════════════════════════════════════════════════════════════
-            // PASS A: Render tunnel to tunnelImage
-            // ═══════════════════════════════════════════════════════════════
-            recorder.transitionImage(tunnelImage.image,
+            recorder.transitionImage(mainColorImage.image,
                 VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
-            VkClearValue tunnelClear{};
-            tunnelClear.color = {{0.0f, 0.0f, 0.0f, 1.0f}};
+            VkClearValue clear{};
+            clear.color = {{0.0f, 0.0f, 0.0f, 1.0f}};
 
-            recorder.beginDebugLabel("Tunnel Background", 0.2f, 0.2f, 0.6f);
-            recorder.beginRendering(tunnelImage.imageView, depthImage.imageView,
-                                    swapchain.extent(), &tunnelClear);
-            recorder.setViewportScissor(swapchain.extent());
-
-            orchestrator.recordTunnelPass(recorder, params);
-
-            recorder.endRendering();
-            recorder.endDebugLabel();
-
-            // Transition tunnel to SHADER_READ_ONLY for crystal refraction sampling
-            recorder.transitionImage(tunnelImage.image,
-                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-
-            // ═══════════════════════════════════════════════════════════════
-            // PASS B: Render crystals to mainColorImage, sampling tunnelImage
-            // ═══════════════════════════════════════════════════════════════
-
-            // Copy tunnel content to main color image as base (so crystals blend ON TOP of tunnel)
-            recorder.transitionImage(mainColorImage.image,
-                VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-            recorder.transitionImage(tunnelImage.image,
-                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
-
-            VkImageCopy tunnelCopy{};
-            tunnelCopy.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
-            tunnelCopy.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
-            tunnelCopy.extent = {swapchain.extent().width, swapchain.extent().height, 1};
-            vkCmdCopyImage(frame.commandBuffer,
-                           tunnelImage.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                           mainColorImage.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                           1, &tunnelCopy);
-
-            // Transition for the crystal rendering pass
-            recorder.transitionImage(tunnelImage.image,
-                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-            recorder.transitionImage(mainColorImage.image,
-                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-
-            VkClearValue crystalClear{};
-            // Don't clear — we just copied the tunnel content
-
-            recorder.beginDebugLabel("Crystal Clock (Pass 1)", 0.2f, 0.4f, 1.0f);
+            recorder.beginDebugLabel("Frame", 0.2f, 0.4f, 1.0f);
             recorder.beginRendering(mainColorImage.imageView, depthImage.imageView,
-                                    swapchain.extent(), nullptr);
+                                    swapchain.extent(), &clear);
             recorder.setViewportScissor(swapchain.extent());
 
-            orchestrator.recordCrystalPasses(recorder, params);
+            orchestrator.recordFrame(recorder, params);
 
             recorder.endRendering();
             recorder.endDebugLabel();
-
-            // ═══════════════════════════════════════════════════════════════
-            // Inter-rod refraction: copy mainColor → tunnelImage,
-            // then re-render rods refracting now-updated bg (rods + tunnel).
-            // ═══════════════════════════════════════════════════════════════
-            recorder.transitionImage(mainColorImage.image,
-                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
-            recorder.transitionImage(tunnelImage.image,
-                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-
-            VkImageCopy interRodCopy{};
-            interRodCopy.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
-            interRodCopy.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
-            interRodCopy.extent = {swapchain.extent().width, swapchain.extent().height, 1};
-            vkCmdCopyImage(frame.commandBuffer,
-                           mainColorImage.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                           tunnelImage.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                           1, &interRodCopy);
-
-            recorder.transitionImage(tunnelImage.image,
-                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-            recorder.transitionImage(mainColorImage.image,
-                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-
-            recorder.beginDebugLabel("Crystal Clock (Pass 2: Inter-Rod)", 0.4f, 0.6f, 1.0f);
-            recorder.beginRendering(mainColorImage.imageView, depthImage.imageView,
-                                    swapchain.extent(), nullptr);
-            recorder.setViewportScissor(swapchain.extent());
-
-            orchestrator.recordCrystalPasses(recorder, params);
-
-            recorder.endRendering();
-            recorder.endDebugLabel();
-
-            // ImGui overlay
-            int hlRod = CrystalMath::getHighlightedRod(timeInfo.hour);
-            int hourCounter = static_cast<int>(timeInfo.minute * 60 + timeInfo.secondsInMinute);
-            bool isWide = params.aspect > 1.5f;
-            int screenRatio = isWide ? GsConstants::SCREEN_RATIO_16_9 : GsConstants::SCREEN_RATIO_4_3;
-            float fillAmt = CrystalMath::computeRodScale(hlRod, 1.0f, isWide, screenRatio, true, hourCounter);
 
             ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
             ImGui::SetNextWindowSize(ImVec2(280, 240), ImGuiCond_FirstUseEver);
@@ -326,18 +226,11 @@ int main(int argc, char* argv[]) {
             }
 
             ImGui::Text("Time: %02d:%02d:%02d.%03d", timeInfo.hour, timeInfo.minute, timeInfo.second, timeInfo.millisecond);
-            ImGui::Text("Highlighted Rod: %d", hlRod);
-            ImGui::Text("Hour Scale Slide: %.3f", fillAmt);
             ImGui::Text("Sec in Min: %.2f", timeInfo.secondsInMinute);
-            ImGui::Separator();
-            ImGui::Text("Tunnel(1) + Glass(12) + Spec(12) + Fill(1)");
-            ImGui::Text("Draw Calls: %d", 1 + 12 + 12 + 1);
             ImGui::End();
 
-            // Render ImGui to mainColorImage (already in COLOR_ATTACHMENT_OPTIMAL)
             ui.render(frame.commandBuffer, mainColorImage.imageView, swapchain.extent());
 
-            // Blit mainColorImage to swapchain
             recorder.transitionImage(mainColorImage.image,
                 VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
             recorder.transitionImage(swapchain.currentImage(),
@@ -394,7 +287,6 @@ int main(int argc, char* argv[]) {
 
         orchestrator.destroy(vulkan.device(), resources);
         resources.destroyImage(depthImage);
-        resources.destroyImage(tunnelImage);
         resources.destroyImage(mainColorImage);
 
         swapSync.destroy(vulkan.device());
