@@ -56,6 +56,17 @@ VISUAL STYLE, not just UI. Build the faithful GS memory model (A) first; W2 (B)
 then feeds generated geometry into the SAME renderer — inherently hybrid (A is B's
 backend; the GS style carries into B).
 
+## A — refined impl: GPU ping-pong VRAM (no CPU readback)
+Key insight: GS framebuffers are ROW-REGIONS of one VRAM addressed at stride 640
+(FBP row = fbp*8192/2560: FBP 0→0, 70→224, 210→672, 280→896). So model VRAM as a
+single 640×~1408 linear image; render each FBP to its row-region; feedback samples
+by linear UV `(u/640, (texFbpRow+v)/1408)`. The overlap (FBP 210 v>224 == FBP 280)
+then resolves for free. To avoid the read+write-same-image hazard, ping-pong TWO
+images (read/write) and `vkCmdCopyImage` the rendered region write→read after each
+run — all in ONE command buffer (no CPU readback, no per-run submit). Resident
+narrow textures (64/128-wide) stay separate deswizzled images. Init both VRAM
+images by deswizzling the freeze at stride 640. Display = blit FBP-0 rows [0,224].
+
 ## A — VRAM texture-cache model (the root fix)
 1. **VRAM = one mutable buffer** (4MB, init from freeze) — source of truth.
 2. **Deswizzle on-demand**: before sampling a texture (TBP0/TBW/PSM), decode the
