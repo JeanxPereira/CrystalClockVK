@@ -108,9 +108,6 @@ set(SOURCES
     src/renderer/PassRecorder.cpp
     src/renderer/DescriptorAllocator.cpp
     src/renderer/UIRenderer.cpp
-    src/gs/VramBuffer.cpp
-    src/gs/SwizzleEngine.cpp
-    src/gs/TextureDecoder.cpp
     src/app/RenderOrchestrator.cpp
     src/app/TimeSync.cpp
     src/app/GsScene.cpp
@@ -138,6 +135,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     ImGui
     gsdump_lib
     gsvk
+    gs
 )
 
 find_package(Vulkan REQUIRED)
@@ -159,6 +157,19 @@ target_include_directories(gsdump_lib PUBLIC
 add_executable(gsdump tools/gsdump/main.cpp)
 target_link_libraries(gsdump PRIVATE gsdump_lib)
 set_target_properties(gsdump PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
+
+# gs — pure PS2 decode lib (swizzle, texture, VRAM). No Vulkan. Used by app + tools.
+add_library(gs STATIC
+    src/gs/SwizzleEngine.cpp
+    src/gs/TextureDecoder.cpp
+    src/gs/VramBuffer.cpp
+)
+target_include_directories(gs PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+
+# vramdump — deswizzle a region of the .gs VRAM freeze to raw RGBA (W4 texture bring-up).
+add_executable(vramdump tools/vramdump/main.cpp)
+target_link_libraries(vramdump PRIVATE gsdump_lib gs)
+set_target_properties(vramdump PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
 
 if (APPLE)
     target_compile_definitions(${PROJECT_NAME} PRIVATE VK_USE_PLATFORM_METAL_EXT)
