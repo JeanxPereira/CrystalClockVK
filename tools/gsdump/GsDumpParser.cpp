@@ -1,6 +1,7 @@
 #include "GsDumpParser.hpp"
 
 #include <array>
+#include <bit>
 #include <cstring>
 
 namespace {
@@ -176,9 +177,13 @@ GsCommandStream GsDumpParser::parse(const uint8_t* data, size_t size) {
     const uint8_t* privPtr = cur.take(kPrivRegsBytes);
     out.privRegs.assign(privPtr, privPtr + kPrivRegsBytes);
 
-    // --- packet stream + GIF walk ---
-    std::array<uint64_t, 256> gsState{};  // addr -> latest A+D value
-    auto snapshot = [&](uint32_t primField) {
+    // --- packet stream + GIF vertex-kick walk ---
+    // PRIM (re)loads via the GIFtag PRE bit, A+D PRIM writes, or REGLIST PRIM
+    // descriptors each start a new draw group; vertices accumulate on every XYZ
+    // kick, snapshotting resolved register state at the group's first kick.
+    std::array<uint64_t, 256> gsState{};  // GS register file (addr -> value)
+
+    auto makeState = [&](uint32_t primField) {
         const bool ctxt2 = (primField >> 9) & 1;
         auto pick = [&](uint8_t a1, uint8_t a2) { return ctxt2 ? a2 : a1; };
         GsPrimitive pr{};
@@ -200,7 +205,74 @@ GsCommandStream GsDumpParser::parse(const uint8_t* data, size_t size) {
         pr.colclamp = gsState[REG_COLCLAMP] & 1;
         pr.pabe = gsState[REG_PABE] & 1;
         pr.fba = gsState[pick(REG_FBA_1, REG_FBA_2)] & 1;
-        out.prims.push_back(pr);
+        return pr;
+    };
+
+    uint32_t curPrimField = 0;
+    bool pendingGroup = false;
+    long curDrawIdx = -1;
+    struct { uint8_t r = 0, g = 0, b = 0, a = 0; } curColor;
+    struct { float u = 0, v = 0; bool valid = false; } curUV;
+    struct { float s = 0, t = 0; bool valid = false; } curST;
+
+    auto setPrim = [&](uint32_t primField) {
+        curPrimField = primField;
+        pendingGroup = true;
+    };
+    auto startGroupIfNeeded = [&]() {
+        if (curDrawIdx >= 0 && !pendingGroup) return;
+        out.prims.push_back(makeState(curPrimField));
+        curDrawIdx = static_cast<long>(out.prims.size()) - 1;
+        pendingGroup = false;
+    };
+    auto emitVertex = [&](uint32_t xRaw, uint32_t yRaw, uint32_t z, bool hasFog, uint8_t fog) {
+        startGroupIfNeeded();
+        GsPrimitive& d = out.prims[curDrawIdx];
+        GsVertex v{};
+        v.x = (static_cast<float>(xRaw) - static_cast<float>(d.xyoffset.ofx)) / 16.0f;
+        v.y = (static_cast<float>(yRaw) - static_cast<float>(d.xyoffset.ofy)) / 16.0f;
+        v.z = z;
+        v.r = curColor.r; v.g = curColor.g; v.b = curColor.b; v.a = curColor.a;
+        v.fog = hasFog ? fog : 0;
+        if (d.prim.fst) { if (curUV.valid) { v.u = curUV.u; v.v = curUV.v; } }
+        else if (curST.valid) { v.s = curST.s; v.t = curST.t; }
+        d.verts.push_back(v);
+        out.counts.kicks++;
+    };
+
+    // PACKED descriptor unit (GIFPacked* 128-bit layouts).
+    auto handlePacked = [&](uint8_t desc, const uint8_t* o) {
+        const uint32_t w0 = rdU32(o), w1 = rdU32(o + 4), w2 = rdU32(o + 8), w3 = rdU32(o + 12);
+        switch (desc) {
+            case 0x00: setPrim(w0 & 0x7ff); break;
+            case 0x01: curColor = {uint8_t(w0 & 0xff), uint8_t(w1 & 0xff), uint8_t(w2 & 0xff), uint8_t(w3 & 0xff)}; break;
+            case 0x02: curST = {std::bit_cast<float>(w0), std::bit_cast<float>(w1), true}; break;
+            case 0x03: curUV = {(w0 & 0x3fff) / 16.0f, (w1 & 0x3fff) / 16.0f, true}; break;
+            case 0x04: emitVertex(w0 & 0xffff, w1 & 0xffff, (w2 >> 4) & 0xffffff, true, uint8_t((w3 >> 4) & 0xff)); break;
+            case 0x05: emitVertex(w0 & 0xffff, w1 & 0xffff, w2, false, 0); break;
+            case 0x0e: {  // A+D: value = low qword, addr at byte 8
+                const uint8_t addr = o[8];
+                const uint64_t val = rdU64(o);
+                gsState[addr] = val;
+                if (addr == 0x00) setPrim(static_cast<uint32_t>(val & 0x7ff));
+                break;
+            }
+            default: break;
+        }
+    };
+    // REGLIST descriptor: one 64-bit value (GIFReg* layout).
+    auto handleReglist = [&](uint8_t desc, uint64_t val) {
+        const uint32_t lo = static_cast<uint32_t>(val), hi = static_cast<uint32_t>(val >> 32);
+        switch (desc) {
+            case 0x00: setPrim(lo & 0x7ff); break;
+            case 0x01: curColor = {uint8_t(lo & 0xff), uint8_t((lo >> 8) & 0xff), uint8_t((lo >> 16) & 0xff), uint8_t((lo >> 24) & 0xff)}; break;
+            case 0x02: curST = {std::bit_cast<float>(lo), std::bit_cast<float>(hi), true}; break;
+            case 0x03: curUV = {(lo & 0x3fff) / 16.0f, ((lo >> 16) & 0x3fff) / 16.0f, true}; break;
+            case 0x04: emitVertex(lo & 0xffff, (lo >> 16) & 0xffff, hi & 0xffffff, true, uint8_t((hi >> 24) & 0xff)); break;
+            case 0x05: emitVertex(lo & 0xffff, (lo >> 16) & 0xffff, hi, false, 0); break;
+            case 0x0f: break;  // NOP
+            default: gsState[desc] = val; break;  // setup register (TEX0=6, CLAMP=8, ...)
+        }
     };
 
     auto walkGif = [&](const uint8_t* base, size_t len) {
@@ -226,30 +298,24 @@ GsCommandStream GsDumpParser::parse(const uint8_t* data, size_t size) {
                 case 2: out.counts.flgImage++; break;
                 case 3: out.counts.flgImage2++; break;
             }
-            if (pre) {
-                out.counts.prims++;
-                snapshot(prim);
-            }
+            if (pre) setPrim(prim);
             if (nloop == 0) continue;
 
             if (flg == 0) {
-                // PACKED: nloop*nreg units of 16 bytes; reg descriptor 0x0e == A+D
-                for (uint32_t l = 0; l < nloop; l++) {
+                for (uint32_t l = 0; l < nloop; l++)
                     for (uint32_t r = 0; r < nreg; r++) {
-                        const uint8_t desc = (regsDesc >> (r * 4)) & 0xf;
-                        if (desc == 0x0e) {
-                            const uint8_t addr = base[p + 8];  // ADDR byte of GIFPackedA_D
-                            gsState[addr] = rdU64(base + p);   // value = low qword
-                        }
+                        handlePacked((regsDesc >> (r * 4)) & 0xf, base + p);
                         p += 16;
                     }
-                }
             } else if (flg == 1) {
-                // REGLIST: nloop*nreg 64-bit regs, padded to qword
-                const uint64_t words = static_cast<uint64_t>(nloop) * nreg;
-                p += ((words + 1) >> 1) * 16;
+                const uint8_t* q = base + p;
+                for (uint32_t l = 0; l < nloop; l++)
+                    for (uint32_t r = 0; r < nreg; r++) {
+                        handleReglist((regsDesc >> (r * 4)) & 0xf, rdU64(q));
+                        q += 8;
+                    }
+                p += ((static_cast<uint64_t>(nloop) * nreg + 1) >> 1) * 16;
             } else {
-                // IMAGE / IMAGE2: nloop qwords
                 p += static_cast<size_t>(nloop) * 16;
             }
         }
@@ -274,5 +340,6 @@ GsCommandStream GsDumpParser::parse(const uint8_t* data, size_t size) {
         }
     }
 
+    out.counts.draws = static_cast<uint32_t>(out.prims.size());
     return out;
 }

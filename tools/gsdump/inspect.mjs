@@ -80,7 +80,7 @@ const tally = {
   readfifo: 0,
   regs: 0,
   giftags: 0,
-  prims: 0, // tags with PRE=1 (load PRIM -> a draw)
+  kicks: 0, // vertices emitted (XYZ drawing kicks)
   nloopSum: 0,
   flg: { PACKED: 0, REGLIST: 0, IMAGE: 0, IMAGE2: 0 },
   primTypes: {}, // PRIM value histogram
@@ -138,17 +138,20 @@ const PSM = {
   0x2c: "PSMT4HH", 0x30: "PSMZ32", 0x31: "PSMZ24", 0x32: "PSMZ16", 0x3a: "PSMZ16S",
 };
 
-// running GS register file (addr -> bigint value); snapshot at each draw
+// Running GS register file (addr -> bigint value). Set via A+D (PACKED) and
+// direct register descriptors (REGLIST). Snapshotted into a draw at first kick.
 const gsState = new Map();
-const prims = [];
+const prims = []; // draw groups: { idx, PRIM, regs..., nverts, verts[] }
 const dv = (addr, decoder) =>
   gsState.has(addr) ? decoder(gsState.get(addr)) : null;
 
-function snapshotPrim(primField) {
+const f32 = new DataView(new ArrayBuffer(4));
+const i2f = (u) => (f32.setUint32(0, u >>> 0, true), f32.getFloat32(0, true));
+
+function makeState(primField) {
   const ctxt = (primField >> 9) & 1; // 0 = context 1
   const c = (a1, a2) => (ctxt ? a2 : a1);
-  prims.push({
-    idx: prims.length,
+  return {
     PRIM: {
       type: primField & 7,
       IIP: (primField >> 3) & 1, TME: (primField >> 4) & 1, FGE: (primField >> 5) & 1,
@@ -167,7 +170,48 @@ function snapshotPrim(primField) {
     COLCLAMP: dv(0x46, DEC.bit0),
     PABE: dv(0x49, DEC.bit0),
     FBA: dv(c(0x4a, 0x4b), DEC.bit0),
-  });
+  };
+}
+
+// --- GS vertex-kick state machine ---
+// PRIM may be (re)loaded via the GIFtag PRE bit, an A+D PRIM write, or a REGLIST
+// PRIM descriptor. Each (re)load starts a new draw group. Vertices accumulate on
+// every XYZ kick into the current group, snapshotting the resolved register state
+// at the group's first kick.
+let curPrimField = 0;
+let pendingGroup = false;
+let curDraw = null;
+let curColor = { r: 0, g: 0, b: 0, a: 0 };
+let curTexUV = null;
+let curTexST = null;
+
+function setPrim(primField) {
+  curPrimField = primField;
+  pendingGroup = true;
+  tally.primTypes[primField & 0x7ff] = (tally.primTypes[primField & 0x7ff] || 0) + 1;
+}
+
+function startGroupIfNeeded() {
+  if (curDraw && !pendingGroup) return;
+  curDraw = { idx: prims.length, ...makeState(curPrimField), nverts: 0, verts: [] };
+  prims.push(curDraw);
+  pendingGroup = false;
+}
+
+function emitVertex(xRaw, yRaw, z, f) {
+  startGroupIfNeeded();
+  const ofx = curDraw.XYOFFSET ? curDraw.XYOFFSET.OFX : 0;
+  const ofy = curDraw.XYOFFSET ? curDraw.XYOFFSET.OFY : 0;
+  const v = {
+    x: (xRaw - ofx) / 16, y: (yRaw - ofy) / 16, z, // screen pixels
+    r: curColor.r, g: curColor.g, b: curColor.b, a: curColor.a,
+  };
+  if (f !== undefined) v.f = f;
+  if (curDraw.PRIM.FST) { if (curTexUV) { v.u = curTexUV.u; v.v = curTexUV.v; } }
+  else if (curTexST) { v.s = curTexST.s; v.t = curTexST.t; }
+  curDraw.verts.push(v);
+  curDraw.nverts++;
+  tally.kicks++;
 }
 
 function walkGif(p, end) {
@@ -189,13 +233,9 @@ function walkGif(p, end) {
     tally.giftags++;
     tally.nloopSum += nloop;
     tally.flg[FLG[flg]]++;
-    if (pre) {
-      tally.prims++;
-      tally.primTypes[prim] = (tally.primTypes[prim] || 0) + 1;
-      snapshotPrim(prim);
-    }
+    if (pre) setPrim(prim); // tag PRE reloads PRIM -> new draw group
 
-    if (nloop === 0) continue; // tag with no payload
+    if (nloop === 0) continue;
 
     const regs = [];
     for (let i = 0; i < nreg; i++) {
@@ -204,30 +244,68 @@ function walkGif(p, end) {
     }
 
     if (flg === 0) {
-      // PACKED: nloop*nreg units of 16 bytes; reg desc 0x0e == A+D
+      // PACKED: nloop*nreg units of 16 bytes (GIFPacked* layout).
       for (let l = 0; l < nloop; l++) {
         for (let r = 0; r < nreg; r++) {
-          if (regs[r] === 0x0e) {
-            const addr = buf.readUInt8(p + 8); // ADDR byte of GIFPackedA_D
-            tally.adRegs[addr] = (tally.adRegs[addr] || 0) + 1;
-            // A+D value = low qword (bytes 0..7), little-endian u64
-            gsState.set(addr, buf.readBigUInt64LE(p));
-          }
+          handlePacked(regs[r], p);
           p += 16;
         }
       }
     } else if (flg === 1) {
-      // REGLIST: nloop*nreg 64-bit regs, padded to qword
-      const words = nloop * nreg;
-      p += ((words + 1) >> 1) * 16;
+      // REGLIST: nloop*nreg 64-bit regs (GIFReg* layout), padded to qword.
+      let q = p;
+      for (let l = 0; l < nloop; l++) {
+        for (let r = 0; r < nreg; r++) {
+          handleReglist(regs[r], buf.readBigUInt64LE(q));
+          q += 8;
+        }
+      }
+      p += ((nloop * nreg + 1) >> 1) * 16;
     } else {
       // IMAGE / IMAGE2: nloop qwords of raw data
       p += nloop * 16;
     }
     if (eop && p >= end) break;
   }
-  if (p !== end)
-    console.warn(`  WARN: gif walk ended at +${p - (end - (end - p))} (Δ${end - p})`);
+  if (p !== end) console.warn(`  WARN: gif walk Δ${end - p} bytes`);
+}
+
+// PACKED descriptor unit at byte offset `o` (GIFPacked* 128-bit layouts).
+function handlePacked(desc, o) {
+  const w0 = buf.readUInt32LE(o), w1 = buf.readUInt32LE(o + 4);
+  const w2 = buf.readUInt32LE(o + 8), w3 = buf.readUInt32LE(o + 12);
+  switch (desc) {
+    case 0x00: setPrim(w0 & 0x7ff); break;
+    case 0x01: curColor = { r: w0 & 0xff, g: w1 & 0xff, b: w2 & 0xff, a: w3 & 0xff }; break;
+    case 0x02: curTexST = { s: i2f(w0), t: i2f(w1) }; break;
+    case 0x03: curTexUV = { u: (w0 & 0x3fff) / 16, v: (w1 & 0x3fff) / 16 }; break;
+    case 0x04: emitVertex(w0 & 0xffff, w1 & 0xffff, (w2 >>> 4) & 0xffffff, (w3 >>> 4) & 0xff); break;
+    case 0x05: emitVertex(w0 & 0xffff, w1 & 0xffff, w2 >>> 0); break;
+    case 0x0e: { // A+D: value = low qword, addr at byte 8
+      const addr = buf.readUInt8(o + 8);
+      tally.adRegs[addr] = (tally.adRegs[addr] || 0) + 1;
+      const val = buf.readBigUInt64LE(o);
+      gsState.set(addr, val);
+      if (addr === 0x00) setPrim(Number(val & 0x7ffn));
+      break;
+    }
+    default: break; // FOG/XYZ3 etc unused by the clock
+  }
+}
+
+// REGLIST descriptor: one 64-bit value (GIFReg* layout).
+function handleReglist(desc, val) {
+  const lo = Number(val & 0xffffffffn), hi = Number((val >> 32n) & 0xffffffffn);
+  switch (desc) {
+    case 0x00: setPrim(lo & 0x7ff); break;
+    case 0x01: curColor = { r: lo & 0xff, g: (lo >>> 8) & 0xff, b: (lo >>> 16) & 0xff, a: (lo >>> 24) & 0xff }; break;
+    case 0x02: curTexST = { s: i2f(lo), t: i2f(hi) }; break;
+    case 0x03: curTexUV = { u: (lo & 0x3fff) / 16, v: ((lo >>> 16) & 0x3fff) / 16 }; break;
+    case 0x04: emitVertex(lo & 0xffff, (lo >>> 16) & 0xffff, hi & 0xffffff, (hi >>> 24) & 0xff); break;
+    case 0x05: emitVertex(lo & 0xffff, (lo >>> 16) & 0xffff, hi >>> 0); break;
+    case 0x0f: break; // NOP
+    default: gsState.set(desc, val); break; // setup register (TEX0=6, CLAMP=8, ...)
+  }
 }
 
 // --- packet loop (GSLzma.cpp:182) ---
@@ -278,13 +356,16 @@ const GS_REG = {
 console.log("\n=== packet stream ===");
 console.log(`transfers ${tally.transfers}  vsync ${tally.vsync}  readfifo ${tally.readfifo}  regs ${tally.regs}`);
 console.log("transfers by path:", transfersByPath);
-console.log(`\ngiftags ${tally.giftags}  nloop(sum) ${tally.nloopSum}  PRE/prims ${tally.prims}`);
+const vertSum = prims.reduce((n, p) => n + p.nverts, 0);
+console.log(`\ngiftags ${tally.giftags}  nloop(sum) ${tally.nloopSum}  draws ${prims.length}  kicks/verts ${tally.kicks}`);
 console.log("FLG:", tally.flg);
 console.log(
-  "PRIM types (PRE=1):",
-  Object.fromEntries(
-    Object.entries(tally.primTypes).map(([k, v]) => [primName(+k & 7), v]),
-  ),
+  "PRIM types (all loads):",
+  Object.entries(tally.primTypes).reduce((m, [k, v]) => {
+    const n = primName(+k & 7);
+    m[n] = (m[n] || 0) + v;
+    return m;
+  }, {}),
 );
 console.log("\n=== A+D register writes ===");
 const adSorted = Object.entries(tally.adRegs).sort((a, b) => b[1] - a[1]);
@@ -311,7 +392,11 @@ const ATST = ["NEVER", "ALWAYS", "LESS", "LEQUAL", "EQUAL", "GEQUAL", "GREATER",
 const AFAIL = ["KEEP", "FB_ONLY", "ZB_ONLY", "RGB_ONLY"];
 const ZTST = ["NEVER", "ALWAYS", "GEQUAL", "GREATER"];
 
-console.log(`\n=== ${prims.length} primitives decoded (all CTXT shown) ===`);
+console.log(`\n=== ${prims.length} draws / ${vertSum} verts decoded ===`);
+console.log(
+  "draw sizes (nverts -> count):",
+  prims.reduce((m, p) => ((m[p.nverts] = (m[p.nverts] || 0) + 1), m), {}),
+);
 console.log(
   "\nPRIM flags:",
   uniq(

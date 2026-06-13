@@ -19,3 +19,6 @@ compile_commands.json
 
 # Logs
 *.log
+
+# Regenerable GS-dump decode artifact (~7.7MB)
+tools/gsdump/clock_prims.json

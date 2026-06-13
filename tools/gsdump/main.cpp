@@ -76,7 +76,8 @@ void writeJson(const GsCommandStream& s, const std::string& path) {
           << ",\"FRAME\":{\"FBP\":" << p.frame.fbp << ",\"FBW\":" << int(p.frame.fbw)
           << ",\"PSM\":" << int(p.frame.psm) << "}"
           << ",\"DTHE\":" << p.dthe << ",\"COLCLAMP\":" << p.colclamp
-          << ",\"PABE\":" << p.pabe << ",\"FBA\":" << p.fba << "}";
+          << ",\"PABE\":" << p.pabe << ",\"FBA\":" << p.fba
+          << ",\"nverts\":" << p.verts.size() << "}";
         o << (i + 1 < s.prims.size() ? ",\n" : "\n");
     }
     o << "]\n";
@@ -90,14 +91,21 @@ int verifyClock(const GsCommandStream& s) {
         if (!ok) { std::printf("  FAIL: %s\n", what); fails++; }
     };
     check(s.header.serial == "20080220-175343", "serial");
-    check(s.counts.prims == 96, "96 prims");
+    check(s.counts.draws == 3936, "3936 draws");
+    check(s.counts.kicks == 21200, "21200 verts");
+    std::map<int, int> blend;  // distinct (A,B,C,D) blends seen
+    uint64_t vtotal = 0;
     for (const auto& p : s.prims) {
-        check(p.prim.type == 6 && p.prim.tme && p.prim.abe && p.prim.fst, "all textured-blended sprites");
-        check(p.alpha.a == 0 && p.alpha.b == 1 && p.alpha.c == 0 && p.alpha.d == 1, "src-over ALPHA");
-        check(p.test.ate && p.test.atst == 6 && p.test.aref == 0, "alpha-test GREATER 0");
+        // Uniform GS state across the whole clock (dump-verified):
+        check(!p.dthe, "DTHE off");
+        check(p.colclamp, "COLCLAMP on");
         check(p.frame.psm == 0, "FRAME PSMCT32");
-        check(!p.dthe && p.colclamp && !p.pabe, "DTHE off, COLCLAMP on, PABE off");
+        check(p.alpha.c == 0, "blend C = As");  // As/128 scaling is universal
+        blend[(p.alpha.a << 6) | (p.alpha.b << 4) | (p.alpha.c << 2) | p.alpha.d]++;
+        vtotal += p.verts.size();
     }
+    check(vtotal == s.counts.kicks, "vertex total matches kick count");
+    check(blend.size() == 3, "exactly 3 blend modes (additive/src-over/subtractive)");
     if (fails) std::printf("verify: %d FAILURES\n", fails);
     else std::printf("verify: OK (all clock invariants hold)\n");
     return fails;
@@ -144,11 +152,15 @@ int main(int argc, char** argv) {
     std::printf("serial \"%s\"  screenshot %ux%u\n", h.serial.c_str(), h.screenshotWidth, h.screenshotHeight);
     std::printf("\n=== packet stream ===\n");
     std::printf("transfers %u  vsync %u  readfifo %u  regs %u\n", c.transfers, c.vsync, c.readfifo, c.regsPackets);
-    std::printf("giftags %u  nloop(sum) %llu  PRE/prims %u\n", c.giftags,
-                static_cast<unsigned long long>(c.nloopSum), c.prims);
+    std::printf("giftags %u  nloop(sum) %llu  draws %u  kicks/verts %u\n", c.giftags,
+                static_cast<unsigned long long>(c.nloopSum), c.draws, c.kicks);
     std::printf("FLG: PACKED %u  REGLIST %u  IMAGE %u  IMAGE2 %u\n", c.flgPacked, c.flgReglist, c.flgImage, c.flgImage2);
 
-    std::printf("\n=== %zu primitives decoded ===\n", s.prims.size());
+    std::map<size_t, int> drawSizes;
+    for (const auto& p : s.prims) drawSizes[p.verts.size()]++;
+    std::printf("\n=== %zu draws decoded; sizes (nverts: count):", s.prims.size());
+    for (auto& [n, cnt] : drawSizes) std::printf(" %zu:%d", n, cnt);
+    std::printf(" ===\n");
     printUnique("\nPRIM:", s, [](const GsPrimitive& p) {
         return fmt("%s IIP%d TME%d ABE%d FST%d CTXT%d", kPrim[p.prim.type & 7], p.prim.iip,
                    p.prim.tme, p.prim.abe, p.prim.fst, int(p.prim.ctxt));

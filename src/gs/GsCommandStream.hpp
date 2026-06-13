@@ -39,7 +39,18 @@ struct GsXyOffset {
     uint32_t ofx, ofy;  // 12.4 fixed-point (divide by 16 for pixels)
 };
 
-// Resolved GS state at the moment one primitive is submitted.
+// One GS vertex (XYZ kick), with the active color/texcoord at kick time.
+struct GsVertex {
+    float x, y;          // screen pixels (XYOFFSET removed, 12.4 -> /16)
+    uint32_t z;
+    uint8_t r, g, b, a;   // RGBAQ color
+    float u, v;          // UV in pixels (FST=1)
+    float s, t;          // STQ texcoords (FST=0)
+    uint8_t fog;
+};
+
+// A draw group: a run of vertices sharing one PRIM load + resolved register
+// state (snapshotted at the group's first kick).
 struct GsPrimitive {
     uint32_t index;
     GsPrim prim;
@@ -55,7 +66,7 @@ struct GsPrimitive {
     bool colclamp;
     bool pabe;
     bool fba;
-    // Vertices are Stage-2 geometry; not decoded here.
+    std::vector<GsVertex> verts;
 };
 
 struct GsDumpHeaderInfo {
@@ -73,7 +84,8 @@ struct GsStreamCounts {
     uint32_t readfifo = 0;
     uint32_t regsPackets = 0;
     uint32_t giftags = 0;
-    uint32_t prims = 0;
+    uint32_t draws = 0;   // draw groups (== prims.size())
+    uint32_t kicks = 0;   // vertices emitted (XYZ kicks)
     uint64_t nloopSum = 0;
     uint32_t flgPacked = 0;
     uint32_t flgReglist = 0;
