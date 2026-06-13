@@ -208,3 +208,9 @@ add_executable(gs_swizzle_tests tests/SwizzleRoundTripTest.cpp)
 target_link_libraries(gs_swizzle_tests PRIVATE gs)
 set_target_properties(gs_swizzle_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
 add_test(NAME gs_swizzle COMMAND gs_swizzle_tests)
+
+# gs PSMCT32 address code-parity vs PCSX2 GSLocalMemory.
+add_executable(gs_swizzle_addr_tests tests/SwizzleAddress32Test.cpp)
+target_link_libraries(gs_swizzle_addr_tests PRIVATE gs)
+set_target_properties(gs_swizzle_addr_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
+add_test(NAME gs_swizzle_addr COMMAND gs_swizzle_addr_tests)
