@@ -111,7 +111,6 @@ set(SOURCES
     src/gs/VramBuffer.cpp
     src/gs/SwizzleEngine.cpp
     src/gs/TextureDecoder.cpp
-    src/app/CrystalGeometry.cpp
     src/app/RenderOrchestrator.cpp
     src/app/TimeSync.cpp
 )
