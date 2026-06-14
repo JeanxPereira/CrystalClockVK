@@ -84,6 +84,17 @@ Confirmed live from the **"Ajuste do Relógio"** (clock-adjust) mode, which FREE
   layout is real; `+0x20` is the inner (centre) end of each bar, the bar sweeps outward to the dial.
 - Menu CUBES (left side of the screen) are a separate config-menu element (confirmed visually).
 
+## Count reconciliation (user, 2026-06-14): 16 = 12 rods + 4 menu cubes
+
+Patent says **12** rods (dial) + separate hexagonal **cubes `302`** (menu items, FIG 8). Live measured
+**16** slots in `0x375250`. Leading reconciliation (user's): the array holds **12 dial rods (slots 0-11)
++ 4 menu cubes (slots 12-15)**, both sharing the SAME crystal-prism refraction shader, so they live in
+one object array. 12+4 = 16, and slot 16 = end. Matches patent + measurement + the on-screen cubes.
+CAVEAT to confirm: slots 12-15 read as valid (rod-like positions) even in the PURE Visor where cubes are
+not drawn — so if they are cubes they are allocated/persistent there. DECISIVE TEST (pending): diff
+slots 12-15 between menu mode (cubes shown) and pure Visor — if they activate/change with the cubes,
+confirmed. Until then: **dial = 12 rods** (use this for the rebuild), cubes = menu, both crystal prisms.
+
 ## ⭐⭐ Patent-grounded model (US6693606 digest §2-4) — the framework I should have used first
 
 The patent (2nd embodiment = our clock) already describes ALL of this; the live RE just confirms it:
