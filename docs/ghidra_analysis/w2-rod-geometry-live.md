@@ -84,7 +84,14 @@ Confirmed live from the **"Ajuste do Relógio"** (clock-adjust) mode, which FREE
   layout is real; `+0x20` is the inner (centre) end of each bar, the bar sweeps outward to the dial.
 - Menu CUBES (left side of the screen) are a separate config-menu element (confirmed visually).
 
-## Count reconciliation (user, 2026-06-14): 16 = 12 rods + 4 menu cubes
+## COUNT = 12 RODS (settled). Array 16 slots = 12 rods + 4 menu cubes.
+
+**The clock dial is 12 rods — final.** A 12-hour clock has 12 hour positions; the patent says 12; the
+hour = 1-of-12 coloured. The `0x375250` array's 16 slots = **12 dial rods (0-11) + 4 menu cubes (12-15)**,
+both sharing the crystal-prism refraction shader. Do not relitigate this. (Earlier controller "16 rods"
+was the error — it counted the 4 cubes as rods.)
+
+### (historical) earlier reconciliation note
 
 Patent says **12** rods (dial) + separate hexagonal **cubes `302`** (menu items, FIG 8). Live measured
 **16** slots in `0x375250`. Leading reconciliation (user's): the array holds **12 dial rods (slots 0-11)
