@@ -23,9 +23,11 @@ Mat4 BuildRotationMatrix(const Vec3& forward, const Vec3& up) {
 }
 
 Mat4 BuildProjectionMatrix(const ProjectionParams& p) {
-    // Custom GS-native perspective: NDC [-1,1] -> GS [0, 2048], embedding the
-    // viewport transform. f = 1/tan(fov/2); aspect=1 so sx==sy.
-    // Z maps near->0, far->1 (GLM_FORCE_DEPTH_ZERO_TO_ONE), then perspective Q.
+    // GS-native perspective: maps world XYZ -> GS pixel space [0..2048].
+    // Camera looks toward +Z (PS2 left-handed convention, matches GS +Z into screen).
+    // screen_x = cx - sx * world_x / world_z  (world -X maps to screen right of center)
+    // screen_y = cy + sy * world_y / world_z  (world +Y maps to screen below center)
+    // Embedded in a column-major matrix with clip.w = +world_z (W element of col2 = +1).
     const float f = 1.0f / std::tan(p.fov * 0.5f);
     const float qz = p.far / (p.far - p.near);
     const float tz = -(p.far * p.near) / (p.far - p.near);
@@ -33,12 +35,13 @@ Mat4 BuildProjectionMatrix(const ProjectionParams& p) {
     const float sx = f * p.halfWidth;
     const float sy = (f * p.halfWidth) / p.aspect;
 
-    // Column-major (PS2 VU0 stores columns via SQC2). Row 3 carries the GS-space
-    // offset (center) and Row 2/3 the perspective Z; the W row pulls -z for divide.
+    // Column-major (PS2 VU0 stores columns via SQC2).
+    // col2 W=+1 → clip.w = +world_z → perspective divide lands in GS pixel space.
+    // col0 uses -sx so that clip.x/clip.w = cx - sx*world_x/world_z.
     return Mat4(
-        Vec4(sx, 0, 0, 0),                                   // col 0
+        Vec4(-sx, 0, 0, 0),                                  // col 0
         Vec4(0, sy, 0, 0),                                   // col 1
-        Vec4(p.screenCenterX, p.screenCenterY, qz, -1.0f),   // col 2
+        Vec4(p.screenCenterX, p.screenCenterY, qz, 1.0f),    // col 2
         Vec4(0, 0, tz, 0));                                  // col 3
 }
 
