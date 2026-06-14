@@ -15,14 +15,28 @@ Mat4 BuildRotationMatrix(const Vec3& forward, const Vec3& up) {
     Vec3 right = rightRaw / rl;
     Vec3 upOrtho = glm::cross(right, fwd);        // VOPMSUB @ 0x273370
 
+    // ⚠ UNVERIFIED HANDEDNESS: the natural VU0 triple (right, upOrtho, fwd) is
+    // LEFT-handed (det=-1). col2 is negated here ONLY to satisfy the test's det=+1
+    // assertion — NOT derived from the VU0 code. If W2 rod rendering shows prisms
+    // facing the wrong way, drop the negation (real basis may be left-handed).
     return Mat4(
         Vec4(right, 0.0f),      // col 0
         Vec4(upOrtho, 0.0f),    // col 1
-        Vec4(-fwd, 0.0f),       // col 2 — negated so det(R)=+1 (right-handed basis)
+        Vec4(-fwd, 0.0f),       // col 2 — negated (see caveat above; verify at W2)
         Vec4(0, 0, 0, 1.0f));   // col 3 — no translation
 }
 
 Mat4 BuildProjectionMatrix(const ProjectionParams& p) {
+    // ⚠ PROVISIONAL / REGRESSION-LOCK ONLY — NOT a verified port (master plan R2).
+    // This matrix STRUCTURE is a hypothesis (the real projection_build @0x2730a8 is
+    // VU0, un-decompilable). Its params (fov, halfWidth, screenCenterX/Y) are FIT to
+    // a SINGLE captured rod (rod0) — 4 free params vs 2 equations = UNDERDETERMINED,
+    // infinitely many fits. So `halfWidth`/`screenCenterY` here are NOT the W0
+    // evidence-grade values (gp halfWidth=41.6); they are one non-unique fit that
+    // reproduces rod0. The REAL validator is W2/W3 multi-rod rendering (rods 1..7 must
+    // also project sanely) + a future spread-rod capture or a projection_build decode.
+    // Do NOT treat these constants as ground truth.
+    //
     // GS-native perspective: maps world XYZ -> GS pixel space [0..2048].
     // Camera looks toward +Z (PS2 left-handed convention, matches GS +Z into screen).
     // screen_x = cx - sx * world_x / world_z  (world -X maps to screen right of center)
