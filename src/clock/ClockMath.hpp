@@ -4,7 +4,7 @@
 #include <cmath>
 #include <cstdint>
 
-namespace clock {
+namespace ps2clock {
 
 using Vec3 = glm::vec3;
 using Vec4 = glm::vec4;
@@ -21,4 +21,4 @@ struct Fixed124 {
     }
 };
 
-}  // namespace clock
+}  // namespace ps2clock

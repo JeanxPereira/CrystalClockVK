@@ -28,10 +28,10 @@ constexpr float kFitHalfWidth    = 512.0f;   // 4:3 path, fitted
 constexpr float kFitScreenCenterX = 1024.0f; // GS OFSX (fitted; matches confirmed cx)
 constexpr float kFitScreenCenterY = 1116.3f; // GS OFSY (fitted; cx != cy confirmed by rod0)
 
-clock::ProjectionParams fittedParams() {
-    clock::ProjectionParams p;
+ps2clock::ProjectionParams fittedParams() {
+    ps2clock::ProjectionParams p;
     p.fov = kFitFovRadians;
-    p.near = kFitNear;
+    p.nearPlane = kFitNear;
     p.halfWidth = kFitHalfWidth;
     p.screenCenterX = kFitScreenCenterX;
     p.screenCenterY = kFitScreenCenterY;
@@ -41,10 +41,10 @@ clock::ProjectionParams fittedParams() {
 }  // namespace
 
 int main() {
-    const clock::Mat4 proj = clock::BuildProjectionMatrix(fittedParams());
+    const ps2clock::Mat4 proj = ps2clock::BuildProjectionMatrix(fittedParams());
 
-    const clock::Vec3 rod0World(-13.039f, 14.666f, 50.271f);
-    const glm::vec2 screen = clock::ProjectWorldToScreen(proj, rod0World);
+    const ps2clock::Vec3 rod0World(-13.039f, 14.666f, 50.271f);
+    const glm::vec2 screen = ps2clock::ProjectWorldToScreen(proj, rod0World);
 
     const float kOracleX = 1915.20f;
     const float kOracleY = 2118.20f;
@@ -57,8 +57,8 @@ int main() {
     check(std::fabs(screen.y - kOracleY) <= kTolPx, "rod0 screen Y within 3.0 px");
 
     // 12.4 fixed-point oracle bits (after the same projection).
-    const int32_t fx = clock::Fixed124::encode(screen.x);
-    const int32_t fy = clock::Fixed124::encode(screen.y);
+    const int32_t fx = ps2clock::Fixed124::encode(screen.x);
+    const int32_t fy = ps2clock::Fixed124::encode(screen.y);
     // Within the +/-3px*16 = +/-48 fixed-quantum band around the captured bits.
     check(std::abs(fx - 0x77b3) <= 48, "rod0 12.4 X near 0x77b3");
     check(std::abs(fy - 0x8463) <= 48, "rod0 12.4 Y near 0x8463");

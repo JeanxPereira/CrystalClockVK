@@ -2,7 +2,7 @@
 
 #include <cmath>
 
-namespace clock {
+namespace ps2clock {
 
 Mat4 BuildRotationMatrix(const Vec3& forward, const Vec3& up) {
     // bc1t -> memclr overflow guard: degenerate inputs zero the matrix.
@@ -43,8 +43,8 @@ Mat4 BuildProjectionMatrix(const ProjectionParams& p) {
     // screen_y = cy + sy * world_y / world_z  (world +Y maps to screen below center)
     // Embedded in a column-major matrix with clip.w = +world_z (W element of col2 = +1).
     const float f = 1.0f / std::tan(p.fov * 0.5f);
-    const float qz = p.far / (p.far - p.near);
-    const float tz = -(p.far * p.near) / (p.far - p.near);
+    const float qz = p.farPlane / (p.farPlane - p.nearPlane);
+    const float tz = -(p.farPlane * p.nearPlane) / (p.farPlane - p.nearPlane);
 
     const float sx = f * p.halfWidth;
     const float sy = (f * p.halfWidth) / p.aspect;
@@ -66,4 +66,4 @@ glm::vec2 ProjectWorldToScreen(const Mat4& proj, const Vec3& world) {
     return glm::vec2(clip.x * invW, clip.y * invW);
 }
 
-}  // namespace clock
+}  // namespace ps2clock

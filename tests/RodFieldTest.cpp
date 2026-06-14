@@ -20,13 +20,13 @@ bool near(float a, float b, float eps) { return std::fabs(a - b) <= eps; }
 }  // namespace
 
 int main() {
-    const clock::RodField field = clock::RodField::Generate();
+    const ps2clock::RodField field = ps2clock::RodField::Generate();
 
     // Group A is 8 front rods (rod-pipeline.md Pass1 skip condition i > 7).
     check(field.rods.size() == 8, "group A has 8 rods");
 
     // rod0 world position matches the live trace within 0.05 (capture precision).
-    const clock::Rod& r0 = field.rods[0];
+    const ps2clock::Rod& r0 = field.rods[0];
     check(near(r0.world.x, -13.039f, 0.05f), "rod0 world X = -13.039");
     check(near(r0.world.y, 14.666f, 0.05f), "rod0 world Y = 14.666");
     check(near(r0.world.z, 50.271f, 0.05f), "rod0 world Z = 50.271");
@@ -37,7 +37,7 @@ int main() {
     // Rods sit on a ring: all share ~constant radius in XZ from a common center.
     const float r0Radius = std::sqrt(r0.world.x * r0.world.x + r0.world.z * r0.world.z);
     for (size_t i = 0; i < field.rods.size(); ++i) {
-        const clock::Vec3& w = field.rods[i].world;
+        const ps2clock::Vec3& w = field.rods[i].world;
         float rad = std::sqrt(w.x * w.x + w.z * w.z);
         check(near(rad, r0Radius, 1.0f), "rod " + std::to_string(i) + " on ring radius");
     }

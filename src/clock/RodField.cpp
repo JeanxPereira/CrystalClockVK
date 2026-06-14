@@ -2,7 +2,7 @@
 
 #include <cmath>
 
-namespace clock {
+namespace ps2clock {
 
 namespace {
 constexpr int kGroupACount = 8;  // rod-pipeline.md Pass1 skip: i > 7
@@ -52,4 +52,4 @@ FlatMesh RodField::buildFlatMesh() const {
     return m;
 }
 
-}  // namespace clock
+}  // namespace ps2clock

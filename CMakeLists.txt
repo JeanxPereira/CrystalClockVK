@@ -145,6 +145,16 @@ if (Vulkan_FOUND)
     target_link_libraries(ImGui PRIVATE Vulkan::Vulkan SDL3::SDL3)
 endif()
 
+# Copy SDL3.dll next to the output binaries so the executables run from bin/.
+if (WIN32)
+    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:SDL3::SDL3>
+            ${CMAKE_SOURCE_DIR}/bin/$<TARGET_FILE_NAME:SDL3::SDL3>
+        COMMENT "Copying SDL3.dll to bin/"
+    )
+endif()
+
 # ──────────────────────────────────────────────────────────────────────────────
 # gsdump — GS-dump parser (Phase 1 W1). Pure: no Vulkan, no SDL. Built as a lib
 # (shared by the standalone tool and the app) plus the CLI front-end.
@@ -237,6 +247,27 @@ add_library(clock STATIC
 target_include_directories(clock PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(clock PUBLIC glm::glm)
 target_compile_definitions(clock PUBLIC GLM_FORCE_DEPTH_ZERO_TO_ONE)
+
+# clock_dump — headless: render the rod field flat to an offscreen image and
+# write RGBA8 (pixel-diff harness; reuses ResourceManager::downloadImage).
+add_executable(clock_dump
+    tools/clockdump/main.cpp
+    src/clock/ClockRenderer.cpp
+    src/core/VulkanContext.cpp
+    src/core/WindowContext.cpp
+    src/renderer/ResourceManager.cpp
+    src/renderer/PassRecorder.cpp
+    src/renderer/PipelineBuilder.cpp
+    src/renderer/ShaderLoader.cpp
+)
+add_dependencies(clock_dump Shaders)
+target_include_directories(clock_dump PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(clock_dump PRIVATE clock SDL3::SDL3 vk-bootstrap VulkanMemoryAllocator glm::glm Vulkan::Vulkan ImGui)
+target_compile_definitions(clock_dump PRIVATE GLM_FORCE_DEPTH_ZERO_TO_ONE)
+if (WIN32)
+    target_compile_definitions(clock_dump PRIVATE VK_USE_PLATFORM_WIN32_KHR)
+endif()
+set_target_properties(clock_dump PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
 
 # clock pure-logic tests (math/geometry/projection — Vulkan-free).
 foreach(t clock_fixed124:Fixed124Test clock_rotation:RotationBasisTest clock_projection:ProjectionFitTest clock_rodfield:RodFieldTest)

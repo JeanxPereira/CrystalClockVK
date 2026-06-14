@@ -5,7 +5,7 @@
 
 #include "clock/ClockMath.hpp"
 
-namespace clock {
+namespace ps2clock {
 
 // One crystal rod. Mirrors the on-PS2 ROD record fields this chunk needs
 // (rod-pipeline.md ROD struct 0x160; runtime-trace.md +0x00 world, +0x10 scale).
@@ -39,4 +39,4 @@ public:
     std::vector<Rod> rods;
 };
 
-}  // namespace clock
+}  // namespace ps2clock

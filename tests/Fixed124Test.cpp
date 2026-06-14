@@ -17,7 +17,7 @@ void check(bool ok, const std::string& what) {
 }  // namespace
 
 int main() {
-    using clock::Fixed124;
+    using ps2clock::Fixed124;
 
     check(Fixed124::encode(1915.1875f) == 0x77b3, "encode 1915.1875 -> 0x77b3");
     check(Fixed124::encode(2118.1875f) == 0x8463, "encode 2118.1875 -> 0x8463");
