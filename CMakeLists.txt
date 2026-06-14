@@ -226,3 +226,26 @@ add_executable(gs_texa_deswizzle_tests tests/DeswizzleTexa24Test.cpp)
 target_link_libraries(gs_texa_deswizzle_tests PRIVATE gs)
 set_target_properties(gs_texa_deswizzle_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
 add_test(NAME gs_texa_deswizzle COMMAND gs_texa_deswizzle_tests)
+
+# ──────────────────────────────────────────────────────────────────────────────
+# clock — pure procedural clock logic (geometry + projection math). NO Vulkan.
+# ──────────────────────────────────────────────────────────────────────────────
+add_library(clock STATIC
+    src/clock/Projection.cpp
+    src/clock/RodField.cpp
+)
+target_include_directories(clock PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(clock PUBLIC glm::glm)
+target_compile_definitions(clock PUBLIC GLM_FORCE_DEPTH_ZERO_TO_ONE)
+
+# clock pure-logic tests (math/geometry/projection — Vulkan-free).
+# Tasks 2-4 will append: clock_rotation:RotationBasisTest clock_projection:ProjectionFitTest clock_rodfield:RodFieldTest
+foreach(t clock_fixed124:Fixed124Test)
+    string(REPLACE ":" ";" parts ${t})
+    list(GET parts 0 tname)
+    list(GET parts 1 tsrc)
+    add_executable(${tname}_tests tests/${tsrc}.cpp)
+    target_link_libraries(${tname}_tests PRIVATE clock)
+    set_target_properties(${tname}_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
+    add_test(NAME ${tname} COMMAND ${tname}_tests)
+endforeach()
