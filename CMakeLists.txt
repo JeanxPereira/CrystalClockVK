@@ -239,8 +239,7 @@ target_link_libraries(clock PUBLIC glm::glm)
 target_compile_definitions(clock PUBLIC GLM_FORCE_DEPTH_ZERO_TO_ONE)
 
 # clock pure-logic tests (math/geometry/projection — Vulkan-free).
-# Tasks 2-4 will append: clock_rotation:RotationBasisTest clock_projection:ProjectionFitTest clock_rodfield:RodFieldTest
-foreach(t clock_fixed124:Fixed124Test)
+foreach(t clock_fixed124:Fixed124Test clock_rotation:RotationBasisTest clock_projection:ProjectionFitTest clock_rodfield:RodFieldTest)
     string(REPLACE ":" ";" parts ${t})
     list(GET parts 0 tname)
     list(GET parts 1 tsrc)
