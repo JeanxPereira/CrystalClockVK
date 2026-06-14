@@ -70,7 +70,53 @@ rotated axis), from a per-rod ANGLE — which is NOT one of the struct fields re
 not `+0x140`). It is computed in the render loop (base + per-rod step) and/or a per-rod angle field.
 **Not yet isolated.**
 
-## Rebuild stance (honest)
+## ⭐ The rods ARE the clock dial (user insight, 2026-06-14)
+
+Confirmed live from the **"Ajuste do Relógio"** (clock-adjust) mode, which FREEZES the spin:
+- At time **00:00:00**, the **top (12 o'clock) rod becomes "filled"/bright** while the rest stay dim.
+  → the 16 rods are the **clock DIAL markers / pointers**, and a per-rod **fill/highlight state shows
+  the time** (not decoration). This is the functional meaning of the ring.
+- The `+0x150` flag (earlier called "front/back", render sub-pass selector) is therefore almost
+  certainly the **per-rod FILL/active state** driven by the current time (HYPOTHESIS — confirm by
+  reading `+0x150` of all 16 at a known time vs the highlighted rod).
+- FROZEN-mode rod screen origins (`+0x20`) are now **spread** on a small inner ring (~150 px radius)
+  around centre ~(1852, 2080) GS px — vs the spinning frame where they sampled near-centre. So the dial
+  layout is real; `+0x20` is the inner (centre) end of each bar, the bar sweeps outward to the dial.
+- Menu CUBES (left side of the screen) are a separate config-menu element (confirmed visually).
+
+## ⭐⭐ Patent-grounded model (US6693606 digest §2-4) — the framework I should have used first
+
+The patent (2nd embodiment = our clock) already describes ALL of this; the live RE just confirms it:
+- **Rods `306`** = transparent radial PRISMS, longitudinal axis pointing OUT = the clock **DIAL**.
+  Patent says **12** rods; live array measured **16** valid slots (reconcile — trace is authoritative
+  per the digest, but recheck: 12 dial + 4? or stride). They spin as a **group** AND each about its
+  **own axis** (S306-S308), rewriting all vertices per frame (= why positions/normals churn live).
+- **`306a` = the single COLORED rod = the HOUR** (which dial position is colored). At 00:00 → top/12.
+  This is the user's "rod fills as a pointer" — it's the patent's hour read-out.
+- **Minutes+seconds = the AMOUNT OF COLORING** along `306a` (a PARTIAL fill of a vertex RANGE; 100% at
+  0 m/s, decreasing to ~0 near rollover). The fill is per-VERTEX COLOR data, NOT a flag — so it is NOT
+  `+0x150` (that's front/back, 10/6 split) and NOT any single field. Analog read-out via colour range.
+- **AM = blue, PM = red** (matches the blue morning screenshots).
+- **Light spots `308`** = small points on tangled paths inside a central **wireframe sphere `310/312`**,
+  drawn with **after-image trails** (S312). → these ARE the `0x34c830` 8-element array (`FUN_002354c8`)
+  + the S-curve trails + the centre glow seen in the Visor. (Patent open Q: spot count — live = 8.)
+- **Order:** rods (refraction+bump, feedback loop) → light spots (additive after-image) → blur (post).
+
+### My over-reaches this session, seen through the patent
+- "8 rods" — no; 8 = the light spots (patent `308`). Rods are the dial (12/16).
+- "ring is in the `+0x140` normals" — no; `+0x140` is a surface normal. The dial angle = even radial
+  layout (a clock dial) + group/own-axis spin (patent S306-308), rewritten per frame.
+- "`+0x150` = fill" — no; fill = colour-vertex range on `306a` (patent S304-305). `+0x150` = front/back.
+All three were re-derived blind from memory instead of grounded in the patent digest I already had.
+
+## Rebuild stance (honest, patent-grounded)
+- Rods = **a radial prism dial** (evenly spaced; 12 or 16 — reconcile), each prism axis pointing out,
+  spinning as group + own-axis. ONE rod coloured = hour; partial colour fill = min/sec; AM blue/PM red.
+- Light spots = 8 points + trails inside a central sphere.
+- This is the model to build (geometry now well-understood); exact spin rates + even-spacing validate
+  against the reference + the live array.
+
+## (superseded) Rebuild stance
 
 - CONFIRMED for the rebuild: **16 rods, radiating from a shared centre** (centre → screen centre).
 - HYPOTHESIS to validate (not confirmed): the 16 bars are **evenly spaced (22.5° apart)** in the clock
