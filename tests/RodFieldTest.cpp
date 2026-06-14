@@ -1,6 +1,6 @@
-// RodField geometry. The rod array @ 0x00375250 is the geometry to reproduce.
-// rod0 world (+0x00/04/08) = (-13.039, 14.666, 50.271). Group A has 8 front rods
-// (rod-pipeline.md §Pass1: "i > 7 (group A skip)"); this chunk generates group A.
+// RodField = the 12-rod clock DIAL (US6693606 2nd embodiment: radial prism rods
+// are the clock face). 12 hour positions, evenly spaced; rod 0 at 12 o'clock
+// (+Y), going clockwise. (One rod coloured = hour; partial fill = min/sec — later.)
 
 #include <cstdio>
 #include <string>
@@ -16,37 +16,45 @@ void check(bool ok, const std::string& what) {
     if (!ok) { std::printf("  FAIL: %s\n", what.c_str()); g_fails++; }
 }
 bool near(float a, float b, float eps) { return std::fabs(a - b) <= eps; }
+bool nearVec(const ps2clock::Vec3& v, float x, float y, float z, float eps) {
+    return near(v.x, x, eps) && near(v.y, y, eps) && near(v.z, z, eps);
+}
 
 }  // namespace
 
 int main() {
     const ps2clock::RodField field = ps2clock::RodField::Generate();
 
-    // Group A is 8 front rods (rod-pipeline.md Pass1 skip condition i > 7).
-    check(field.rods.size() == 8, "group A has 8 rods");
+    // 12-hour clock dial.
+    check(field.rods.size() == 12, "dial has 12 rods");
 
-    // rod0 world position matches the live trace within 0.05 (capture precision).
-    const ps2clock::Rod& r0 = field.rods[0];
-    check(near(r0.world.x, -13.039f, 0.05f), "rod0 world X = -13.039");
-    check(near(r0.world.y, 14.666f, 0.05f), "rod0 world Y = 14.666");
-    check(near(r0.world.z, 50.271f, 0.05f), "rod0 world Z = 50.271");
+    // Clock layout: rod h points to hour h; 0 = 12 o'clock (up), clockwise.
+    check(nearVec(field.rods[0].direction, 0, 1, 0, 1e-5f), "rod 0 = 12 o'clock (+Y)");
+    check(nearVec(field.rods[3].direction, 1, 0, 0, 1e-5f), "rod 3 = 3 o'clock (+X)");
+    check(nearVec(field.rods[6].direction, 0, -1, 0, 1e-5f), "rod 6 = 6 o'clock (-Y)");
+    check(nearVec(field.rods[9].direction, -1, 0, 0, 1e-5f), "rod 9 = 9 o'clock (-X)");
 
-    // Default scale is unit (trace +0x10/+0x14 = 1.0).
-    check(near(r0.scale.x, 1.0f, 1e-4f) && near(r0.scale.y, 1.0f, 1e-4f), "rod0 unit scale");
-
-    // Rods sit on a ring: all share ~constant radius in XZ from a common center.
-    const float r0Radius = std::sqrt(r0.world.x * r0.world.x + r0.world.z * r0.world.z);
+    // Directions are unit, in the dial plane (Z=0), and evenly 30 deg apart.
+    const float cos30 = std::cos(30.0f * 3.14159265f / 180.0f);
     for (size_t i = 0; i < field.rods.size(); ++i) {
-        const ps2clock::Vec3& w = field.rods[i].world;
-        float rad = std::sqrt(w.x * w.x + w.z * w.z);
-        check(near(rad, r0Radius, 1.0f), "rod " + std::to_string(i) + " on ring radius");
+        const ps2clock::Vec3& d = field.rods[i].direction;
+        check(near(std::sqrt(d.x * d.x + d.y * d.y + d.z * d.z), 1.0f, 1e-5f),
+              "rod " + std::to_string(i) + " unit direction");
+        check(near(d.z, 0.0f, 1e-5f), "rod " + std::to_string(i) + " in dial plane");
+        const ps2clock::Vec3& n = field.rods[(i + 1) % field.rods.size()].direction;
+        check(near(d.x * n.x + d.y * n.y + d.z * n.z, cos30, 1e-4f),
+              "rod " + std::to_string(i) + " is 30deg from the next");
     }
 
-    // Flat-render mesh: each rod yields vertices + indices (non-empty).
+    // Each rod's centre sits at the mid radius along its direction.
+    const float midR = 0.5f * (field.params.innerRadius + field.params.outerRadius);
+    check(near(glm::length(field.rods[0].center), midR, 1e-4f), "rod centre at mid radius");
+
+    // Flat-render mesh: one quad bar per rod (4 verts, 6 indices each).
     const auto mesh = field.buildFlatMesh();
-    check(!mesh.vertices.empty(), "flat mesh has vertices");
-    check(!mesh.indices.empty(), "flat mesh has indices");
-    check(mesh.indices.size() % 3 == 0, "flat mesh indices are triangles");
+    check(mesh.vertices.size() == field.rods.size() * 4, "mesh = 4 verts/rod");
+    check(mesh.indices.size() == field.rods.size() * 6, "mesh = 6 indices/rod");
+    check(mesh.indices.size() % 3 == 0, "mesh indices are triangles");
 
     if (g_fails) { std::printf("rod field: %d FAILURES\n", g_fails); return 1; }
     std::printf("rod field: OK\n");

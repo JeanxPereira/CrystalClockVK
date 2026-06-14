@@ -5,26 +5,24 @@
 namespace ps2clock {
 
 namespace {
-constexpr int kGroupACount = 8;  // rod-pipeline.md Pass1 skip: i > 7
+constexpr float kPi = 3.14159265358979323846f;
 }
 
-RodField RodField::Generate() {
+RodField RodField::Generate(const DialParams& params) {
     RodField f;
-    f.rods.reserve(kGroupACount);
+    f.params = params;
+    f.rods.reserve(static_cast<size_t>(params.count));
 
-    // rod0 pinned to the live capture (runtime-trace.md).
-    const Vec3 rod0World(-13.039f, 14.666f, 50.271f);
-    const float centerY = rod0World.y;
-    const float radius = std::sqrt(rod0World.x * rod0World.x + rod0World.z * rod0World.z);
-    const float baseAngle = std::atan2(rod0World.z, rod0World.x);
-
-    for (int i = 0; i < kGroupACount; ++i) {
-        const float a = baseAngle + (float(i) * 2.0f * 3.14159265358979f / float(kGroupACount));
+    const float midRadius = 0.5f * (params.innerRadius + params.outerRadius);
+    for (int h = 0; h < params.count; ++h) {
+        // Clock layout: hour h at angle h*(2pi/count) measured CLOCKWISE from +Y.
+        // dir = (sin a, cos a, 0): h=0 -> (0,1,0)=up=12h; h=count/4 -> (1,0,0)=3h.
+        const float a = static_cast<float>(h) * (2.0f * kPi / static_cast<float>(params.count));
+        const Vec3 dir(std::sin(a), std::cos(a), 0.0f);
         Rod r;
-        r.world = (i == 0) ? rod0World
-                           : Vec3(radius * std::cos(a), centerY, radius * std::sin(a));
-        r.scale = Vec3(1, 1, 1);
-        r.angle = a;
+        r.hour = h;
+        r.direction = dir;
+        r.center = dir * midRadius;
         f.rods.push_back(r);
     }
     return f;
@@ -32,20 +30,20 @@ RodField RodField::Generate() {
 
 FlatMesh RodField::buildFlatMesh() const {
     FlatMesh m;
-    // A small upright quad per rod (two triangles), vertex-colored white.
-    // Geometry is placeholder for the flat sanity draw; the real rod prism mesh
-    // is built in a later chunk once projection is locked.
-    const float hw = 0.5f;   // half width
-    const float hh = 4.0f;   // half height
-    const Vec4 white(1, 1, 1, 1);
+    const Vec4 white(1.0f, 1.0f, 1.0f, 1.0f);
+    const float hw = 0.5f * params.rodWidth;
 
     for (const Rod& rod : rods) {
+        const Vec3& dir = rod.direction;
+        const Vec3 perp(-dir.y, dir.x, 0.0f);  // in-plane perpendicular to the bar axis
+        const Vec3 inner = dir * params.innerRadius;
+        const Vec3 outer = dir * params.outerRadius;
+
         const uint32_t base = static_cast<uint32_t>(m.vertices.size());
-        const Vec3& c = rod.world;
-        m.vertices.push_back({Vec3(c.x - hw, c.y - hh, c.z), white});
-        m.vertices.push_back({Vec3(c.x + hw, c.y - hh, c.z), white});
-        m.vertices.push_back({Vec3(c.x + hw, c.y + hh, c.z), white});
-        m.vertices.push_back({Vec3(c.x - hw, c.y + hh, c.z), white});
+        m.vertices.push_back({inner - perp * hw, white});  // 0 inner-left
+        m.vertices.push_back({inner + perp * hw, white});  // 1 inner-right
+        m.vertices.push_back({outer + perp * hw, white});  // 2 outer-right
+        m.vertices.push_back({outer - perp * hw, white});  // 3 outer-left
         m.indices.insert(m.indices.end(),
                          {base + 0, base + 1, base + 2, base + 0, base + 2, base + 3});
     }

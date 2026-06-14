@@ -33,37 +33,26 @@ int main(int argc, char** argv) {
         VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
         VMA_MEMORY_USAGE_GPU_ONLY);
 
-    // Fitted projection (rod0-locked). Maps world -> GS pixel space [0..2048].
-    // fov/near are provisional fit values (vu0-math-pipeline.md §Blocker 1).
-    ps2clock::ProjectionParams pp;
-    pp.fov = 1.047f;
-    pp.nearPlane = 1.0f;
-    pp.halfWidth = 512.0f;
-    const ps2clock::Mat4 proj = ps2clock::BuildProjectionMatrix(pp);
+    // Orthographic camera framing the 12-rod dial (XY plane, centred at origin).
+    // The dial (radius ~outerRadius) fills the 224px height; wide side margins match
+    // the 640x224 format (the real clock is centred). Vulkan NDC Y is down -> flip Y.
+    const float halfH = 8.0f;
+    const float halfW = halfH * (static_cast<float>(extent.width) / static_cast<float>(extent.height));
+    ps2clock::Mat4 mvp(1.0f);
+    mvp[0][0] = 1.0f / halfW;   // world X -> NDC X
+    mvp[1][1] = -1.0f / halfH;  // world +Y (up) -> NDC -Y (Vulkan down) so up stays up
+    mvp[2][2] = 1.0f;           // Z passthrough (depth test off in the flat pipeline)
 
-    // Normalize GS pixel space [0..2048] -> NDC [-1..1] for the render target.
-    // GLM column-major: m[col][row]. toNdc[0][0]=col0.x, toNdc[3][0]=col3.x.
-    ps2clock::Mat4 toNdc(1.0f);
-    toNdc[0][0] = 2.0f / 2048.0f;  // scale X
-    toNdc[3][0] = -1.0f;            // translate X: maps GS 0 -> NDC -1
-    toNdc[1][1] = 2.0f / 2048.0f;  // scale Y
-    toNdc[3][1] = -1.0f;            // translate Y: maps GS 0 -> NDC -1
-    const ps2clock::Mat4 mvp = toNdc * proj;
-
-    // ── Diagnostic: print screen + NDC position for each rod ──────────────────
+    // ── Diagnostic: print each rod's clock position + NDC of its centre ────────
     const ps2clock::RodField field = ps2clock::RodField::Generate();
-    std::fprintf(stderr, "=== Rod diagnostic (8 rods) ===\n");
-    std::fprintf(stderr, "  %-4s  %-10s %-10s %-10s  %-10s %-10s  %-8s %-8s\n",
-                 "rod", "world.x", "world.y", "world.z",
-                 "gs.x", "gs.y", "ndc.x", "ndc.y");
+    std::fprintf(stderr, "=== Rod diagnostic (%zu rods) ===\n", field.rods.size());
+    std::fprintf(stderr, "  %-4s %-6s  %-8s %-8s  %-8s %-8s\n",
+                 "rod", "hour", "dir.x", "dir.y", "ndc.x", "ndc.y");
     for (int i = 0; i < static_cast<int>(field.rods.size()); ++i) {
-        const ps2clock::Vec3& w = field.rods[i].world;
-        const glm::vec2 gs = ps2clock::ProjectWorldToScreen(proj, w);
-        // toNdc is a simple scale+translate: ndcX = gs.x * (2/2048) - 1
-        const float ndcX = gs.x * toNdc[0][0] + toNdc[3][0];
-        const float ndcY = gs.y * toNdc[1][1] + toNdc[3][1];
-        std::fprintf(stderr, "  %-4d  %10.3f %10.3f %10.3f  %10.3f %10.3f  %8.4f %8.4f\n",
-                     i, w.x, w.y, w.z, gs.x, gs.y, ndcX, ndcY);
+        const ps2clock::Rod& r = field.rods[i];
+        const ps2clock::Vec4 clip = mvp * ps2clock::Vec4(r.center, 1.0f);
+        std::fprintf(stderr, "  %-4d %-6d  %8.3f %8.3f  %8.4f %8.4f\n",
+                     i, r.hour, r.direction.x, r.direction.y, clip.x, clip.y);
     }
     std::fprintf(stderr, "===============================\n");
 
