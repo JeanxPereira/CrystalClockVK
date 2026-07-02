@@ -38,7 +38,7 @@ private:
     struct GpuVertex {
         float pos[3];
         uint8_t color[4];
-        float uv[2];
+        float uvq[3];  // (S, T, Q): shader divides per pixel; UV paths carry Q=1
     };
     struct Draw {
         uint32_t firstVertex;
@@ -81,7 +81,8 @@ private:
     VkImageLayout m_seedLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     VkDescriptorSet m_vramReadSet = VK_NULL_HANDLE;
 
-    VkSampler m_sampler = VK_NULL_HANDLE;
+    VkSampler m_sampler = VK_NULL_HANDLE;        // CLAMP_TO_EDGE (VRAM/white)
+    VkSampler m_samplerRepeat = VK_NULL_HANDLE;  // REPEAT (resident: all WMS/WMT=0)
     std::vector<AllocatedImage> m_textures;
     std::vector<VkDescriptorSet> m_textureSets;
     std::vector<uint32_t> m_textureKeys;

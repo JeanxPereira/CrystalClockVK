@@ -3,7 +3,8 @@
 // GS fragment: texture MODULATE + dual-source blend factor (SRC1 = As/128) +
 // alpha test (shader discard, since GS alpha-test has no VK fixed-function form).
 layout(location = 0) in vec4 vColor;
-layout(location = 1) in vec2 vUV;
+layout(location = 1) in vec3 vUVQ;  // (S, T, Q): GS divides per pixel (S,T,Q
+                                    // interpolate linearly in screen space)
 
 layout(location = 0, index = 0) out vec4 outColor;  // src color (Cs)
 layout(location = 0, index = 1) out vec4 outBlend;  // SRC1 factor = As/128 per channel
@@ -27,7 +28,7 @@ const float GS = 255.0 / 128.0;
 void main() {
     vec4 c = vColor;
     if (pc.textured == 1) {
-        vec4 t = texture(tex, vUV);
+        vec4 t = texture(tex, vUVQ.xy / vUVQ.z);
         // PSMCT24 has no stored alpha: the GS texture read expands it via TEXA
         // (Expand24To32). AEM=1 makes black texels transparent. Applied after the
         // bilinear fetch (PCSX2 expands per-texel pre-filter; close enough here).

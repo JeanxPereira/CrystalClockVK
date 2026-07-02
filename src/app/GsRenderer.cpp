@@ -97,6 +97,11 @@ void GsRenderer::init(const VulkanContext& ctx, ResourceManager& res, const GsSc
     si.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
     si.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
     vkCreateSampler(device, &si, nullptr, &m_sampler);
+    // Resident textures: every clock draw uses CLAMP WMS/WMT=0 (REPEAT) — the
+    // tunnel background tiles its 128x128 texture ~3x via STQ.
+    si.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    si.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    vkCreateSampler(device, &si, nullptr, &m_samplerRepeat);
 
     VkDescriptorSetLayoutBinding b{};
     b.binding = 0;
@@ -157,17 +162,17 @@ void GsRenderer::init(const VulkanContext& ctx, ResourceManager& res, const GsSc
     // --- descriptor sets ---
     m_descAlloc.init(device, uint32_t(m_textures.size()) + 3,
         {{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1.0f}});
-    auto makeSet = [&](VkImageView view) {
+    auto makeSet = [&](VkImageView view, VkSampler sampler) {
         VkDescriptorSet set = m_descAlloc.allocate(m_setLayout);
         DescriptorWriter w;
-        w.writeImage(0, view, m_sampler, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        w.writeImage(0, view, sampler, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                      VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
         w.updateSet(device, set);
         return set;
     };
-    for (auto& t : m_textures) m_textureSets.push_back(makeSet(t.imageView));
-    m_whiteSet = makeSet(m_white.imageView);
-    m_vramReadSet = makeSet(m_vramRead.imageView);
+    for (auto& t : m_textures) m_textureSets.push_back(makeSet(t.imageView, m_samplerRepeat));
+    m_whiteSet = makeSet(m_white.imageView, m_sampler);
+    m_vramReadSet = makeSet(m_vramRead.imageView, m_sampler);
 
     // --- shaders + layout + pipelines ---
     m_vert = ShaderLoader::loadModule(device, findShader("gsclock.vert.spv"));
@@ -185,7 +190,7 @@ void GsRenderer::init(const VulkanContext& ctx, ResourceManager& res, const GsSc
     std::vector<VkVertexInputAttributeDescription> attrs = {
         {0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(GpuVertex, pos)},
         {1, 0, VK_FORMAT_R8G8B8A8_UNORM, offsetof(GpuVertex, color)},
-        {2, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(GpuVertex, uv)}};
+        {2, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(GpuVertex, uvq)}};
     auto buildPipeline = [&](const gsvk::GsBlendRecipe& blend, const gsvk::GsDepthState& depth,
                              bool lines) {
         VkPipelineColorBlendAttachmentState bs{};
@@ -248,23 +253,27 @@ void GsRenderer::init(const VulkanContext& ctx, ResourceManager& res, const GsSc
             g.pos[1] = (dstRow + v.y) * 2.0f / float(kVramH) - 1.0f;
             g.pos[2] = float(v.z) / 4294967295.0f;
             g.color[0] = v.r; g.color[1] = v.g; g.color[2] = v.b; g.color[3] = v.a;
-            // STQ is perspective-mapped: texel = (S/Q, T/Q) * (2^TW, 2^TH).
             const float q = (v.q != 0.0f) ? v.q : 1.0f;
+            g.uvq[2] = 1.0f;
             if (feedback) {            // sample the VRAM image (framebuffer feedback)
-                // GS default CLAMP is REPEAT: texel coords wrap at 2^TW x 2^TH.
+                // Texel coords wrap (REPEAT) or clamp per the draw's CLAMP mode.
                 // The clock's refraction passes bake a +256 v offset into the UVs
-                // (TH=8), so the wrapped v lands back inside the source
+                // (TH=8): the REPEAT wrap lands back inside the source
                 // framebuffer band — 210<->280 ping-pong, never the glyph atlas.
                 // No draw crosses a wrap boundary (verified on clock_viewer.gs),
                 // so per-vertex wrapping is exact.
-                const float u = std::fmod(p.prim.fst ? v.u : (v.s / q) * texW, texW);
-                const float vv = std::fmod(p.prim.fst ? v.v : (v.t / q) * texH, texH);
-                g.uv[0] = u / float(kVramW);
-                g.uv[1] = (texRow + vv) / float(kVramH);
+                float u = p.prim.fst ? v.u : (v.s / q) * texW;
+                float vv = p.prim.fst ? v.v : (v.t / q) * texH;
+                u = (p.clamp.wms == 1) ? std::clamp(u, 0.0f, texW) : std::fmod(u, texW);
+                vv = (p.clamp.wmt == 1) ? std::clamp(vv, 0.0f, texH) : std::fmod(vv, texH);
+                g.uvq[0] = u / float(kVramW);
+                g.uvq[1] = (texRow + vv) / float(kVramH);
             } else if (p.prim.fst) {   // resident UV
-                g.uv[0] = v.u / texW; g.uv[1] = v.v / texH;
-            } else {                   // resident STQ
-                g.uv[0] = v.s / q; g.uv[1] = v.t / q;
+                g.uvq[0] = v.u / texW; g.uvq[1] = v.v / texH;
+            } else {                   // resident STQ: GS divides per pixel —
+                // S,T,Q interpolate linearly in screen space, the shader does
+                // S/Q (normalized: texel = (S/Q)*2^TW over a 2^TW-wide image).
+                g.uvq[0] = v.s; g.uvq[1] = v.t; g.uvq[2] = q;
             }
             return g;
         };
@@ -463,5 +472,6 @@ void GsRenderer::destroy(const VulkanContext& ctx, ResourceManager& res) {
     if (m_vert) vkDestroyShaderModule(device, m_vert, nullptr);
     if (m_frag) vkDestroyShaderModule(device, m_frag, nullptr);
     if (m_sampler) vkDestroySampler(device, m_sampler, nullptr);
+    if (m_samplerRepeat) vkDestroySampler(device, m_samplerRepeat, nullptr);
     m_descAlloc.destroy();
 }
