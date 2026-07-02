@@ -132,6 +132,17 @@ GsZbuf decZbuf(uint64_t v) {
     z.zmsk = hi32(v) & 1;
     return z;
 }
+// CLAMP: WMS 0-1, WMT 2-3, MINU 4-13, MAXU 14-23, MINV 24-33, MAXV 34-43.
+GsClamp decClamp(uint64_t v) {
+    GsClamp c{};
+    c.wms = v & 3;
+    c.wmt = (v >> 2) & 3;
+    c.minu = (v >> 4) & 0x3ff;
+    c.maxu = (v >> 14) & 0x3ff;
+    c.minv = (v >> 24) & 0x3ff;
+    c.maxv = (v >> 34) & 0x3ff;
+    return c;
+}
 GsScissor decScissor(uint64_t v) {
     uint32_t l = lo32(v), h = hi32(v);
     return {static_cast<uint16_t>(l & 0x7ff), static_cast<uint16_t>((l >> 16) & 0x7ff),
@@ -142,6 +153,7 @@ GsXyOffset decXyOffset(uint64_t v) { return {lo32(v), hi32(v)}; }
 // GIF A+D register addresses (GSRegs.h enum GIF_A_D_REG).
 enum : uint8_t {
     REG_TEX0_1 = 0x06, REG_TEX0_2 = 0x07,
+    REG_CLAMP_1 = 0x08, REG_CLAMP_2 = 0x09,
     REG_TEX1_1 = 0x14, REG_TEX1_2 = 0x15,
     REG_XYOFFSET_1 = 0x18, REG_XYOFFSET_2 = 0x19,
     REG_SCISSOR_1 = 0x40, REG_SCISSOR_2 = 0x41,
@@ -205,6 +217,7 @@ GsCommandStream GsDumpParser::parse(const uint8_t* data, size_t size) {
         pr.texa = decTexa(gsState[REG_TEXA]);  // TEXA is not context-banked
         pr.tex0 = decTex0(gsState[pick(REG_TEX0_1, REG_TEX0_2)]);
         pr.tex1 = decTex1(gsState[pick(REG_TEX1_1, REG_TEX1_2)]);
+        pr.clamp = decClamp(gsState[pick(REG_CLAMP_1, REG_CLAMP_2)]);
         pr.frame = decFrame(gsState[pick(REG_FRAME_1, REG_FRAME_2)]);
         pr.zbuf = decZbuf(gsState[pick(REG_ZBUF_1, REG_ZBUF_2)]);
         pr.scissor = decScissor(gsState[pick(REG_SCISSOR_1, REG_SCISSOR_2)]);
@@ -253,6 +266,21 @@ GsCommandStream GsDumpParser::parse(const uint8_t* data, size_t size) {
         out.counts.kicks++;
     };
 
+    // REGLIST descriptor: one 64-bit value (GIFReg* layout). Also the semantics
+    // of an A+D write to a vertex-path register (addr <= 0x05).
+    auto handleReglist = [&](uint8_t desc, uint64_t val) {
+        const uint32_t lo = static_cast<uint32_t>(val), hi = static_cast<uint32_t>(val >> 32);
+        switch (desc) {
+            case 0x00: setPrim(lo & 0x7ff); break;
+            case 0x01: curColor = {uint8_t(lo & 0xff), uint8_t((lo >> 8) & 0xff), uint8_t((lo >> 16) & 0xff), uint8_t((lo >> 24) & 0xff)}; curQ = std::bit_cast<float>(hi); break;
+            case 0x02: curST = {std::bit_cast<float>(lo), std::bit_cast<float>(hi), true}; break;
+            case 0x03: curUV = {(lo & 0x3fff) / 16.0f, ((lo >> 16) & 0x3fff) / 16.0f, true}; break;
+            case 0x04: emitVertex(lo & 0xffff, (lo >> 16) & 0xffff, hi & 0xffffff, true, uint8_t((hi >> 24) & 0xff)); break;
+            case 0x05: emitVertex(lo & 0xffff, (lo >> 16) & 0xffff, hi, false, 0); break;
+            case 0x0f: break;  // NOP
+            default: gsState[desc] = val; break;  // setup register (TEX0=6, CLAMP=8, ...)
+        }
+    };
     // PACKED descriptor unit (GIFPacked* 128-bit layouts).
     auto handlePacked = [&](uint8_t desc, const uint8_t* o) {
         const uint32_t w0 = rdU32(o), w1 = rdU32(o + 4), w2 = rdU32(o + 8), w3 = rdU32(o + 12);
@@ -266,25 +294,15 @@ GsCommandStream GsDumpParser::parse(const uint8_t* data, size_t size) {
             case 0x0e: {  // A+D: value = low qword, addr at byte 8
                 const uint8_t addr = o[8];
                 const uint64_t val = rdU64(o);
-                gsState[addr] = val;
-                if (addr == 0x00) setPrim(static_cast<uint32_t>(val & 0x7ff));
+                // A+D to a vertex-path register (PRIM/RGBAQ/ST/UV/XYZF2/XYZ2)
+                // behaves like the REGLIST write: kicks vertices, updates the
+                // color/texcoord latches. The clock stream has 24 XYZ2 + 12
+                // RGBAQ + 12 PRIM writes via A+D.
+                if (addr <= 0x05) handleReglist(addr, val);
+                else gsState[addr] = val;
                 break;
             }
             default: break;
-        }
-    };
-    // REGLIST descriptor: one 64-bit value (GIFReg* layout).
-    auto handleReglist = [&](uint8_t desc, uint64_t val) {
-        const uint32_t lo = static_cast<uint32_t>(val), hi = static_cast<uint32_t>(val >> 32);
-        switch (desc) {
-            case 0x00: setPrim(lo & 0x7ff); break;
-            case 0x01: curColor = {uint8_t(lo & 0xff), uint8_t((lo >> 8) & 0xff), uint8_t((lo >> 16) & 0xff), uint8_t((lo >> 24) & 0xff)}; curQ = std::bit_cast<float>(hi); break;
-            case 0x02: curST = {std::bit_cast<float>(lo), std::bit_cast<float>(hi), true}; break;
-            case 0x03: curUV = {(lo & 0x3fff) / 16.0f, ((lo >> 16) & 0x3fff) / 16.0f, true}; break;
-            case 0x04: emitVertex(lo & 0xffff, (lo >> 16) & 0xffff, hi & 0xffffff, true, uint8_t((hi >> 24) & 0xff)); break;
-            case 0x05: emitVertex(lo & 0xffff, (lo >> 16) & 0xffff, hi, false, 0); break;
-            case 0x0f: break;  // NOP
-            default: gsState[desc] = val; break;  // setup register (TEX0=6, CLAMP=8, ...)
         }
     };
 

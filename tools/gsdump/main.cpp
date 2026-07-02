@@ -73,6 +73,9 @@ void writeJson(const GsCommandStream& s, const std::string& path) {
           << ",\"AREF\":" << int(p.test.aref) << ",\"ZTST\":" << int(p.test.ztst) << "}"
           << ",\"TEX0\":{\"TBP0\":" << p.tex0.tbp0 << ",\"TBW\":" << p.tex0.tbw
           << ",\"PSM\":" << int(p.tex0.psm) << ",\"TW\":" << p.tex0.tw << ",\"TH\":" << p.tex0.th << "}"
+          << ",\"CLAMP\":{\"WMS\":" << int(p.clamp.wms) << ",\"WMT\":" << int(p.clamp.wmt)
+          << ",\"MINU\":" << p.clamp.minu << ",\"MAXU\":" << p.clamp.maxu
+          << ",\"MINV\":" << p.clamp.minv << ",\"MAXV\":" << p.clamp.maxv << "}"
           << ",\"FRAME\":{\"FBP\":" << p.frame.fbp << ",\"FBW\":" << int(p.frame.fbw)
           << ",\"PSM\":" << int(p.frame.psm) << "}"
           << ",\"DTHE\":" << p.dthe << ",\"COLCLAMP\":" << p.colclamp
@@ -99,8 +102,10 @@ int verifyClock(const GsCommandStream& s) {
         if (!ok) { std::printf("  FAIL: %s\n", what); fails++; }
     };
     check(s.header.serial == "20080220-175343", "serial");
-    check(s.counts.draws == 3936, "3936 draws");
-    check(s.counts.kicks == 21200, "21200 verts");
+    // 3948/21224 after A+D vertex-path handling (12 sprites arrive via A+D
+    // PRIM/RGBAQ/XYZ2 writes; the pre-A+D totals were 3936/21200).
+    check(s.counts.draws == 3948, "3948 draws");
+    check(s.counts.kicks == 21224, "21224 verts");
     std::map<int, int> blend;  // distinct (A,B,C,D) blends seen
     uint64_t vtotal = 0;
     for (const auto& p : s.prims) {

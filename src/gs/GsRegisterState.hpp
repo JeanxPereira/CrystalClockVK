@@ -52,6 +52,15 @@ struct GsTex0 {
     uint8_t cld;     // CLUT buffer load control
 };
 
+// GS CLAMP register: texture wrap modes.
+// WMS/WMT: 0=REPEAT 1=CLAMP 2=REGION_CLAMP 3=REGION_REPEAT
+struct GsClamp {
+    uint8_t wms;
+    uint8_t wmt;
+    uint16_t minu, maxu;  // REGION_CLAMP bounds / REGION_REPEAT mask|fix (U)
+    uint16_t minv, maxv;  // REGION_CLAMP bounds / REGION_REPEAT mask|fix (V)
+};
+
 // GS TEST register: pixel test configuration
 struct GsTest {
     bool ate;         // Alpha test enable

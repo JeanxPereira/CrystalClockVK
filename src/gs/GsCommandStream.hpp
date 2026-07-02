@@ -60,6 +60,7 @@ struct GsPrimitive {
     GsTexa texa;
     GsTex0 tex0;
     GsTex1 tex1;
+    GsClamp clamp;
     GsFrame frame;
     GsZbuf zbuf;
     GsScissor scissor;

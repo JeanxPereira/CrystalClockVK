@@ -91,13 +91,25 @@ int main() {
     putU64(gif, uint64_t(std::bit_cast<uint32_t>(0.25f)) << 32 | 0x04030201u);
     putU64(gif, (uint64_t(0) << 32) | (100u << 16) | 100u);
 
+    // Group 4: CLAMP_1 via A+D (WMS=1 CLAMP, WMT=3 REGION_REPEAT,
+    // MINU=5 MAXU=100, MINV=255 MAXV=63), then a kick.
+    putGifTag(gif, 2, primStq, 0, 1, 0xe);  // PACKED, reg: A+D, nloop=2
+    const uint64_t clampVal = 1ull | (3ull << 2) | (5ull << 4) | (100ull << 14)
+                            | (255ull << 24) | (63ull << 34);
+    putU64(gif, clampVal); gif.push_back(0x08);              // addr = CLAMP_1
+    for (int i = 0; i < 7; i++) gif.push_back(0);
+    putU64(gif, (uint64_t(0) << 32) | (100u << 16) | 100u);  // XYZ2 kick
+    gif.push_back(0x05);
+    for (int i = 0; i < 7; i++) gif.push_back(0);
+
     const std::vector<uint8_t> dump = buildDump(gif);
     const GsCommandStream s = GsDumpParser::parse(dump.data(), dump.size());
 
-    check(s.prims.size() == 4, "4 draw groups parsed, got " + std::to_string(s.prims.size()));
-    if (s.prims.size() != 4 ||
+    check(s.prims.size() == 5, "5 draw groups parsed, got " + std::to_string(s.prims.size()));
+    if (s.prims.size() != 5 ||
         s.prims[0].verts.size() != 1 || s.prims[1].verts.size() != 1 ||
-        s.prims[2].verts.size() != 1 || s.prims[3].verts.size() != 1) {
+        s.prims[2].verts.size() != 1 || s.prims[3].verts.size() != 1 ||
+        s.prims[4].verts.size() != 1) {
         std::printf("FAILED (bad group/vertex structure)\n");
         return 1;
     }
@@ -111,6 +123,14 @@ int main() {
     check(near(s.prims[2].verts[0].q, 0.05f), "ST without RGBAQ keeps old Q");
 
     check(near(s.prims[3].verts[0].q, 0.25f), "REGLIST RGBAQ Q from bits 32-63");
+
+    check(s.prims[3].clamp.wms == 0 && s.prims[3].clamp.wmt == 0,
+          "CLAMP resets to REPEAT/REPEAT");
+    const GsClamp& c4 = s.prims[4].clamp;
+    check(c4.wms == 1, "CLAMP WMS");
+    check(c4.wmt == 3, "CLAMP WMT");
+    check(c4.minu == 5 && c4.maxu == 100, "CLAMP MINU/MAXU");
+    check(c4.minv == 255 && c4.maxv == 63, "CLAMP MINV/MAXV");
 
     if (g_fails) {
         std::printf("FAILED (%d)\n", g_fails);
