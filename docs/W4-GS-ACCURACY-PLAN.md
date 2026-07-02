@@ -80,6 +80,24 @@ CPU (per-run readback + re-swizzle, render once & cache — simpler, slower, fin
 a static dump). First verifiable step either way: a deswizzle that matches
 `tools/vramdump` output, then wire write-back into the replay.
 
+## Progress 2026-07-02 — exactness pass (pixel-diff gated)
+Baseline mean abs err R43/G52/B62 (79.1% pixels >16) → **R18/G20/B20 (63.8%)**.
+Root causes found by dump inspection (gsdump + per-draw JSON), fixed in order:
+1. **RGBAQ.Q was never parsed** → rod STQ faces sampled one texel. PACKED ST
+   dword2 = temp Q, latched by PACKED RGBAQ; REGLIST RGBAQ bits 32-63.
+2. **Feedback UV wrap (REPEAT)**: refraction UVs bake +256 in v (TH=8); the wrap
+   lands back in the source framebuffer band — the clock is a 210↔280 ping-pong,
+   NEVER self-feedback. Unwrapped v read the glyph atlas = colorful rod noise.
+3. **Z-buffer missing**: ZBP=140 ZMSK=0 on all 3936 draws; 1584 GEQUAL + 200
+   GREATER. Now a D32 plane over the VRAM image (clear 0, GS larger=nearer).
+4. **FIX blend constants** were the VK zero default → 96 draws were no-ops.
+5. **LINE_STRIP** (56 draws) = the orb swirl lines; were skipped entirely.
+6. **Framebuffer alpha**: shader wrote A=1.0; GS stores fragment alpha and the
+   feedback MODULATE depends on it (compose weight doubled → washed-out bg).
+Remaining known gaps: PSMT8/PSMT4 CLUT glyphs (text = gray blocks), bg mottle
+texture strength, right-side light wedge, GS integer alpha semantics (the
+exact At*Av>>7 chain overshoots in float — needs the 0..255 int model).
+
 ## Task order
 1. Pixel-diff harness (render→PNG→compare to the `.png`). The measurement gate.
 2. Texture read: `bufferWidth` swizzle + PSMCT24(+TEXA). Re-verify assets via vramdump.
