@@ -31,6 +31,7 @@ int main(int argc, char** argv) {
     const int H = std::atoi(argv[5]);
     const std::string out = argc > 6 ? argv[6] : "vram.rgba";
     const int stride = argc > 7 ? std::atoi(argv[7]) : W;
+    const bool psmt8 = argc > 8 && std::string(argv[8]) == "psmt8";
 
     std::ifstream in(path, std::ios::binary | std::ios::ate);
     if (!in) { std::fprintf(stderr, "cannot open %s\n", path.c_str()); return 1; }
@@ -55,8 +56,16 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    const std::vector<uint8_t> rgba =
-        SwizzleEngine::deswizzle(s.freeze.data() + start, W, H, stride, GsPixelFormat::PSMCT32, nullptr);
+    // PSMT8 view: grayscale identity CLUT (index -> gray), for font/indexed data.
+    std::vector<uint8_t> grayClut(256 * 4);
+    for (int i = 0; i < 256; i++) {
+        grayClut[i * 4] = grayClut[i * 4 + 1] = grayClut[i * 4 + 2] = uint8_t(i);
+        grayClut[i * 4 + 3] = 255;
+    }
+    const std::vector<uint8_t> rgba = SwizzleEngine::deswizzle(
+        s.freeze.data() + start, W, H, stride,
+        psmt8 ? GsPixelFormat::PSMT8 : GsPixelFormat::PSMCT32,
+        psmt8 ? grayClut.data() : nullptr);
 
     std::ofstream o(out, std::ios::binary);
     o.write(reinterpret_cast<const char*>(rgba.data()), rgba.size());
