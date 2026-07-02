@@ -14,8 +14,11 @@
 
 namespace {
 
-// GS savestate v9: 4MB VRAM (m_vm8) starts here in the freeze (tools/vramdump).
-constexpr size_t kVramFreezeOffset = 433;
+// GS savestate v9: 4MB VRAM (m_vm8) starts here in the freeze. 425, NOT 433:
+// derived from an external oracle — PCSX2's own texture dump of the button
+// glyphs (TBP0=11968) matches our deswizzle 2048/2048 pixels at 425 and is
+// uniformly shifted by 2 words at 433.
+constexpr size_t kVramFreezeOffset = 425;
 // VRAM modeled as a 640-wide linear image; framebuffers are row-regions of it.
 constexpr uint32_t kVramW = 640;
 constexpr uint32_t kVramH = 1408;  // covers FBP 0/70/210/280 + feedback rows
@@ -130,11 +133,35 @@ void GsRenderer::init(const VulkanContext& ctx, ResourceManager& res, const GsSc
     }
 
     // --- resident (non-framebuffer) textures, PSMCT32/24, swizzle by TBW*64 ---
+    // TEX0 TW/TH can LIE: the Visor icon/glyph sprites declare 64x64 but their
+    // FST=1 UVs reach v~440 — the font strip lives BELOW the declared texture
+    // in VRAM. PCSX2's HW renderer (the reference frames) resolves this by
+    // sourcing the rect the UVs actually cover, so decode an EXPANDED image
+    // when UV-addressed draws exceed the declared size. STQ draws keep the
+    // declared size + REPEAT (the tunnel background genuinely tiles).
+    std::vector<float> uvMaxU, uvMaxV;  // per-texture, indexed like m_textures
+    auto uvBoundsFor = [&](uint32_t tbp0) {
+        float mu = 0.0f, mv = 0.0f;
+        for (size_t i = 0; i < prims.size(); i++) {
+            if (!recipes[i].textured || prims[i].tex0.tbp0 != tbp0 || !prims[i].prim.fst) continue;
+            for (const auto& v : prims[i].verts) {
+                mu = std::max<float>(mu, v.u);
+                mv = std::max<float>(mv, v.v);
+            }
+        }
+        return std::pair<float, float>(mu, mv);
+    };
     auto decodeTexture = [&](uint32_t tbp0, uint32_t tw, uint32_t th, uint32_t tbw, uint32_t psm,
                              const GsTexa& texa) {
-        const int w = 1 << tw, h = 1 << th;
+        int w = 1 << tw, h = 1 << th;
+        const auto [mu, mv] = uvBoundsFor(tbp0);
+        w = std::max<int>(w, int(std::ceil(mu)));
+        h = std::max<int>(h, int(std::ceil(mv)));
         const int stride = int(tbw) * 64;
         const size_t base = kVramFreezeOffset + size_t(tbp0) * 256;
+        // Clamp height to the end of the 4MB VRAM.
+        const size_t vramLeft = (4u << 20) - size_t(tbp0) * 256;
+        h = std::min<int>(h, int(vramLeft / (size_t(stride) * 4)));
         const GsPixelFormat fmt = (psm == 1) ? GsPixelFormat::PSMCT24 : GsPixelFormat::PSMCT32;
         // PSMCT24 is the GS texture read: expand alpha via TEXA (Expand24To32).
         std::vector<uint8_t> rgba = SwizzleEngine::deswizzle(m_freeze + base, w, h, stride, fmt, nullptr, texa);
@@ -143,6 +170,8 @@ void GsRenderer::init(const VulkanContext& ctx, ResourceManager& res, const GsSc
         res.uploadToImage(img, rgba.data(), {uint32_t(w), uint32_t(h)}, VK_FORMAT_R8G8B8A8_UNORM);
         m_textures.push_back(img);
         m_textureKeys.push_back(tbp0);
+        uvMaxU.push_back(float(w));
+        uvMaxV.push_back(float(h));
     };
     for (size_t i = 0; i < prims.size(); i++) {
         if (prims[i].prim.type != 4 && prims[i].prim.type != 6) continue;
@@ -236,6 +265,7 @@ void GsRenderer::init(const VulkanContext& ctx, ResourceManager& res, const GsSc
         int texIdx = -1;
         bool feedback = false;
         float texW = 1.0f, texH = 1.0f, texRow = 0.0f;
+        float stqU = 1.0f, stqV = 1.0f;  // STQ texel scale relative to decoded dims
         if (r.textured && (p.tex0.psm == 0 || p.tex0.psm == 1)) {
             texW = float(1 << p.tex0.tw);
             texH = float(1 << p.tex0.th);
@@ -244,6 +274,14 @@ void GsRenderer::init(const VulkanContext& ctx, ResourceManager& res, const GsSc
                 texRow = float(fbRow(p.tex0.tbp0 / 32));
             } else {
                 texIdx = textureIndexFor(p.tex0.tbp0);
+                if (texIdx >= 0) {
+                    // Decoded image may be larger than the declared 2^TW x 2^TH
+                    // (UV-expanded); normalize against the real dimensions.
+                    stqU = texW / uvMaxU[texIdx];
+                    stqV = texH / uvMaxV[texIdx];
+                    texW = uvMaxU[texIdx];
+                    texH = uvMaxV[texIdx];
+                }
             }
         }
 
@@ -268,12 +306,13 @@ void GsRenderer::init(const VulkanContext& ctx, ResourceManager& res, const GsSc
                 vv = (p.clamp.wmt == 1) ? std::clamp(vv, 0.0f, texH) : std::fmod(vv, texH);
                 g.uvq[0] = u / float(kVramW);
                 g.uvq[1] = (texRow + vv) / float(kVramH);
-            } else if (p.prim.fst) {   // resident UV
+            } else if (p.prim.fst) {   // resident UV (normalized to decoded dims)
                 g.uvq[0] = v.u / texW; g.uvq[1] = v.v / texH;
             } else {                   // resident STQ: GS divides per pixel —
                 // S,T,Q interpolate linearly in screen space, the shader does
-                // S/Q (normalized: texel = (S/Q)*2^TW over a 2^TW-wide image).
-                g.uvq[0] = v.s; g.uvq[1] = v.t; g.uvq[2] = q;
+                // S/Q. stqU/V rescale declared-texel space onto the (possibly
+                // UV-expanded) decoded image; premultiplying S keeps it linear.
+                g.uvq[0] = v.s * stqU; g.uvq[1] = v.t * stqV; g.uvq[2] = q;
             }
             return g;
         };

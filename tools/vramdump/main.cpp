@@ -2,9 +2,11 @@
 // The freeze holds the 4MB GS local memory; this decodes a PSMCT32 region
 // (framebuffer or texture) so it can be viewed/validated before wiring textures.
 //
-// Usage: vramdump <dump.gs> <vramOffset> <vramByteBase> <W> <H> [out.rgba]
+// Usage: vramdump <dump.gs> <vramOffset> <vramByteBase> <W> <H> [out.rgba] [stridePx]
 //   vramOffset   = byte offset of the 4MB VRAM block within the freeze
 //   vramByteBase = byte offset of the region inside VRAM (TBP0*256 / FBP*8192)
+//   stridePx     = GS buffer width TBW*64 (defaults to W); lets W exceed the
+//                  stride to view u-overflow reads (pages spill downward)
 
 #include <cstdint>
 #include <cstdio>
@@ -28,6 +30,7 @@ int main(int argc, char** argv) {
     const int W = std::atoi(argv[4]);
     const int H = std::atoi(argv[5]);
     const std::string out = argc > 6 ? argv[6] : "vram.rgba";
+    const int stride = argc > 7 ? std::atoi(argv[7]) : W;
 
     std::ifstream in(path, std::ios::binary | std::ios::ate);
     if (!in) { std::fprintf(stderr, "cannot open %s\n", path.c_str()); return 1; }
@@ -44,7 +47,7 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    const size_t need = static_cast<size_t>(W) * H * 4;  // PSMCT32 source bytes
+    const size_t need = static_cast<size_t>(W) * H * 8;  // upper bound incl. page spill
     const size_t start = static_cast<size_t>(vramOffset) + static_cast<size_t>(byteBase);
     if (start + need > s.freeze.size()) {
         std::fprintf(stderr, "out of range: freeze=%zu start=%zu need=%zu\n",
@@ -53,7 +56,7 @@ int main(int argc, char** argv) {
     }
 
     const std::vector<uint8_t> rgba =
-        SwizzleEngine::deswizzle(s.freeze.data() + start, W, H, W, GsPixelFormat::PSMCT32, nullptr);
+        SwizzleEngine::deswizzle(s.freeze.data() + start, W, H, stride, GsPixelFormat::PSMCT32, nullptr);
 
     std::ofstream o(out, std::ios::binary);
     o.write(reinterpret_cast<const char*>(rgba.data()), rgba.size());
