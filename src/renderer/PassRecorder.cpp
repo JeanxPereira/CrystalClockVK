@@ -10,7 +10,9 @@ void PassRecorder::transitionImage(VkImage image, VkImageLayout oldLayout, VkIma
     barrier.oldLayout = oldLayout;
     barrier.newLayout = newLayout;
     barrier.image = image;
-    barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    const bool depth = newLayout == VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL ||
+                       oldLayout == VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+    barrier.subresourceRange.aspectMask = depth ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
     barrier.subresourceRange.baseMipLevel = 0;
     barrier.subresourceRange.levelCount = 1;
     barrier.subresourceRange.baseArrayLayer = 0;
@@ -44,7 +46,8 @@ void PassRecorder::beginRendering(VkImageView colorAttachment, VkExtent2D extent
 }
 
 void PassRecorder::beginRendering(VkImageView colorAttachment, VkImageView depthAttachment,
-                                   VkExtent2D extent, VkClearValue* clearValue, VkImageLayout layout) {
+                                   VkExtent2D extent, VkClearValue* clearValue, VkImageLayout layout,
+                                   VkAttachmentLoadOp depthLoadOp, float depthClearValue, bool depthStore) {
     VkRenderingAttachmentInfo colorInfo{};
     colorInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
     colorInfo.imageView = colorAttachment;
@@ -57,9 +60,9 @@ void PassRecorder::beginRendering(VkImageView colorAttachment, VkImageView depth
     depthInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
     depthInfo.imageView = depthAttachment;
     depthInfo.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
-    depthInfo.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    depthInfo.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    depthInfo.clearValue.depthStencil = {1.0f, 0};
+    depthInfo.loadOp = depthLoadOp;
+    depthInfo.storeOp = depthStore ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    depthInfo.clearValue.depthStencil = {depthClearValue, 0};
 
     VkRenderingInfo renderInfo{};
     renderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;

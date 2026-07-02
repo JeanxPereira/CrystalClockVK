@@ -28,6 +28,7 @@ public:
 
     // Blending — explicit VK blend state derived from decoded GS ALPHA
     PipelineBuilder& setBlendState(const VkPipelineColorBlendAttachmentState& state);
+    PipelineBuilder& setBlendConstants(float r, float g, float b, float a);
 
     // Dynamic rendering color format
     PipelineBuilder& setColorFormat(VkFormat format);
@@ -55,6 +56,7 @@ private:
     VkFormat m_colorFormat{VK_FORMAT_UNDEFINED};
     VkFormat m_depthFormat{VK_FORMAT_UNDEFINED};
     VkPipelineCreateFlags m_flags{0};
+    float m_blendConstants[4] = {0.0f, 0.0f, 0.0f, 0.0f};
 
     std::vector<VkVertexInputBindingDescription> m_bindings;
     std::vector<VkVertexInputAttributeDescription> m_attributes;

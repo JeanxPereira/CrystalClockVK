@@ -93,6 +93,12 @@ PipelineBuilder& PipelineBuilder::setBlendState(const VkPipelineColorBlendAttach
     return *this;
 }
 
+PipelineBuilder& PipelineBuilder::setBlendConstants(float r, float g, float b, float a) {
+    m_blendConstants[0] = r; m_blendConstants[1] = g;
+    m_blendConstants[2] = b; m_blendConstants[3] = a;
+    return *this;
+}
+
 PipelineBuilder& PipelineBuilder::setColorFormat(VkFormat format) {
     m_colorFormat = format;
     return *this;
@@ -131,6 +137,7 @@ VkPipeline PipelineBuilder::build(VkDevice device) {
     colorBlending.logicOpEnable = VK_FALSE;
     colorBlending.attachmentCount = 1;
     colorBlending.pAttachments = &m_colorBlendAttachment;
+    for (int i = 0; i < 4; i++) colorBlending.blendConstants[i] = m_blendConstants[i];
 
     // Dynamic state: viewport + scissor (set at draw time)
     VkDynamicState dynamicStates[] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };

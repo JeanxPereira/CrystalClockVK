@@ -14,7 +14,9 @@ public:
     // Dynamic rendering scope
     void beginRendering(VkImageView colorAttachment, VkExtent2D extent, VkClearValue* clearValue = nullptr, VkImageLayout layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
     void beginRendering(VkImageView colorAttachment, VkImageView depthAttachment,
-                        VkExtent2D extent, VkClearValue* clearValue = nullptr, VkImageLayout layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+                        VkExtent2D extent, VkClearValue* clearValue = nullptr, VkImageLayout layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                        VkAttachmentLoadOp depthLoadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+                        float depthClearValue = 1.0f, bool depthStore = false);
     void endRendering();
 
     // Pipeline and draw commands
