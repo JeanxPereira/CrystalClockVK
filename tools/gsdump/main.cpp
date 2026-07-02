@@ -77,7 +77,15 @@ void writeJson(const GsCommandStream& s, const std::string& path) {
           << ",\"PSM\":" << int(p.frame.psm) << "}"
           << ",\"DTHE\":" << p.dthe << ",\"COLCLAMP\":" << p.colclamp
           << ",\"PABE\":" << p.pabe << ",\"FBA\":" << p.fba
-          << ",\"nverts\":" << p.verts.size() << "}";
+          << ",\"nverts\":" << p.verts.size()
+          << ",\"verts\":[";
+        for (size_t v = 0; v < p.verts.size(); v++) {
+            const auto& k = p.verts[v];
+            o << (v ? "," : "") << "{\"x\":" << k.x << ",\"y\":" << k.y
+              << ",\"u\":" << k.u << ",\"v\":" << k.v
+              << ",\"s\":" << k.s << ",\"t\":" << k.t << ",\"q\":" << k.q << "}";
+        }
+        o << "]}";
         o << (i + 1 < s.prims.size() ? ",\n" : "\n");
     }
     o << "]\n";

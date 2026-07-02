@@ -237,6 +237,12 @@ target_link_libraries(gs_texa_deswizzle_tests PRIVATE gs)
 set_target_properties(gs_texa_deswizzle_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
 add_test(NAME gs_texa_deswizzle COMMAND gs_texa_deswizzle_tests)
 
+# gsdump parser: RGBAQ.Q capture (STQ perspective divisor).
+add_executable(gsdump_stq_tests tests/ParserStqQTest.cpp)
+target_link_libraries(gsdump_stq_tests PRIVATE gsdump_lib)
+set_target_properties(gsdump_stq_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
+add_test(NAME gsdump_stq COMMAND gsdump_stq_tests)
+
 # ──────────────────────────────────────────────────────────────────────────────
 # clock — pure procedural clock logic (geometry + projection math). NO Vulkan.
 # ──────────────────────────────────────────────────────────────────────────────

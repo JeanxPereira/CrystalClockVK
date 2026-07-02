@@ -222,6 +222,10 @@ GsCommandStream GsDumpParser::parse(const uint8_t* data, size_t size) {
     struct { uint8_t r = 0, g = 0, b = 0, a = 0; } curColor;
     struct { float u = 0, v = 0; bool valid = false; } curUV;
     struct { float s = 0, t = 0; bool valid = false; } curST;
+    // GS internal Q: PACKED ST carries a temp Q; a PACKED RGBAQ write latches it
+    // into RGBAQ.Q. REGLIST RGBAQ carries Q directly (bits 32-63). Reset = 1.0.
+    float qTemp = 1.0f;
+    float curQ = 1.0f;
 
     auto setPrim = [&](uint32_t primField) {
         curPrimField = primField;
@@ -244,6 +248,7 @@ GsCommandStream GsDumpParser::parse(const uint8_t* data, size_t size) {
         v.fog = hasFog ? fog : 0;
         if (d.prim.fst) { if (curUV.valid) { v.u = curUV.u; v.v = curUV.v; } }
         else if (curST.valid) { v.s = curST.s; v.t = curST.t; }
+        v.q = curQ;
         d.verts.push_back(v);
         out.counts.kicks++;
     };
@@ -253,8 +258,8 @@ GsCommandStream GsDumpParser::parse(const uint8_t* data, size_t size) {
         const uint32_t w0 = rdU32(o), w1 = rdU32(o + 4), w2 = rdU32(o + 8), w3 = rdU32(o + 12);
         switch (desc) {
             case 0x00: setPrim(w0 & 0x7ff); break;
-            case 0x01: curColor = {uint8_t(w0 & 0xff), uint8_t(w1 & 0xff), uint8_t(w2 & 0xff), uint8_t(w3 & 0xff)}; break;
-            case 0x02: curST = {std::bit_cast<float>(w0), std::bit_cast<float>(w1), true}; break;
+            case 0x01: curColor = {uint8_t(w0 & 0xff), uint8_t(w1 & 0xff), uint8_t(w2 & 0xff), uint8_t(w3 & 0xff)}; curQ = qTemp; break;
+            case 0x02: curST = {std::bit_cast<float>(w0), std::bit_cast<float>(w1), true}; qTemp = std::bit_cast<float>(w2); break;
             case 0x03: curUV = {(w0 & 0x3fff) / 16.0f, (w1 & 0x3fff) / 16.0f, true}; break;
             case 0x04: emitVertex(w0 & 0xffff, w1 & 0xffff, (w2 >> 4) & 0xffffff, true, uint8_t((w3 >> 4) & 0xff)); break;
             case 0x05: emitVertex(w0 & 0xffff, w1 & 0xffff, w2, false, 0); break;
@@ -273,7 +278,7 @@ GsCommandStream GsDumpParser::parse(const uint8_t* data, size_t size) {
         const uint32_t lo = static_cast<uint32_t>(val), hi = static_cast<uint32_t>(val >> 32);
         switch (desc) {
             case 0x00: setPrim(lo & 0x7ff); break;
-            case 0x01: curColor = {uint8_t(lo & 0xff), uint8_t((lo >> 8) & 0xff), uint8_t((lo >> 16) & 0xff), uint8_t((lo >> 24) & 0xff)}; break;
+            case 0x01: curColor = {uint8_t(lo & 0xff), uint8_t((lo >> 8) & 0xff), uint8_t((lo >> 16) & 0xff), uint8_t((lo >> 24) & 0xff)}; curQ = std::bit_cast<float>(hi); break;
             case 0x02: curST = {std::bit_cast<float>(lo), std::bit_cast<float>(hi), true}; break;
             case 0x03: curUV = {(lo & 0x3fff) / 16.0f, ((lo >> 16) & 0x3fff) / 16.0f, true}; break;
             case 0x04: emitVertex(lo & 0xffff, (lo >> 16) & 0xffff, hi & 0xffffff, true, uint8_t((hi >> 24) & 0xff)); break;

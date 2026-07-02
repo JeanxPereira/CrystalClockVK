@@ -46,6 +46,7 @@ struct GsVertex {
     uint8_t r, g, b, a;   // RGBAQ color
     float u, v;          // UV in pixels (FST=1)
     float s, t;          // STQ texcoords (FST=0)
+    float q;             // RGBAQ.Q at kick time (STQ divisor; reset value 1.0)
     uint8_t fog;
 };
 
