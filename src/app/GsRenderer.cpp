@@ -1,6 +1,7 @@
 #include "app/GsRenderer.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <filesystem>
 #include <string>
@@ -33,8 +34,11 @@ struct PushConstants {
     int texaAEM;
 };
 
-uint64_t blendKey(const gsvk::GsBlendRecipe& b) {
-    return (uint64_t(b.enable) << 40) | (uint64_t(b.colorOp) << 32) |
+uint64_t pipeKey(const gsvk::GsBlendRecipe& b, const gsvk::GsDepthState& d, bool lines) {
+    return (uint64_t(lines) << 62) | (uint64_t(b.fix) << 53) |
+           (uint64_t(d.compare) << 48) | (uint64_t(d.writeEnable) << 44) |
+           (uint64_t(d.testEnable) << 42) |
+           (uint64_t(b.enable) << 40) | (uint64_t(b.colorOp) << 32) |
            (uint64_t(b.srcFactor) << 16) | uint64_t(b.dstFactor);
 }
 
@@ -55,8 +59,7 @@ int GsRenderer::textureIndexFor(uint32_t tbp0) {
     return -1;
 }
 
-int GsRenderer::pipelineIndexFor(const gsvk::GsBlendRecipe& blend) {
-    const uint64_t key = blendKey(blend);
+int GsRenderer::pipelineIndexFor(uint64_t key) {
     for (size_t i = 0; i < m_pipelineKeys.size(); i++)
         if (m_pipelineKeys[i] == key) return static_cast<int>(i);
     return -1;
@@ -111,6 +114,8 @@ void GsRenderer::init(const VulkanContext& ctx, ResourceManager& res, const GsSc
         VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
     m_vramRead = res.createImage({kVramW, kVramH}, m_targetFormat, vramUsage);
     m_vramWrite = res.createImage({kVramW, kVramH}, m_targetFormat, vramUsage);
+    m_vramDepth = res.createImage({kVramW, kVramH}, VK_FORMAT_D32_SFLOAT,
+        VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
     {
         std::vector<uint8_t> vram = SwizzleEngine::deswizzle(
             m_freeze + kVramFreezeOffset, kVramW, kVramH, kVramW, GsPixelFormat::PSMCT32, nullptr);
@@ -181,7 +186,8 @@ void GsRenderer::init(const VulkanContext& ctx, ResourceManager& res, const GsSc
         {0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(GpuVertex, pos)},
         {1, 0, VK_FORMAT_R8G8B8A8_UNORM, offsetof(GpuVertex, color)},
         {2, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(GpuVertex, uv)}};
-    auto buildPipeline = [&](const gsvk::GsBlendRecipe& blend) {
+    auto buildPipeline = [&](const gsvk::GsBlendRecipe& blend, const gsvk::GsDepthState& depth,
+                             bool lines) {
         VkPipelineColorBlendAttachmentState bs{};
         bs.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
                             VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
@@ -193,15 +199,19 @@ void GsRenderer::init(const VulkanContext& ctx, ResourceManager& res, const GsSc
         bs.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
         bs.alphaBlendOp = VK_BLEND_OP_ADD;
         PipelineBuilder pb;
+        // GS FIX coefficient: C = FIX/128 per channel, via the blend constant.
+        const float fixC = float(blend.fix) / 128.0f;
         pb.setShaders(m_vert, m_frag)
             .setVertexInput(bindings, attrs)
-            .setTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
+            .setTopology(lines ? VK_PRIMITIVE_TOPOLOGY_LINE_LIST
+                               : VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
+            .setBlendConstants(fixC, fixC, fixC, fixC)
             .setCullMode(VK_CULL_MODE_NONE)
             .setPolygonMode(VK_POLYGON_MODE_FILL)
-            .setDepthTest(false, false, VK_COMPARE_OP_ALWAYS)
+            .setDepthTest(depth.testEnable, depth.writeEnable, depth.compare)
             .setBlendState(bs)
             .setColorFormat(m_targetFormat)
-            .setDepthFormat(VK_FORMAT_UNDEFINED)
+            .setDepthFormat(VK_FORMAT_D32_SFLOAT)
             .setPipelineLayout(m_pipelineLayout);
         return pb.build(device);
     };
@@ -214,7 +224,7 @@ void GsRenderer::init(const VulkanContext& ctx, ResourceManager& res, const GsSc
         const auto& p = prims[i];
         const auto& r = recipes[i];
         const int type = p.prim.type;
-        if (type != 4 && type != 6) continue;
+        if (type != 2 && type != 4 && type != 6) continue;
         if (p.verts.size() < 2) continue;
 
         const float dstRow = float(fbRow(p.frame.fbp));
@@ -222,13 +232,13 @@ void GsRenderer::init(const VulkanContext& ctx, ResourceManager& res, const GsSc
         bool feedback = false;
         float texW = 1.0f, texH = 1.0f, texRow = 0.0f;
         if (r.textured && (p.tex0.psm == 0 || p.tex0.psm == 1)) {
+            texW = float(1 << p.tex0.tw);
+            texH = float(1 << p.tex0.th);
             if (isFeedback(p.tex0.tbp0)) {  // framebuffer-as-texture
                 feedback = true;
                 texRow = float(fbRow(p.tex0.tbp0 / 32));
             } else {
                 texIdx = textureIndexFor(p.tex0.tbp0);
-                texW = float(1 << p.tex0.tw);
-                texH = float(1 << p.tex0.th);
             }
         }
 
@@ -238,15 +248,23 @@ void GsRenderer::init(const VulkanContext& ctx, ResourceManager& res, const GsSc
             g.pos[1] = (dstRow + v.y) * 2.0f / float(kVramH) - 1.0f;
             g.pos[2] = float(v.z) / 4294967295.0f;
             g.color[0] = v.r; g.color[1] = v.g; g.color[2] = v.b; g.color[3] = v.a;
+            // STQ is perspective-mapped: texel = (S/Q, T/Q) * (2^TW, 2^TH).
+            const float q = (v.q != 0.0f) ? v.q : 1.0f;
             if (feedback) {            // sample the VRAM image (framebuffer feedback)
-                const float u = p.prim.fst ? v.u : v.s * float(kVramW);
-                const float vv = p.prim.fst ? v.v : v.t * 224.0f;
+                // GS default CLAMP is REPEAT: texel coords wrap at 2^TW x 2^TH.
+                // The clock's refraction passes bake a +256 v offset into the UVs
+                // (TH=8), so the wrapped v lands back inside the source
+                // framebuffer band — 210<->280 ping-pong, never the glyph atlas.
+                // No draw crosses a wrap boundary (verified on clock_viewer.gs),
+                // so per-vertex wrapping is exact.
+                const float u = std::fmod(p.prim.fst ? v.u : (v.s / q) * texW, texW);
+                const float vv = std::fmod(p.prim.fst ? v.v : (v.t / q) * texH, texH);
                 g.uv[0] = u / float(kVramW);
                 g.uv[1] = (texRow + vv) / float(kVramH);
             } else if (p.prim.fst) {   // resident UV
                 g.uv[0] = v.u / texW; g.uv[1] = v.v / texH;
             } else {                   // resident STQ
-                g.uv[0] = v.s; g.uv[1] = v.t;
+                g.uv[0] = v.s / q; g.uv[1] = v.t / q;
             }
             return g;
         };
@@ -261,6 +279,11 @@ void GsRenderer::init(const VulkanContext& ctx, ResourceManager& res, const GsSc
             GpuVertex g00 = mkVertex(c00), g10 = mkVertex(c10), g11 = mkVertex(c11), g01 = mkVertex(c01);
             verts.push_back(g00); verts.push_back(g10); verts.push_back(g11);
             verts.push_back(g00); verts.push_back(g11); verts.push_back(g01);
+        } else if (type == 2) {  // LINE_STRIP -> line list
+            for (size_t k = 0; k + 1 < p.verts.size(); k++) {
+                verts.push_back(mkVertex(p.verts[k]));
+                verts.push_back(mkVertex(p.verts[k + 1]));
+            }
         } else {
             std::vector<GpuVertex> strip;
             strip.reserve(p.verts.size());
@@ -272,10 +295,12 @@ void GsRenderer::init(const VulkanContext& ctx, ResourceManager& res, const GsSc
         const uint32_t count = static_cast<uint32_t>(verts.size()) - first;
         if (count == 0) continue;
 
-        int pipeIdx = pipelineIndexFor(r.blend);
+        const bool lines = (type == 2);
+        const uint64_t key = pipeKey(r.blend, r.depth, lines);
+        int pipeIdx = pipelineIndexFor(key);
         if (pipeIdx < 0) {
-            m_pipelineKeys.push_back(blendKey(r.blend));
-            m_pipelines.push_back(buildPipeline(r.blend));
+            m_pipelineKeys.push_back(key);
+            m_pipelines.push_back(buildPipeline(r.blend, r.depth, lines));
             pipeIdx = static_cast<int>(m_pipelines.size()) - 1;
         }
 
@@ -342,6 +367,10 @@ void GsRenderer::record(PassRecorder& rec, VkImage dst, VkExtent2D dstExtent) {
         vkCmdSetScissor(cmd, 0, 1, &sc);
     };
 
+    rec.transitionImage(m_vramDepth.image, m_depthLayout, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
+    m_depthLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+    bool firstPass = true;
+
     size_t i = 0;
     while (i < m_draws.size()) {
         const int row = m_draws[i].fbpRow;
@@ -353,7 +382,13 @@ void GsRenderer::record(PassRecorder& rec, VkImage dst, VkExtent2D dstExtent) {
         rec.transitionImage(m_vramWrite.image, m_writeLayout, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
         m_writeLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
-        rec.beginRendering(m_vramWrite.imageView, {kVramW, kVramH}, nullptr);
+        // GS Z persists across framebuffer switches (one Z-buffer at ZBP 140);
+        // clear once at frame start, then load/store across row-group passes.
+        rec.beginRendering(m_vramWrite.imageView, m_vramDepth.imageView, {kVramW, kVramH},
+                           nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                           firstPass ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD,
+                           0.0f, true);
+        firstPass = false;
         setVP(row);
         rec.bindVertexBuffer(m_vbo.buffer);
         int boundPipeline = -1;
@@ -421,6 +456,7 @@ void GsRenderer::destroy(const VulkanContext& ctx, ResourceManager& res) {
     if (m_vramRead.image) res.destroyImage(m_vramRead);
     if (m_vramWrite.image) res.destroyImage(m_vramWrite);
     if (m_vramSeed.image) res.destroyImage(m_vramSeed);
+    if (m_vramDepth.image) res.destroyImage(m_vramDepth);
     for (auto p : m_pipelines) vkDestroyPipeline(device, p, nullptr);
     if (m_pipelineLayout) vkDestroyPipelineLayout(device, m_pipelineLayout, nullptr);
     if (m_setLayout) vkDestroyDescriptorSetLayout(device, m_setLayout, nullptr);

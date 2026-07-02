@@ -57,7 +57,7 @@ private:
     };
 
     int textureIndexFor(uint32_t tbp0);
-    int pipelineIndexFor(const gsvk::GsBlendRecipe& blend);
+    int pipelineIndexFor(uint64_t key);
 
     bool m_ready = false;
     const uint8_t* m_freeze = nullptr;
@@ -72,6 +72,10 @@ private:
     AllocatedImage m_vramRead{};
     AllocatedImage m_vramWrite{};
     AllocatedImage m_vramSeed{};
+    // GS Z-buffer (ZBP 140, PSMZ32, shared by every draw): one depth plane over
+    // the VRAM image; cleared to 0 per frame (GS z: larger = nearer).
+    AllocatedImage m_vramDepth{};
+    VkImageLayout m_depthLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     VkImageLayout m_readLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     VkImageLayout m_writeLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     VkImageLayout m_seedLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;

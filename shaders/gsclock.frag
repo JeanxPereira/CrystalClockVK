@@ -46,6 +46,8 @@ void main() {
         if (!(c.a > pc.alphaRef)) discard;  // ATST GREATER
     }
 
-    outColor = vec4(c.rgb, 1.0);
+    // GS stores the fragment alpha in the framebuffer (FBA=0); feedback reads
+    // depend on it (0x80 = fully opaque in GS 0..128 semantics).
+    outColor = vec4(c.rgb, c.a);
     outBlend = vec4(vec3(as), 1.0);
 }
