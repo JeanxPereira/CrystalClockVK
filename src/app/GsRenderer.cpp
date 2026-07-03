@@ -327,8 +327,11 @@ void GsRenderer::init(const VulkanContext& ctx, ResourceManager& res, const GsSc
 
         auto mkVertex = [&](const GsVertex& v) {
             GpuVertex g{};
-            g.pos[0] = v.x * 2.0f / float(kVramW) - 1.0f;
-            g.pos[1] = (dstRow + v.y) * 2.0f / float(kVramH) - 1.0f;
+            // GS raster samples pixel centers at INTEGER coords; Vulkan at
+            // integer+0.5. Shift geometry +0.5px so VK coverage decisions land
+            // on the GS sample grid (else every .5-aligned edge is 1px off).
+            g.pos[0] = (v.x + 0.5f) * 2.0f / float(kVramW) - 1.0f;
+            g.pos[1] = (dstRow + v.y + 0.5f) * 2.0f / float(kVramH) - 1.0f;
             g.pos[2] = float(v.z) / 4294967295.0f;
             g.color[0] = v.r; g.color[1] = v.g; g.color[2] = v.b; g.color[3] = v.a;
             const float q = (v.q != 0.0f) ? v.q : 1.0f;
@@ -386,15 +389,16 @@ void GsRenderer::init(const VulkanContext& ctx, ResourceManager& res, const GsSc
         const bool lines = (type == 2);
         gsvk::GsBlendRecipe blend = r.blend;
         if (lines && p.prim.aa1 && !blend.enable) {
-            // GS AA1 forces coverage-as-alpha blending regardless of ABE; a
-            // 1px line is ALL edge, so the whole line blends by coverage.
-            // Approximate the per-pixel coverage with a constant ~64/128
-            // (reuses the FIX blend-constant plumbing).
+            // GS AA1 forces alpha blending regardless of ABE. The swirl lines
+            // carry a per-vertex LIFETIME ramp (a: 0..64 along the strip): the
+            // trail must fade by OPACITY, not to dark blue — so blend src-over
+            // by the interpolated vertex alpha (SRC1 = As/128, the normal
+            // dual-source path); MSAA supplies the spatial edge coverage.
             blend.enable = true;
             blend.colorOp = VK_BLEND_OP_ADD;
-            blend.srcFactor = VK_BLEND_FACTOR_CONSTANT_COLOR;
-            blend.dstFactor = VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_COLOR;
-            blend.fix = 64;
+            blend.srcFactor = VK_BLEND_FACTOR_SRC1_COLOR;
+            blend.dstFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC1_COLOR;
+            blend.fix = 0;
         }
         const uint64_t key = pipeKey(blend, r.depth, lines);
         int pipeIdx = pipelineIndexFor(key);
@@ -488,9 +492,10 @@ void GsRenderer::record(PassRecorder& rec, VkImage dst, VkExtent2D dstExtent) {
         vkCmdSetScissor(cmd, 0, 1, &sc);
     };
 
-    rec.transitionImage(m_vramDepth.image, m_depthLayout, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
-    m_depthLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+    rec.transitionImage(m_vramDepth.image, m_depthLayout, VK_IMAGE_LAYOUT_GENERAL);
+    m_depthLayout = VK_IMAGE_LAYOUT_GENERAL;
     bool firstPass = true;
+    int prevRow = -1;
 
     size_t i = 0;
     while (i < m_draws.size()) {
@@ -503,17 +508,31 @@ void GsRenderer::record(PassRecorder& rec, VkImage dst, VkExtent2D dstExtent) {
         rec.transitionImage(m_vramWrite.image, m_writeLayout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
         m_writeLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
 
-        // GS Z persists across framebuffer switches (one Z-buffer at ZBP 140);
-        // clear once at frame start, then load/store across row-group passes.
-        // The MSAA band resolves into m_vramWrite at endRendering (the resolve
-        // averages coverage = the GS AA1 edge antialiasing).
+        // The GS has ONE Z-buffer (ZBP 140) shared by every framebuffer: rods
+        // rendered into FBP 280 occlude lines drawn into FBP 0. Our targets are
+        // row-regions, so mirror the shared Z by copying the previous band's
+        // depth into this band's rows on every band switch (the single GS Z
+        // plane evolving in draw order). Clear it once at frame start.
         const int bandH = std::min<int>(int(kFbH), int(kVramH) - row);
+        if (!firstPass && prevRow >= 0 && prevRow != row) {
+            rec.transitionImage(m_vramDepth.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL);
+            VkImageCopy zc{};
+            zc.srcSubresource = {VK_IMAGE_ASPECT_DEPTH_BIT, 0, 0, 1};
+            zc.dstSubresource = {VK_IMAGE_ASPECT_DEPTH_BIT, 0, 0, 1};
+            zc.srcOffset = {0, prevRow, 0};
+            zc.dstOffset = {0, row, 0};
+            zc.extent = {kVramW, uint32_t(bandH), 1};
+            vkCmdCopyImage(cmd, m_vramDepth.image, VK_IMAGE_LAYOUT_GENERAL,
+                           m_vramDepth.image, VK_IMAGE_LAYOUT_GENERAL, 1, &zc);
+            rec.transitionImage(m_vramDepth.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL);
+        }
         rec.beginRenderingMS(m_vramMS.imageView, m_vramWrite.imageView, m_vramDepth.imageView,
                              {{0, row < 0 ? 0 : row}, {kVramW, uint32_t(bandH)}},
                              VK_ATTACHMENT_LOAD_OP_LOAD,
                              firstPass ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD,
                              0.0f);
         firstPass = false;
+        prevRow = row;
         setVP(row);
         rec.bindVertexBuffer(m_vbo.buffer);
         int boundPipeline = -1;

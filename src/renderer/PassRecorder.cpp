@@ -94,7 +94,9 @@ void PassRecorder::beginRenderingMS(VkImageView colorMS, VkImageView resolve, Vk
     VkRenderingAttachmentInfo depthInfo{};
     depthInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
     depthInfo.imageView = depthMS;
-    depthInfo.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+    // GENERAL so the caller can vkCmdCopyImage depth bands between passes
+    // (the GS has ONE shared Z-buffer; row-region targets must mirror it).
+    depthInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
     depthInfo.loadOp = depthLoadOp;
     depthInfo.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
     depthInfo.clearValue.depthStencil = {depthClearValue, 0};
