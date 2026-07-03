@@ -66,7 +66,57 @@ ClockRenderer::~ClockRenderer() {
     if (m_pipeline) vkDestroyPipeline(m_ctx.device(), m_pipeline, nullptr);
     if (m_prismPipeline) vkDestroyPipeline(m_ctx.device(), m_prismPipeline, nullptr);
     if (m_bgPipeline) vkDestroyPipeline(m_ctx.device(), m_bgPipeline, nullptr);
+    if (m_spotPipeline) vkDestroyPipeline(m_ctx.device(), m_spotPipeline, nullptr);
+    if (m_spotVbo.buffer) m_resources.destroyBuffer(m_spotVbo);
+    if (m_spotIbo.buffer) m_resources.destroyBuffer(m_spotIbo);
     if (m_layout) vkDestroyPipelineLayout(m_ctx.device(), m_layout, nullptr);
+}
+
+void ClockRenderer::setSpotMesh(const ps2clock::SpotMesh& mesh) {
+    if (!m_spotPipeline) {
+        VkShaderModule vert = ShaderLoader::loadModule(m_ctx.device(), "bin/shaders/spot.vert.spv");
+        VkShaderModule frag = ShaderLoader::loadModule(m_ctx.device(), "bin/shaders/spot.frag.spv");
+        VkVertexInputBindingDescription bind{};
+        bind.binding = 0;
+        bind.stride = sizeof(ps2clock::SpotVertex);
+        bind.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+        std::vector<VkVertexInputAttributeDescription> attrs = {
+            {0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(ps2clock::SpotVertex, pos)},
+            {1, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(ps2clock::SpotVertex, uv)},
+            {2, 0, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(ps2clock::SpotVertex, color)},
+        };
+        // Additive glow: src*srcAlpha + dst (accumulate light).
+        VkPipelineColorBlendAttachmentState add{};
+        add.blendEnable = VK_TRUE;
+        add.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+        add.dstColorBlendFactor = VK_BLEND_FACTOR_ONE;
+        add.colorBlendOp = VK_BLEND_OP_ADD;
+        add.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+        add.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+        add.alphaBlendOp = VK_BLEND_OP_ADD;
+        add.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+                             VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+        PipelineBuilder b;
+        m_spotPipeline = b.setShaders(vert, frag).setVertexInput({bind}, attrs)
+            .setTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
+            .setCullMode(VK_CULL_MODE_NONE).setPolygonMode(VK_POLYGON_MODE_FILL)
+            .setDepthTest(false, false).setBlendState(add)
+            .setColorFormat(m_colorFormat).setPipelineLayout(m_layout)
+            .build(m_ctx.device());
+        vkDestroyShaderModule(m_ctx.device(), vert, nullptr);
+        vkDestroyShaderModule(m_ctx.device(), frag, nullptr);
+    }
+    if (m_spotVbo.buffer) m_resources.destroyBuffer(m_spotVbo);
+    if (m_spotIbo.buffer) m_resources.destroyBuffer(m_spotIbo);
+    m_spotIndexCount = static_cast<uint32_t>(mesh.indices.size());
+    const VkDeviceSize vSize = mesh.vertices.size() * sizeof(ps2clock::SpotVertex);
+    const VkDeviceSize iSize = mesh.indices.size() * sizeof(uint32_t);
+    m_spotVbo = m_resources.createBuffer(vSize,
+        VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
+    m_spotIbo = m_resources.createBuffer(iSize,
+        VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
+    m_resources.uploadToBuffer(m_spotVbo, mesh.vertices.data(), vSize);
+    m_resources.uploadToBuffer(m_spotIbo, mesh.indices.data(), iSize);
 }
 
 void ClockRenderer::setPrismMesh(const ps2clock::PrismMesh& mesh) {
@@ -185,6 +235,15 @@ void ClockRenderer::record(PassRecorder& recorder, VkImageView colorView, const 
     recorder.bindVertexBuffer(m_vbo.buffer);
     recorder.bindIndexBuffer(m_ibo.buffer);
     recorder.drawIndexed(m_indexCount);
+
+    // Light-spot glow additively over everything (the orbiting after-image dots).
+    if (m_prism && m_spotPipeline && m_spotIndexCount) {
+        recorder.bindPipeline(m_spotPipeline);
+        recorder.pushConstants(m_layout, VK_SHADER_STAGE_VERTEX_BIT, &mvp, sizeof(ps2clock::Mat4));
+        recorder.bindVertexBuffer(m_spotVbo.buffer);
+        recorder.bindIndexBuffer(m_spotIbo.buffer);
+        recorder.drawIndexed(m_spotIndexCount);
+    }
     recorder.endRendering();
     recorder.endDebugLabel();
 }

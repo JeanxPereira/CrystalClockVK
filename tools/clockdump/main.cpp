@@ -14,6 +14,7 @@
 #include "clock/Projection.hpp"
 #include "clock/RodField.hpp"
 #include "clock/ClockRenderer.hpp"
+#include "clock/ClockOrb.hpp"
 #include "app/TimeSync.hpp"
 
 int main(int argc, char** argv) {
@@ -91,8 +92,15 @@ int main(int argc, char** argv) {
     std::fprintf(stderr, "===============================\n");
 
     ClockRenderer renderer(ctx, resources, fmt, extent);
-    if (prism) renderer.setPrismMesh(field.buildDialPrism(clock));
-    else       renderer.setDialMesh(field.buildDialMesh(clock));
+    if (prism) {
+        renderer.setPrismMesh(field.buildDialPrism(clock));
+        // Light spots orbit slowly; the phase would advance with time in the
+        // live loop. Here derive a phase from the seconds for a deterministic pose.
+        const float phase = static_cast<float>(second) * 0.1f;
+        renderer.setSpotMesh(ps2clock::ClockOrb::buildSpotMesh(clock, phase));
+    } else {
+        renderer.setDialMesh(field.buildDialMesh(clock));
+    }
 
     VkCommandPoolCreateInfo pci{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
     pci.queueFamilyIndex = ctx.graphicsQueueFamily();

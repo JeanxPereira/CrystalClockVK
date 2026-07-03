@@ -256,6 +256,7 @@ add_library(clock STATIC
     src/clock/Projection.cpp
     src/clock/RodField.cpp
     src/clock/ClockState.cpp
+    src/clock/ClockOrb.cpp
 )
 target_include_directories(clock PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(clock PUBLIC glm::glm)
@@ -284,7 +285,7 @@ endif()
 set_target_properties(clock_dump PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
 
 # clock pure-logic tests (math/geometry/projection — Vulkan-free).
-foreach(t clock_fixed124:Fixed124Test clock_rotation:RotationBasisTest clock_projection:ProjectionFitTest clock_rodfield:RodFieldTest clock_state:ClockStateTest clock_prism:PrismMeshTest)
+foreach(t clock_fixed124:Fixed124Test clock_rotation:RotationBasisTest clock_projection:ProjectionFitTest clock_rodfield:RodFieldTest clock_state:ClockStateTest clock_prism:PrismMeshTest clock_orb:ClockOrbTest)
     string(REPLACE ":" ";" parts ${t})
     list(GET parts 0 tname)
     list(GET parts 1 tsrc)
