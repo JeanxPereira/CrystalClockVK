@@ -265,3 +265,28 @@ this doc's completeness, not re-derived:
   ("Ajuste do Relógio"): candidate windows 0x34C000+4K (near light-spot array),
   0x375000+4K (rod array neighbourhood), 0x2C7000+4K (gp data). Seconds-field can be
   isolated first by diffing the same windows across ~2s of free run (no user input).
+
+## §8 LIVE STATE BLOCK FOUND (2026-07-03, hour-advance diff)
+
+Method: snapshot 0x2C8000 window, advance RTC hour +1 in "Ajuste do Relógio", diff.
+The clock's persistent state block lives at **0x002C8000+** (EE main RAM, stable across
+free-run frames — NOT the per-frame animation floats at 0x37xxxx).
+
+- **HOUR-linked field: 0x002C8884, duplicated at 0x002C888C** (a min/target or
+  current/display pair — always move in lockstep on hour change). Small int, observed
+  values 3-6. Likely the highlighted-dial-index (hour%12 through an offset), NOT the raw
+  hour — value sequence wasn't monotonic +1 with hour +1, consistent with a 12-position
+  wrap/offset. CONFIRM during W2-2 by correlating with on-screen lit rod.
+- **FILL/HIGHLIGHT floats: 0x002C8F50 cluster** — moved with the highlighted rod on
+  hour change. Read: 0x2C8F50=0xf64cb6c4, +4=0x3ee8d1ea (~0.454), +8=0x3f0b5a1a (~0.545),
+  +0xc=0x00000005 (index?), +0x10=0x28,+0x14=0x28 (40,40). The two ~0.45/0.55 floats are
+  strong candidates for the **min/sec partial-fill fraction** (patent S304-305, a 0..1
+  range per rod), the int 5 for the selected slot.
+- Rotation speed (from §7): **-0.1 rad/s** group spin.
+
+### W2-2 port anchors (RESOLVED enough to build)
+- Group spin phase: advance -0.1 rad/s (0.001671 rad per 60fps frame).
+- Per-rod angle: base + i*0.20 (additive pass) / i*0.40 (refraction pass).
+- 12 dial rods at 30 deg spacing (patent + w2-rod-geometry-live).
+- Hour->lit index and min/sec->fill: live anchors 0x2C8884 / 0x2C8F50 to finish
+  numerically against the dump oracle (prims_sw.json rod vertex colors at 17:57).
