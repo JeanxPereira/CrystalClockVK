@@ -369,3 +369,36 @@ render precision. The clean unblock is a LIVE PCSX2 read of the rod MODEL geomet
 (the source verts transform+emit consumes, pre-projection) — exact, no inversion
 error. Same kind of live session already done for rotation speed / clockState.
 NEXT: live-read the rod model (rod struct 0x160 @ 0x375250, or the model template).
+
+## Rod tessellation — INFERRED FROM DUMP (2026-07-03, one rod fully characterized)
+
+One physical rod (rod@210° in clock_sw.gs) = **338 textured GS quads across 5
+layers**. The rod is a parametric bar (~146px radial × ~20px wide) covered by
+large overlapping quads (NOT fine tessellation), each drawn 3-4× for additive/
+subtractive intensity accumulation:
+
+| layer | texture | blend (A B C D) | draws | distinct positions | role |
+|-------|---------|-----------------|-------|--------------------|------|
+| refraction | 6720 = FBP210 | 0 1 0 1 src-over | 62 | 18 | refracts the framebuffer background |
+| crystal-sub | 11520 | 2 0 0 1 subtractive | 100 | 27 | crystal facet texture |
+| crystal-add | 11520 | 0 2 0 1 additive | 62 | 18 | crystal facet texture |
+| layer4 | 11200 | 0 1 0 1 src-over | 76 | 12 | — |
+| layer5 | 11584 | 2 0 0 1 subtractive | 38 | 12 | — |
+
+~87 distinct quad positions total (overlapping across layers). Additive-layer
+detail: quads grow radially outward (rw 21→91px), UVs TILE the 64×64 crystal
+texture along the length (s/q 0.64→2.69 — wraps), base vertex RGB near-black
+(8,8,8 / 40,40,40) so the look is the accumulated multi-pass blend, not flat
+colour. The rod's parametric source (origin/dir/screen) is live-readable at
+0x375250+0x00/0x10/0x20 (rod struct 0x160). The tessellation FUNCTION
+(transform+emit) is undecompilable, so the quad layout + UV tiling must be
+reproduced from THIS measured pattern.
+
+### Reproduction plan (validatable increments)
+1. One layer, one rod: emit the ~18 additive-crystal quads of a parametric bar
+   (origin/dir/len/width from the rod struct) with the tiling UVs → GsPrimitives
+   → GsRenderer. Pixel-diff that rod's additive contribution vs the dump.
+2. Add the other 4 layers (refraction samples FBP feedback — GsRenderer already
+   does this; subtractive/src-over layers).
+3. 12 rods at time-driven angles; then light-spots (FUN_0020eda0 formula RESOLVED)
+   + swirl + text. Gate: full generated clock pixel-diff vs GSRunner ≤ dump's 5-10%.
