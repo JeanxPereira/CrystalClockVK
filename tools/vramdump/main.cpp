@@ -31,7 +31,12 @@ int main(int argc, char** argv) {
     const int H = std::atoi(argv[5]);
     const std::string out = argc > 6 ? argv[6] : "vram.rgba";
     const int stride = argc > 7 ? std::atoi(argv[7]) : W;
-    const bool psmt8 = argc > 8 && std::string(argv[8]) == "psmt8";
+    const std::string psmArg = argc > 8 ? argv[8] : "";
+    const bool psmt8 = psmArg == "psmt8";
+    const bool psmt4 = psmArg == "psmt4";
+    // PSMT4: CLUT block address (TEX0.CBP) as the 10th arg; 16 RGBA32 entries
+    // read via clutTableT32I4 (CSM1).
+    const long cbp = argc > 9 ? std::atol(argv[9]) : 0;
 
     std::ifstream in(path, std::ios::binary | std::ios::ate);
     if (!in) { std::fprintf(stderr, "cannot open %s\n", path.c_str()); return 1; }
@@ -57,15 +62,27 @@ int main(int argc, char** argv) {
     }
 
     // PSMT8 view: grayscale identity CLUT (index -> gray), for font/indexed data.
-    std::vector<uint8_t> grayClut(256 * 4);
+    std::vector<uint8_t> clutBuf(256 * 4);
     for (int i = 0; i < 256; i++) {
-        grayClut[i * 4] = grayClut[i * 4 + 1] = grayClut[i * 4 + 2] = uint8_t(i);
-        grayClut[i * 4 + 3] = 255;
+        clutBuf[i * 4] = clutBuf[i * 4 + 1] = clutBuf[i * 4 + 2] = uint8_t(i);
+        clutBuf[i * 4 + 3] = 255;
     }
+    if (psmt4) {
+        // CSM1 CLUT for 4-bit indices in a PSMCT32 block at CBP (GSTables.cpp
+        // clutTableT32I4): entry i = word clutTable[i] of the CBP block.
+        static const int kClutT32I4[16] = {0, 1, 4, 5, 8, 9, 12, 13, 2, 3, 6, 7, 10, 11, 14, 15};
+        for (int i = 0; i < 16; i++) {
+            const size_t a = static_cast<size_t>(vramOffset) + static_cast<size_t>(cbp) * 256
+                           + static_cast<size_t>(kClutT32I4[i]) * 4;
+            std::memcpy(&clutBuf[i * 4], s.freeze.data() + a, 4);
+        }
+    }
+    const GsPixelFormat fmt = psmt4 ? GsPixelFormat::PSMT4
+                            : psmt8 ? GsPixelFormat::PSMT8
+                                    : GsPixelFormat::PSMCT32;
     const std::vector<uint8_t> rgba = SwizzleEngine::deswizzle(
-        s.freeze.data() + start, W, H, stride,
-        psmt8 ? GsPixelFormat::PSMT8 : GsPixelFormat::PSMCT32,
-        psmt8 ? grayClut.data() : nullptr);
+        s.freeze.data() + start, W, H, stride, fmt,
+        (psmt4 || psmt8) ? clutBuf.data() : nullptr);
 
     std::ofstream o(out, std::ios::binary);
     o.write(reinterpret_cast<const char*>(rgba.data()), rgba.size());

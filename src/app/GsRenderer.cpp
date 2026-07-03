@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -152,7 +153,7 @@ void GsRenderer::init(const VulkanContext& ctx, ResourceManager& res, const GsSc
         return std::pair<float, float>(mu, mv);
     };
     auto decodeTexture = [&](uint32_t tbp0, uint32_t tw, uint32_t th, uint32_t tbw, uint32_t psm,
-                             const GsTexa& texa) {
+                             uint32_t cbp, const GsTexa& texa) {
         int w = 1 << tw, h = 1 << th;
         const auto [mu, mv] = uvBoundsFor(tbp0);
         w = std::max<int>(w, int(std::ceil(mu)));
@@ -161,10 +162,21 @@ void GsRenderer::init(const VulkanContext& ctx, ResourceManager& res, const GsSc
         const size_t base = kVramFreezeOffset + size_t(tbp0) * 256;
         // Clamp height to the end of the 4MB VRAM.
         const size_t vramLeft = (4u << 20) - size_t(tbp0) * 256;
-        h = std::min<int>(h, int(vramLeft / (size_t(stride) * 4)));
-        const GsPixelFormat fmt = (psm == 1) ? GsPixelFormat::PSMCT24 : GsPixelFormat::PSMCT32;
-        // PSMCT24 is the GS texture read: expand alpha via TEXA (Expand24To32).
-        std::vector<uint8_t> rgba = SwizzleEngine::deswizzle(m_freeze + base, w, h, stride, fmt, nullptr, texa);
+        const int bytesPerRow = (psm == 20) ? stride / 2 : stride * 4;
+        h = std::min<int>(h, int(vramLeft / size_t(bytesPerRow)));
+        std::vector<uint8_t> rgba;
+        if (psm == 20) {  // PSMT4 (the text font): 16-entry CSM1 CLUT at CBP.
+            static const int kClutT32I4[16] = {0, 1, 4, 5, 8, 9, 12, 13, 2, 3, 6, 7, 10, 11, 14, 15};
+            std::vector<uint8_t> clut(256 * 4, 0);
+            for (int i = 0; i < 16; i++)
+                std::memcpy(&clut[i * 4],
+                            m_freeze + kVramFreezeOffset + size_t(cbp) * 256 + size_t(kClutT32I4[i]) * 4, 4);
+            rgba = SwizzleEngine::deswizzle(m_freeze + base, w, h, stride, GsPixelFormat::PSMT4, clut.data());
+        } else {
+            const GsPixelFormat fmt = (psm == 1) ? GsPixelFormat::PSMCT24 : GsPixelFormat::PSMCT32;
+            // PSMCT24 is the GS texture read: expand alpha via TEXA (Expand24To32).
+            rgba = SwizzleEngine::deswizzle(m_freeze + base, w, h, stride, fmt, nullptr, texa);
+        }
         AllocatedImage img = res.createImage({uint32_t(w), uint32_t(h)}, VK_FORMAT_R8G8B8A8_UNORM,
             VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
         res.uploadToImage(img, rgba.data(), {uint32_t(w), uint32_t(h)}, VK_FORMAT_R8G8B8A8_UNORM);
@@ -176,11 +188,12 @@ void GsRenderer::init(const VulkanContext& ctx, ResourceManager& res, const GsSc
     for (size_t i = 0; i < prims.size(); i++) {
         if (prims[i].prim.type != 4 && prims[i].prim.type != 6) continue;
         const uint32_t psm = prims[i].tex0.psm;
-        if (!recipes[i].textured || (psm != 0 && psm != 1)) continue;
+        if (!recipes[i].textured || (psm != 0 && psm != 1 && psm != 20)) continue;
         const uint32_t tbp0 = prims[i].tex0.tbp0;
         if (isFeedback(tbp0)) continue;  // framebuffer-aliased -> feedback path
         if (textureIndexFor(tbp0) < 0)
-            decodeTexture(tbp0, prims[i].tex0.tw, prims[i].tex0.th, prims[i].tex0.tbw, psm, prims[i].texa);
+            decodeTexture(tbp0, prims[i].tex0.tw, prims[i].tex0.th, prims[i].tex0.tbw, psm,
+                          prims[i].tex0.cbp, prims[i].texa);
     }
 
     const uint8_t white[4] = {255, 255, 255, 255};
@@ -266,7 +279,7 @@ void GsRenderer::init(const VulkanContext& ctx, ResourceManager& res, const GsSc
         bool feedback = false;
         float texW = 1.0f, texH = 1.0f, texRow = 0.0f;
         float stqU = 1.0f, stqV = 1.0f;  // STQ texel scale relative to decoded dims
-        if (r.textured && (p.tex0.psm == 0 || p.tex0.psm == 1)) {
+        if (r.textured && (p.tex0.psm == 0 || p.tex0.psm == 1 || p.tex0.psm == 20)) {
             texW = float(1 << p.tex0.tw);
             texH = float(1 << p.tex0.th);
             if (isFeedback(p.tex0.tbp0)) {  // framebuffer-as-texture
