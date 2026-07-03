@@ -78,6 +78,8 @@ void writeJson(const GsCommandStream& s, const std::string& path) {
           << ",\"MINV\":" << p.clamp.minv << ",\"MAXV\":" << p.clamp.maxv << "}"
           << ",\"FRAME\":{\"FBP\":" << p.frame.fbp << ",\"FBW\":" << int(p.frame.fbw)
           << ",\"PSM\":" << int(p.frame.psm) << "}"
+          << ",\"SCISSOR\":{\"X0\":" << p.scissor.scax0 << ",\"X1\":" << p.scissor.scax1
+          << ",\"Y0\":" << p.scissor.scay0 << ",\"Y1\":" << p.scissor.scay1 << "}"
           << ",\"DTHE\":" << p.dthe << ",\"COLCLAMP\":" << p.colclamp
           << ",\"PABE\":" << p.pabe << ",\"FBA\":" << p.fba
           << ",\"nverts\":" << p.verts.size()

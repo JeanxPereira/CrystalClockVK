@@ -355,6 +355,7 @@ void GsRenderer::init(const VulkanContext& ctx, ResourceManager& res, const GsSc
         Draw d{};
         d.firstVertex = first;
         d.vertexCount = count;
+        d.primIndex = p.index;
         d.pipelineIndex = pipeIdx;
         d.fbpRow = int(dstRow);
         d.textureIndex = texIdx;
@@ -442,6 +443,7 @@ void GsRenderer::record(PassRecorder& rec, VkImage dst, VkExtent2D dstExtent) {
         int boundPipeline = -1;
         for (size_t k = i; k < j; k++) {
             const Draw& d = m_draws[k];
+            if (m_stopAtPrim >= 0 && int(d.primIndex) >= m_stopAtPrim) continue;
             if (d.pipelineIndex != boundPipeline) {
                 rec.bindPipeline(m_pipelines[d.pipelineIndex]);
                 boundPipeline = d.pipelineIndex;
@@ -494,6 +496,10 @@ VkExtent2D GsRenderer::displayExtent() const { return {kVramW, kFbH}; }
 std::vector<uint8_t> GsRenderer::readbackDisplay(ResourceManager& res) const {
     // FBP 0 occupies VRAM rows [0, kFbH). m_writeLayout is TRANSFER_SRC after record().
     return res.downloadImage(m_vramWrite, {0, 0}, {kVramW, kFbH}, m_writeLayout);
+}
+
+std::vector<uint8_t> GsRenderer::readbackVram(ResourceManager& res) const {
+    return res.downloadImage(m_vramWrite, {0, 0}, {kVramW, kVramH}, m_writeLayout);
 }
 
 void GsRenderer::destroy(const VulkanContext& ctx, ResourceManager& res) {

@@ -34,6 +34,12 @@ public:
     VkExtent2D displayExtent() const;
     std::vector<uint8_t> readbackDisplay(ResourceManager& res) const;
 
+    // Debug: replay only prims with index < stop (-1 = all). Lets a VRAM
+    // snapshot be taken "right before draw N" for stream-state archaeology.
+    void setStopAtPrim(int stop) { m_stopAtPrim = stop; }
+    // Full VRAM image readback (640 x kVramH) after record().
+    std::vector<uint8_t> readbackVram(ResourceManager& res) const;
+
 private:
     struct GpuVertex {
         float pos[3];
@@ -43,6 +49,7 @@ private:
     struct Draw {
         uint32_t firstVertex;
         uint32_t vertexCount;
+        uint32_t primIndex;  // source GsPrimitive index (matches gsdump JSON idx)
         int pipelineIndex;
         int fbpRow;          // target framebuffer's VRAM row offset
         int textureIndex;    // resident texture, or -1
@@ -60,6 +67,7 @@ private:
     int pipelineIndexFor(uint64_t key);
 
     bool m_ready = false;
+    int m_stopAtPrim = -1;
     const uint8_t* m_freeze = nullptr;
     VkFormat m_targetFormat = VK_FORMAT_R8G8B8A8_UNORM;
 

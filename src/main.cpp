@@ -107,11 +107,17 @@ int main(int argc, char* argv[]) {
 
         // Args: first positional = .gs path; "--dump-rgba <file>" renders one frame,
         // dumps the native FBP0 (640x224 RGBA8) to <file>, and exits (pixel-diff gate).
+        // "--stop-at <primIdx>" replays only prims < idx; with --dump-vram the full
+        // 640x1408 VRAM image is dumped instead of FBP0 (stream-state archaeology).
         std::string gsArg;
         std::string dumpRgbaPath;
+        bool dumpFullVram = false;
+        int stopAtPrim = -1;
         for (int a = 1; a < argc; a++) {
             std::string arg = argv[a];
             if (arg == "--dump-rgba" && a + 1 < argc) dumpRgbaPath = argv[++a];
+            else if (arg == "--dump-vram" && a + 1 < argc) { dumpRgbaPath = argv[++a]; dumpFullVram = true; }
+            else if (arg == "--stop-at" && a + 1 < argc) stopAtPrim = std::atoi(argv[++a]);
             else if (gsArg.empty()) gsArg = arg;
         }
 
@@ -124,7 +130,8 @@ int main(int argc, char* argv[]) {
             : "C:/Users/dell04/Documents/PCSX2/snaps/clock_viewer.gs";
         if (scene.load(dumpPath))
             gsRenderer.init(vulkan, resources, scene,
-                            swapchain.imageFormat(), VK_FORMAT_D32_SFLOAT);
+                            swapchain.imageFormat(), VK_FORMAT_D32_SFLOAT),
+            gsRenderer.setStopAtPrim(stopAtPrim);
         else
             std::cerr << "No GS dump loaded (" << dumpPath << "). Pass a .gs path as arg 1.\n";
 
@@ -328,12 +335,16 @@ int main(int argc, char* argv[]) {
             // Pixel-diff gate: after one rendered frame, dump FBP0 and quit.
             if (!dumpRgbaPath.empty() && gsRenderer.ready()) {
                 vkDeviceWaitIdle(vulkan.device());
-                const VkExtent2D e = gsRenderer.displayExtent();
-                const std::vector<uint8_t> px = gsRenderer.readbackDisplay(resources);
+                const VkExtent2D e = dumpFullVram ? VkExtent2D{640, 1408}
+                                                  : gsRenderer.displayExtent();
+                const std::vector<uint8_t> px = dumpFullVram
+                    ? gsRenderer.readbackVram(resources)
+                    : gsRenderer.readbackDisplay(resources);
                 std::ofstream out(dumpRgbaPath, std::ios::binary);
                 out.write(reinterpret_cast<const char*>(px.data()),
                           static_cast<std::streamsize>(px.size()));
-                std::cerr << "dumped FBP0 " << e.width << "x" << e.height << " RGBA8 -> "
+                std::cerr << "dumped " << (dumpFullVram ? "VRAM " : "FBP0 ")
+                          << e.width << "x" << e.height << " RGBA8 -> "
                           << dumpRgbaPath << " (" << px.size() << " bytes)\n";
                 break;
             }
