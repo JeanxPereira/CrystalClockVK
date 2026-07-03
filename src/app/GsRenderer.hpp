@@ -68,6 +68,7 @@ private:
 
     bool m_ready = false;
     int m_stopAtPrim = -1;
+    int m_displayRow = 0;  // VRAM row of the DISPFB framebuffer (from privRegs)
     const uint8_t* m_freeze = nullptr;
     VkFormat m_targetFormat = VK_FORMAT_R8G8B8A8_UNORM;
 

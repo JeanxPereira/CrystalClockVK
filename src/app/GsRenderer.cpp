@@ -77,6 +77,20 @@ void GsRenderer::init(const VulkanContext& ctx, ResourceManager& res, const GsSc
     const auto& prims = scene.stream().prims;
     const auto& recipes = scene.recipes();
 
+    // Display framebuffer from the privileged regs (GSPrivRegSet): PMODE @0x00
+    // (EN1/EN2), DISPFB1 @0x70, DISPFB2 @0x90; DISPFB.FBP shares FRAME.FBP
+    // units. The clock displays FBP 0, but e.g. the boot screen does not.
+    if (scene.stream().privRegs.size() >= 0x98) {
+        const uint8_t* pr = scene.stream().privRegs.data();
+        auto rd64 = [&](size_t o) { uint64_t v; std::memcpy(&v, pr + o, 8); return v; };
+        const uint64_t pmode = rd64(0x00);
+        const uint64_t dfb = (pmode & 1) ? rd64(0x70) : rd64(0x90);
+        const uint32_t dispFbp = uint32_t(dfb & 0x1ff);
+        m_displayRow = int(fbRow(dispFbp));
+        std::fprintf(stderr, "GsRenderer: DISPFB fbp=%u row=%d (PMODE EN1=%d EN2=%d)\n",
+                     dispFbp, m_displayRow, int(pmode & 1), int((pmode >> 1) & 1));
+    }
+
     // Distinct framebuffers actually rendered to (FRAME.FBP). A texture is feedback
     // only if it aliases one of these (tbp0 == fbp*32) — many resident textures are
     // also multiples of 32, so the bare tbp0%32 test is too broad.
@@ -571,13 +585,13 @@ void GsRenderer::record(PassRecorder& rec, VkImage dst, VkExtent2D dstExtent) {
         i = j;
     }
 
-    // Display = FBP 0 (rows [0,224]) of the VRAM, blitted to the main image.
+    // Display = the DISPFB framebuffer's rows of the VRAM, blitted to the main image.
     rec.transitionImage(m_vramWrite.image, m_writeLayout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
     m_writeLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
     VkImageBlit blit{};
     blit.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
-    blit.srcOffsets[0] = {0, 0, 0};
-    blit.srcOffsets[1] = {int32_t(kVramW), int32_t(kFbH), 1};
+    blit.srcOffsets[0] = {0, m_displayRow, 0};
+    blit.srcOffsets[1] = {int32_t(kVramW), m_displayRow + int32_t(kFbH), 1};
     blit.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
     blit.dstOffsets[1] = {int32_t(dstExtent.width), int32_t(dstExtent.height), 1};
     vkCmdBlitImage(cmd, m_vramWrite.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
@@ -587,8 +601,8 @@ void GsRenderer::record(PassRecorder& rec, VkImage dst, VkExtent2D dstExtent) {
 VkExtent2D GsRenderer::displayExtent() const { return {kVramW, kFbH}; }
 
 std::vector<uint8_t> GsRenderer::readbackDisplay(ResourceManager& res) const {
-    // FBP 0 occupies VRAM rows [0, kFbH). m_writeLayout is TRANSFER_SRC after record().
-    return res.downloadImage(m_vramWrite, {0, 0}, {kVramW, kFbH}, m_writeLayout);
+    // The DISPFB framebuffer's row band. m_writeLayout is TRANSFER_SRC after record().
+    return res.downloadImage(m_vramWrite, {0, m_displayRow}, {kVramW, kFbH}, m_writeLayout);
 }
 
 std::vector<uint8_t> GsRenderer::readbackVram(ResourceManager& res) const {
