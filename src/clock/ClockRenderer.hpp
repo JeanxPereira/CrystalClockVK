@@ -43,6 +43,7 @@ private:
     VkPipelineLayout m_layout{VK_NULL_HANDLE};
     VkPipeline m_pipeline{VK_NULL_HANDLE};       // flat (2D dial)
     VkPipeline m_prismPipeline{VK_NULL_HANDLE};  // 3D crystal prism
+    VkPipeline m_bgPipeline{VK_NULL_HANDLE};     // fullscreen tunnel background
     VkFormat m_colorFormat{};
 
     AllocatedBuffer m_vbo{};

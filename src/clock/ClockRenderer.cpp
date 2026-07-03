@@ -65,6 +65,7 @@ ClockRenderer::~ClockRenderer() {
     if (m_depth.image) m_resources.destroyImage(m_depth);
     if (m_pipeline) vkDestroyPipeline(m_ctx.device(), m_pipeline, nullptr);
     if (m_prismPipeline) vkDestroyPipeline(m_ctx.device(), m_prismPipeline, nullptr);
+    if (m_bgPipeline) vkDestroyPipeline(m_ctx.device(), m_bgPipeline, nullptr);
     if (m_layout) vkDestroyPipelineLayout(m_ctx.device(), m_layout, nullptr);
 }
 
@@ -110,6 +111,24 @@ void ClockRenderer::setPrismMesh(const ps2clock::PrismMesh& mesh) {
             .build(m_ctx.device());
         vkDestroyShaderModule(m_ctx.device(), vert, nullptr);
         vkDestroyShaderModule(m_ctx.device(), frag, nullptr);
+
+        // Fullscreen tunnel background pipeline (no vertex buffer).
+        VkShaderModule bv = ShaderLoader::loadModule(m_ctx.device(), "bin/shaders/bg_tunnel.vert.spv");
+        VkShaderModule bf = ShaderLoader::loadModule(m_ctx.device(), "bin/shaders/bg_tunnel.frag.spv");
+        PipelineBuilder bgb;
+        m_bgPipeline = bgb
+            .setShaders(bv, bf)
+            .setVertexInput({}, {})
+            .setTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
+            .setCullMode(VK_CULL_MODE_NONE)
+            .setPolygonMode(VK_POLYGON_MODE_FILL)
+            .setDepthTest(false, false)
+            .setBlendState(opaqueBlend())
+            .setColorFormat(m_colorFormat)
+            .setPipelineLayout(m_layout)
+            .build(m_ctx.device());
+        vkDestroyShaderModule(m_ctx.device(), bv, nullptr);
+        vkDestroyShaderModule(m_ctx.device(), bf, nullptr);
     }
     if (m_vbo.buffer) m_resources.destroyBuffer(m_vbo);
     if (m_ibo.buffer) m_resources.destroyBuffer(m_ibo);
@@ -154,8 +173,14 @@ void ClockRenderer::record(PassRecorder& recorder, VkImageView colorView, const 
 
     recorder.beginDebugLabel("ClockRenderer::rods");
     recorder.beginRendering(colorView, m_extent, &clear);
-    recorder.bindPipeline(m_prism ? m_prismPipeline : m_pipeline);
     recorder.setViewportScissor(m_extent);
+    // Prism mode: draw the tunnel background first (fullscreen), then the
+    // refractive crystal rods over it.
+    if (m_prism && m_bgPipeline) {
+        recorder.bindPipeline(m_bgPipeline);
+        recorder.draw(3);
+    }
+    recorder.bindPipeline(m_prism ? m_prismPipeline : m_pipeline);
     recorder.pushConstants(m_layout, VK_SHADER_STAGE_VERTEX_BIT, &mvp, sizeof(ps2clock::Mat4));
     recorder.bindVertexBuffer(m_vbo.buffer);
     recorder.bindIndexBuffer(m_ibo.buffer);
