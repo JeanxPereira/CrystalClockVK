@@ -30,8 +30,10 @@ struct Rod {
 struct RodVertex { Vec3 pos; Vec4 color; };
 struct FlatMesh  { std::vector<RodVertex> vertices; std::vector<uint32_t> indices; };
 
-// 3D prism vertex: position + per-face unit normal (flat crystal facets) + RGBA.
-struct PrismVertex { Vec3 pos; Vec3 normal; Vec4 color; };
+// 3D prism vertex: position + per-face unit normal (flat crystal facets) + RGBA
+// + uv (u = 0..1 along the rod length inner->outer, v = 0..1 across the width;
+// the crystal shader uses them for the specular streak and the min/sec fill).
+struct PrismVertex { Vec3 pos; Vec3 normal; Vec4 color; glm::vec2 uv; };
 struct PrismMesh   { std::vector<PrismVertex> vertices; std::vector<uint32_t> indices; };
 
 class RodField {

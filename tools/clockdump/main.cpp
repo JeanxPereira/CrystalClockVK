@@ -114,6 +114,9 @@ int main(int argc, char** argv) {
         PassRecorder recorder(cmd);
         recorder.transitionImage(target.image, VK_IMAGE_LAYOUT_UNDEFINED,
                                  VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+        // A faint dark-purple background (the clock's tunnel is deep violet), so
+        // the translucent crystal reads instead of floating on pure black.
+        if (prism) renderer.setClearColor(0.06f, 0.04f, 0.10f);
         renderer.record(recorder, target.imageView, mvp);
         recorder.transitionImage(target.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                                  VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);

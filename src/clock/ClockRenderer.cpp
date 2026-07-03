@@ -81,7 +81,21 @@ void ClockRenderer::setPrismMesh(const ps2clock::PrismMesh& mesh) {
             {0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(ps2clock::PrismVertex, pos)},
             {1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(ps2clock::PrismVertex, normal)},
             {2, 0, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(ps2clock::PrismVertex, color)},
+            {3, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(ps2clock::PrismVertex, uv)},
         };
+        // Alpha-over (src-over) translucent glass: the 3D box stacks 6 facets,
+        // so additive blows out — over-blend keeps the tint readable while the
+        // faint-alpha ghost above the fill still shows through.
+        VkPipelineColorBlendAttachmentState crystal{};
+        crystal.blendEnable = VK_TRUE;
+        crystal.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+        crystal.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+        crystal.colorBlendOp = VK_BLEND_OP_ADD;
+        crystal.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+        crystal.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+        crystal.alphaBlendOp = VK_BLEND_OP_ADD;
+        crystal.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+                                 VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
         PipelineBuilder builder;
         m_prismPipeline = builder
             .setShaders(vert, frag)
@@ -90,7 +104,7 @@ void ClockRenderer::setPrismMesh(const ps2clock::PrismMesh& mesh) {
             .setCullMode(VK_CULL_MODE_NONE)
             .setPolygonMode(VK_POLYGON_MODE_FILL)
             .setDepthTest(false, false)
-            .setBlendState(opaqueBlend())
+            .setBlendState(crystal)
             .setColorFormat(m_colorFormat)
             .setPipelineLayout(m_layout)
             .build(m_ctx.device());
@@ -136,7 +150,7 @@ void ClockRenderer::setDialMesh(const ps2clock::FlatMesh& mesh) {
 
 void ClockRenderer::record(PassRecorder& recorder, VkImageView colorView, const ps2clock::Mat4& mvp) {
     VkClearValue clear{};
-    clear.color = {{0.0f, 0.0f, 0.0f, 1.0f}};
+    clear.color = {{m_clear[0], m_clear[1], m_clear[2], 1.0f}};
 
     recorder.beginDebugLabel("ClockRenderer::rods");
     recorder.beginRendering(colorView, m_extent, &clear);

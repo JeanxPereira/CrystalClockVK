@@ -106,9 +106,13 @@ PrismMesh RodField::buildDialPrism(const ClockState& state) const {
 
     for (const Rod& rod : rods) {
         // litRod<0 keeps a plain white body (buildPrismMesh); else colour the
-        // hour rod bright and the rest dim.
-        const Vec4 col = (state.litRod < 0) ? Vec4(1.0f, 1.0f, 1.0f, 1.0f)
-                       : (rod.hour == state.litRod) ? lit : dim;
+        // hour rod bright and the rest dim. col.a carries the min/sec fill
+        // fraction for the lit rod (crystal shader thresholds along uv.u);
+        // 1.0 elsewhere = uniformly present.
+        Vec4 col;
+        if (state.litRod < 0) col = Vec4(1.0f, 1.0f, 1.0f, 1.0f);
+        else if (rod.hour == state.litRod) col = Vec4(lit.x, lit.y, lit.z, state.fill);
+        else col = Vec4(dim.x, dim.y, dim.z, 1.0f);
         const Vec3 axis = rod.direction;              // radial (length) axis
         const Vec3 perp(-axis.y, axis.x, 0.0f);       // in-plane width axis
         const Vec3 zdir(0.0f, 0.0f, 1.0f);            // depth axis
@@ -119,22 +123,25 @@ PrismMesh RodField::buildDialPrism(const ClockState& state) const {
         auto corner = [&](int end, float ws, float ds) {
             return (end ? c1 : c0) + perp * (ws * hw) + zdir * (ds * hd);
         };
-        // 6 faces, each a quad (4 corners CCW) with a flat outward normal.
-        struct Face { Vec3 n; Vec3 a, b, c, d; };
+        // 6 faces, each a quad (4 corners CCW) with a flat outward normal + uv.
+        // uv.u runs inner(0)->outer(1) along the length; uv.v across the width.
+        using glm::vec2;
+        struct FV { Vec3 p; vec2 uv; };
+        struct Face { Vec3 n; FV a, b, c, d; };
         const Face faces[6] = {
-            {  zdir,       corner(0,-1,+1), corner(1,-1,+1), corner(1,+1,+1), corner(0,+1,+1) }, // front +Z
-            { -zdir,       corner(0,+1,-1), corner(1,+1,-1), corner(1,-1,-1), corner(0,-1,-1) }, // back  -Z
-            {  perp,       corner(0,+1,+1), corner(1,+1,+1), corner(1,+1,-1), corner(0,+1,-1) }, // +width
-            { -perp,       corner(0,-1,-1), corner(1,-1,-1), corner(1,-1,+1), corner(0,-1,+1) }, // -width
-            {  axis,       corner(1,-1,+1), corner(1,-1,-1), corner(1,+1,-1), corner(1,+1,+1) }, // outer cap
-            { -axis,       corner(0,+1,+1), corner(0,+1,-1), corner(0,-1,-1), corner(0,-1,+1) }, // inner cap
+            {  zdir, {corner(0,-1,+1),{0,0}}, {corner(1,-1,+1),{1,0}}, {corner(1,+1,+1),{1,1}}, {corner(0,+1,+1),{0,1}} }, // front +Z
+            { -zdir, {corner(0,+1,-1),{0,1}}, {corner(1,+1,-1),{1,1}}, {corner(1,-1,-1),{1,0}}, {corner(0,-1,-1),{0,0}} }, // back  -Z
+            {  perp, {corner(0,+1,+1),{0,1}}, {corner(1,+1,+1),{1,1}}, {corner(1,+1,-1),{1,1}}, {corner(0,+1,-1),{0,1}} }, // +width
+            { -perp, {corner(0,-1,-1),{0,0}}, {corner(1,-1,-1),{1,0}}, {corner(1,-1,+1),{1,0}}, {corner(0,-1,+1),{0,0}} }, // -width
+            {  axis, {corner(1,-1,+1),{1,0}}, {corner(1,-1,-1),{1,0}}, {corner(1,+1,-1),{1,1}}, {corner(1,+1,+1),{1,1}} }, // outer cap
+            { -axis, {corner(0,+1,+1),{0,1}}, {corner(0,+1,-1),{0,1}}, {corner(0,-1,-1),{0,0}}, {corner(0,-1,+1),{0,0}} }, // inner cap
         };
         for (const Face& f : faces) {
             const uint32_t base = static_cast<uint32_t>(m.vertices.size());
-            m.vertices.push_back({f.a, f.n, col});
-            m.vertices.push_back({f.b, f.n, col});
-            m.vertices.push_back({f.c, f.n, col});
-            m.vertices.push_back({f.d, f.n, col});
+            m.vertices.push_back({f.a.p, f.n, col, f.a.uv});
+            m.vertices.push_back({f.b.p, f.n, col, f.b.uv});
+            m.vertices.push_back({f.c.p, f.n, col, f.c.uv});
+            m.vertices.push_back({f.d.p, f.n, col, f.d.uv});
             m.indices.insert(m.indices.end(),
                              {base + 0, base + 1, base + 2, base + 0, base + 2, base + 3});
         }

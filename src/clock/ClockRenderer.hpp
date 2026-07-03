@@ -29,6 +29,9 @@ public:
     // with the crystal-facet shader + depth test instead of the flat pipeline.
     void setPrismMesh(const ps2clock::PrismMesh& mesh);
 
+    // Background clear colour for record() (default black).
+    void setClearColor(float r, float g, float b) { m_clear[0]=r; m_clear[1]=g; m_clear[2]=b; }
+
     // Record the flat vertex-color draw into the given color target.
     void record(PassRecorder& recorder, VkImageView colorView, const ps2clock::Mat4& mvp);
 
@@ -47,4 +50,5 @@ private:
     uint32_t m_indexCount{0};
     bool m_prism{false};                         // which pipeline record() uses
     AllocatedImage m_depth{};
+    float m_clear[3]{0.0f, 0.0f, 0.0f};
 };
