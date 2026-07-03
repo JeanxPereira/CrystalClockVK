@@ -123,8 +123,11 @@ void GsRenderer::init(const VulkanContext& ctx, ResourceManager& res, const GsSc
         VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
     m_vramRead = res.createImage({kVramW, kVramH}, m_targetFormat, vramUsage);
     m_vramWrite = res.createImage({kVramW, kVramH}, m_targetFormat, vramUsage);
+    m_vramMS = res.createImage({kVramW, kVramH}, m_targetFormat,
+        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, VMA_MEMORY_USAGE_GPU_ONLY, VK_SAMPLE_COUNT_4_BIT);
     m_vramDepth = res.createImage({kVramW, kVramH}, VK_FORMAT_D32_SFLOAT,
-        VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
+        VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VMA_MEMORY_USAGE_GPU_ONLY,
+        VK_SAMPLE_COUNT_4_BIT);
     {
         std::vector<uint8_t> vram = SwizzleEngine::deswizzle(
             m_freeze + kVramFreezeOffset, kVramW, kVramH, kVramW, GsPixelFormat::PSMCT32, nullptr);
@@ -202,7 +205,7 @@ void GsRenderer::init(const VulkanContext& ctx, ResourceManager& res, const GsSc
     res.uploadToImage(m_white, white, {1, 1}, VK_FORMAT_R8G8B8A8_UNORM);
 
     // --- descriptor sets ---
-    m_descAlloc.init(device, uint32_t(m_textures.size()) + 3,
+    m_descAlloc.init(device, uint32_t(m_textures.size()) + 4,
         {{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1.0f}});
     auto makeSet = [&](VkImageView view, VkSampler sampler) {
         VkDescriptorSet set = m_descAlloc.allocate(m_setLayout);
@@ -215,6 +218,7 @@ void GsRenderer::init(const VulkanContext& ctx, ResourceManager& res, const GsSc
     for (auto& t : m_textures) m_textureSets.push_back(makeSet(t.imageView, m_samplerRepeat));
     m_whiteSet = makeSet(m_white.imageView, m_sampler);
     m_vramReadSet = makeSet(m_vramRead.imageView, m_sampler);
+    m_seedSet = makeSet(m_vramSeed.imageView, m_sampler);
 
     // --- shaders + layout + pipelines ---
     m_vert = ShaderLoader::loadModule(device, findShader("gsclock.vert.spv"));
@@ -259,9 +263,32 @@ void GsRenderer::init(const VulkanContext& ctx, ResourceManager& res, const GsSc
             .setBlendState(bs)
             .setColorFormat(m_targetFormat)
             .setDepthFormat(VK_FORMAT_D32_SFLOAT)
+            .setSamples(VK_SAMPLE_COUNT_4_BIT)
             .setPipelineLayout(m_pipelineLayout);
         return pb.build(device);
     };
+
+    // Fullscreen blit pipeline: seeds the MSAA VRAM image from m_vramSeed.
+    m_blitVert = ShaderLoader::loadModule(device, findShader("blit.vert.spv"));
+    m_blitFrag = ShaderLoader::loadModule(device, findShader("blit.frag.spv"));
+    {
+        VkPipelineColorBlendAttachmentState bs{};
+        bs.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+                            VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+        PipelineBuilder pb;
+        pb.setShaders(m_blitVert, m_blitFrag)
+            .setVertexInput({}, {})
+            .setTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
+            .setCullMode(VK_CULL_MODE_NONE)
+            .setPolygonMode(VK_POLYGON_MODE_FILL)
+            .setDepthTest(false, false, VK_COMPARE_OP_ALWAYS)
+            .setBlendState(bs)
+            .setColorFormat(m_targetFormat)
+            .setDepthFormat(VK_FORMAT_UNDEFINED)
+            .setSamples(VK_SAMPLE_COUNT_4_BIT)
+            .setPipelineLayout(m_pipelineLayout);
+        m_blitPipeline = pb.build(device);
+    }
 
     // --- geometry: render to VRAM rows; feedback UV over the VRAM image ---
     std::vector<GpuVertex> verts;
@@ -405,9 +432,10 @@ void GsRenderer::record(PassRecorder& rec, VkImage dst, VkExtent2D dstExtent) {
     if (!m_ready) return;
     const VkCommandBuffer cmd = rec.cmd();
 
-    // Re-seed both VRAM images from the freeze content.
+    // Re-seed the VRAM images from the freeze content: copy into read/write
+    // (1x), and blit into the MSAA image via a fullscreen draw (a 1x image
+    // cannot be copied into a multisampled one).
     rec.transitionImage(m_vramSeed.image, m_seedLayout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
-    m_seedLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
     rec.transitionImage(m_vramRead.image, m_readLayout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
     rec.transitionImage(m_vramWrite.image, m_writeLayout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
     VkImageCopy full{};
@@ -419,6 +447,25 @@ void GsRenderer::record(PassRecorder& rec, VkImage dst, VkExtent2D dstExtent) {
     vkCmdCopyImage(cmd, m_vramSeed.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                    m_vramWrite.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &full);
     m_readLayout = m_writeLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+
+    rec.transitionImage(m_vramSeed.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    m_seedLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    rec.transitionImage(m_vramMS.image, m_msLayout, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    m_msLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    rec.beginRenderingMS(m_vramMS.imageView, VK_NULL_HANDLE, VK_NULL_HANDLE,
+                         {{0, 0}, {kVramW, kVramH}}, VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+                         VK_ATTACHMENT_LOAD_OP_DONT_CARE, 0.0f);
+    {
+        VkViewport vp{0.0f, 0.0f, float(kVramW), float(kVramH), 0.0f, 1.0f};
+        vkCmdSetViewport(cmd, 0, 1, &vp);
+        VkRect2D sc{{0, 0}, {kVramW, kVramH}};
+        vkCmdSetScissor(cmd, 0, 1, &sc);
+        rec.bindPipeline(m_blitPipeline);
+        rec.bindDescriptorSet(m_pipelineLayout, 0, m_seedSet);
+        vkCmdDraw(cmd, 3, 1, 0, 0);
+    }
+    rec.endRendering();
 
     auto setVP = [&](int rowOff) {
         VkViewport vp{0.0f, 0.0f, float(kVramW), float(kVramH), 0.0f, 1.0f};
@@ -441,15 +488,19 @@ void GsRenderer::record(PassRecorder& rec, VkImage dst, VkExtent2D dstExtent) {
 
         rec.transitionImage(m_vramRead.image, m_readLayout, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
         m_readLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        rec.transitionImage(m_vramWrite.image, m_writeLayout, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-        m_writeLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        rec.transitionImage(m_vramWrite.image, m_writeLayout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+        m_writeLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
 
         // GS Z persists across framebuffer switches (one Z-buffer at ZBP 140);
         // clear once at frame start, then load/store across row-group passes.
-        rec.beginRendering(m_vramWrite.imageView, m_vramDepth.imageView, {kVramW, kVramH},
-                           nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                           firstPass ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD,
-                           0.0f, true);
+        // The MSAA band resolves into m_vramWrite at endRendering (the resolve
+        // averages coverage = the GS AA1 edge antialiasing).
+        const int bandH = std::min<int>(int(kFbH), int(kVramH) - row);
+        rec.beginRenderingMS(m_vramMS.imageView, m_vramWrite.imageView, m_vramDepth.imageView,
+                             {{0, row < 0 ? 0 : row}, {kVramW, uint32_t(bandH)}},
+                             VK_ATTACHMENT_LOAD_OP_LOAD,
+                             firstPass ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD,
+                             0.0f);
         firstPass = false;
         setVP(row);
         rec.bindVertexBuffer(m_vbo.buffer);
@@ -522,8 +573,12 @@ void GsRenderer::destroy(const VulkanContext& ctx, ResourceManager& res) {
     if (m_white.image) res.destroyImage(m_white);
     if (m_vramRead.image) res.destroyImage(m_vramRead);
     if (m_vramWrite.image) res.destroyImage(m_vramWrite);
+    if (m_vramMS.image) res.destroyImage(m_vramMS);
     if (m_vramSeed.image) res.destroyImage(m_vramSeed);
     if (m_vramDepth.image) res.destroyImage(m_vramDepth);
+    if (m_blitPipeline) vkDestroyPipeline(device, m_blitPipeline, nullptr);
+    if (m_blitVert) vkDestroyShaderModule(device, m_blitVert, nullptr);
+    if (m_blitFrag) vkDestroyShaderModule(device, m_blitFrag, nullptr);
     for (auto p : m_pipelines) vkDestroyPipeline(device, p, nullptr);
     if (m_pipelineLayout) vkDestroyPipelineLayout(device, m_pipelineLayout, nullptr);
     if (m_setLayout) vkDestroyDescriptorSetLayout(device, m_setLayout, nullptr);

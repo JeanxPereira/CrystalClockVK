@@ -75,6 +75,41 @@ void PassRecorder::beginRendering(VkImageView colorAttachment, VkImageView depth
     vkCmdBeginRendering(m_cmd, &renderInfo);
 }
 
+void PassRecorder::beginRenderingMS(VkImageView colorMS, VkImageView resolve, VkImageView depthMS,
+                                    VkRect2D area, VkAttachmentLoadOp colorLoadOp,
+                                    VkAttachmentLoadOp depthLoadOp, float depthClearValue) {
+    VkRenderingAttachmentInfo colorInfo{};
+    colorInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+    colorInfo.imageView = colorMS;
+    colorInfo.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    colorInfo.loadOp = colorLoadOp;
+    colorInfo.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    colorInfo.clearValue.color = {{0.0f, 0.0f, 0.0f, 0.0f}};
+    if (resolve) {
+        colorInfo.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT;
+        colorInfo.resolveImageView = resolve;
+        colorInfo.resolveImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    }
+
+    VkRenderingAttachmentInfo depthInfo{};
+    depthInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+    depthInfo.imageView = depthMS;
+    depthInfo.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+    depthInfo.loadOp = depthLoadOp;
+    depthInfo.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    depthInfo.clearValue.depthStencil = {depthClearValue, 0};
+
+    VkRenderingInfo renderInfo{};
+    renderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+    renderInfo.renderArea = area;
+    renderInfo.layerCount = 1;
+    renderInfo.colorAttachmentCount = 1;
+    renderInfo.pColorAttachments = &colorInfo;
+    renderInfo.pDepthAttachment = depthMS ? &depthInfo : nullptr;
+
+    vkCmdBeginRendering(m_cmd, &renderInfo);
+}
+
 void PassRecorder::endRendering() {
     vkCmdEndRendering(m_cmd);
 }

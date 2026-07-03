@@ -40,6 +40,9 @@ public:
     // Pipeline creation flags
     PipelineBuilder& setFlags(VkPipelineCreateFlags flags);
 
+    // Multisampling (default 1 sample)
+    PipelineBuilder& setSamples(VkSampleCountFlagBits samples);
+
     // Build the final pipeline
     VkPipeline build(VkDevice device);
 

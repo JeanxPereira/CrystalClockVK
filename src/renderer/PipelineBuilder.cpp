@@ -119,6 +119,11 @@ PipelineBuilder& PipelineBuilder::setFlags(VkPipelineCreateFlags flags) {
     return *this;
 }
 
+PipelineBuilder& PipelineBuilder::setSamples(VkSampleCountFlagBits samples) {
+    m_multisampling.rasterizationSamples = samples;
+    return *this;
+}
+
 VkPipeline PipelineBuilder::build(VkDevice device) {
     // Wire up vertex input with stored bindings/attributes
     m_vertexInput.vertexBindingDescriptionCount = static_cast<uint32_t>(m_bindings.size());

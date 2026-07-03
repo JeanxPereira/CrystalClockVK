@@ -38,7 +38,8 @@ public:
 
     // Image creation (with view)
     AllocatedImage createImage(VkExtent2D extent, VkFormat format,
-                               VkImageUsageFlags usage, VmaMemoryUsage memUsage = VMA_MEMORY_USAGE_GPU_ONLY);
+                               VkImageUsageFlags usage, VmaMemoryUsage memUsage = VMA_MEMORY_USAGE_GPU_ONLY,
+                               VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT);
 
     // Upload data to a GPU buffer via staging
     void uploadToBuffer(const AllocatedBuffer& dst, const void* data, VkDeviceSize size);

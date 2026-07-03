@@ -45,7 +45,8 @@ AllocatedBuffer ResourceManager::createBuffer(VkDeviceSize size, VkBufferUsageFl
 }
 
 AllocatedImage ResourceManager::createImage(VkExtent2D extent, VkFormat format,
-                                             VkImageUsageFlags usage, VmaMemoryUsage memUsage) {
+                                             VkImageUsageFlags usage, VmaMemoryUsage memUsage,
+                                             VkSampleCountFlagBits samples) {
     VkImageCreateInfo imgInfo{};
     imgInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     imgInfo.imageType = VK_IMAGE_TYPE_2D;
@@ -53,7 +54,7 @@ AllocatedImage ResourceManager::createImage(VkExtent2D extent, VkFormat format,
     imgInfo.extent = {extent.width, extent.height, 1};
     imgInfo.mipLevels = 1;
     imgInfo.arrayLayers = 1;
-    imgInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+    imgInfo.samples = samples;
     imgInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
     imgInfo.usage = usage;
 

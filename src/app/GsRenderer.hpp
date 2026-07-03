@@ -75,15 +75,25 @@ private:
     AllocatedBuffer m_vbo{};
     uint32_t m_vertexCount = 0;
 
-    // VRAM ping-pong: m_vramRead is sampled, m_vramWrite is rendered; m_vramSeed
-    // holds the freeze-deswizzled initial state (re-seeded each frame).
+    // VRAM ping-pong: draws render into m_vramMS (4x — MSAA resolve reproduces
+    // the GS AA1 coverage antialiasing, whose softened edges also feed back
+    // through the refraction chain); each band pass resolves into m_vramWrite
+    // (1x), which is band-copied into m_vramRead (sampled by feedback).
+    // m_vramSeed holds the freeze-deswizzled initial state (re-seeded each
+    // frame; a fullscreen blit seeds the MSAA image).
     AllocatedImage m_vramRead{};
     AllocatedImage m_vramWrite{};
+    AllocatedImage m_vramMS{};
     AllocatedImage m_vramSeed{};
-    // GS Z-buffer (ZBP 140, PSMZ32, shared by every draw): one depth plane over
-    // the VRAM image; cleared to 0 per frame (GS z: larger = nearer).
+    VkImageLayout m_msLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    // GS Z-buffer (ZBP 140, PSMZ32, shared by every draw): one MSAA depth plane
+    // over the VRAM image; cleared to 0 per frame (GS z: larger = nearer).
     AllocatedImage m_vramDepth{};
     VkImageLayout m_depthLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    VkShaderModule m_blitVert = VK_NULL_HANDLE;
+    VkShaderModule m_blitFrag = VK_NULL_HANDLE;
+    VkPipeline m_blitPipeline = VK_NULL_HANDLE;
+    VkDescriptorSet m_seedSet = VK_NULL_HANDLE;
     VkImageLayout m_readLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     VkImageLayout m_writeLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     VkImageLayout m_seedLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;

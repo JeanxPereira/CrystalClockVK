@@ -17,6 +17,11 @@ public:
                         VkExtent2D extent, VkClearValue* clearValue = nullptr, VkImageLayout layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                         VkAttachmentLoadOp depthLoadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
                         float depthClearValue = 1.0f, bool depthStore = false);
+    // MSAA pass over a sub-region: color (MSAA, LOAD/STORE) resolves into
+    // `resolve` (1x, AVERAGE) over `area` at endRendering; depth is MSAA.
+    void beginRenderingMS(VkImageView colorMS, VkImageView resolve, VkImageView depthMS,
+                          VkRect2D area, VkAttachmentLoadOp colorLoadOp,
+                          VkAttachmentLoadOp depthLoadOp, float depthClearValue);
     void endRendering();
 
     // Pipeline and draw commands
