@@ -93,12 +93,22 @@ FlatMesh RodField::buildDialMesh(const ClockState& state) const {
 }
 
 PrismMesh RodField::buildPrismMesh() const {
+    return buildDialPrism(ClockState{-1, 0.0f, AmPm::AM});  // litRod=-1: all white body
+}
+
+PrismMesh RodField::buildDialPrism(const ClockState& state) const {
     PrismMesh m;
-    const Vec4 white(1.0f, 1.0f, 1.0f, 1.0f);
+    const Vec4 lit  = (state.amPm == AmPm::PM) ? Vec4(0.95f, 0.30f, 0.24f, 1.0f)
+                                               : Vec4(0.40f, 0.75f, 1.0f, 1.0f);
+    const Vec4 dim(0.14f, 0.24f, 0.34f, 1.0f);
     const float hw = 0.5f * params.rodWidth;   // half-width across the dial plane
     const float hd = 0.5f * params.rodDepth;   // half-depth along Z
 
     for (const Rod& rod : rods) {
+        // litRod<0 keeps a plain white body (buildPrismMesh); else colour the
+        // hour rod bright and the rest dim.
+        const Vec4 col = (state.litRod < 0) ? Vec4(1.0f, 1.0f, 1.0f, 1.0f)
+                       : (rod.hour == state.litRod) ? lit : dim;
         const Vec3 axis = rod.direction;              // radial (length) axis
         const Vec3 perp(-axis.y, axis.x, 0.0f);       // in-plane width axis
         const Vec3 zdir(0.0f, 0.0f, 1.0f);            // depth axis
@@ -121,10 +131,10 @@ PrismMesh RodField::buildPrismMesh() const {
         };
         for (const Face& f : faces) {
             const uint32_t base = static_cast<uint32_t>(m.vertices.size());
-            m.vertices.push_back({f.a, f.n, white});
-            m.vertices.push_back({f.b, f.n, white});
-            m.vertices.push_back({f.c, f.n, white});
-            m.vertices.push_back({f.d, f.n, white});
+            m.vertices.push_back({f.a, f.n, col});
+            m.vertices.push_back({f.b, f.n, col});
+            m.vertices.push_back({f.c, f.n, col});
+            m.vertices.push_back({f.d, f.n, col});
             m.indices.insert(m.indices.end(),
                              {base + 0, base + 1, base + 2, base + 0, base + 2, base + 3});
         }

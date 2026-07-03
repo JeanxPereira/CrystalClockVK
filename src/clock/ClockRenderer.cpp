@@ -17,7 +17,7 @@ VkPipelineColorBlendAttachmentState opaqueBlend() {
 
 ClockRenderer::ClockRenderer(const VulkanContext& ctx, ResourceManager& resources,
                              VkFormat colorFormat, VkExtent2D extent)
-    : m_ctx(ctx), m_resources(resources), m_extent(extent) {
+    : m_ctx(ctx), m_resources(resources), m_extent(extent), m_colorFormat(colorFormat) {
     VkPushConstantRange pc{};
     pc.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
     pc.offset = 0;
@@ -62,8 +62,53 @@ ClockRenderer::ClockRenderer(const VulkanContext& ctx, ResourceManager& resource
 ClockRenderer::~ClockRenderer() {
     if (m_vbo.buffer) m_resources.destroyBuffer(m_vbo);
     if (m_ibo.buffer) m_resources.destroyBuffer(m_ibo);
+    if (m_depth.image) m_resources.destroyImage(m_depth);
     if (m_pipeline) vkDestroyPipeline(m_ctx.device(), m_pipeline, nullptr);
+    if (m_prismPipeline) vkDestroyPipeline(m_ctx.device(), m_prismPipeline, nullptr);
     if (m_layout) vkDestroyPipelineLayout(m_ctx.device(), m_layout, nullptr);
+}
+
+void ClockRenderer::setPrismMesh(const ps2clock::PrismMesh& mesh) {
+    // Build the prism pipeline lazily (pos + normal + colour, depth-tested).
+    if (!m_prismPipeline) {
+        VkShaderModule vert = ShaderLoader::loadModule(m_ctx.device(), "bin/shaders/rod_prism.vert.spv");
+        VkShaderModule frag = ShaderLoader::loadModule(m_ctx.device(), "bin/shaders/rod_prism.frag.spv");
+        VkVertexInputBindingDescription bind{};
+        bind.binding = 0;
+        bind.stride = sizeof(ps2clock::PrismVertex);
+        bind.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+        std::vector<VkVertexInputAttributeDescription> attrs = {
+            {0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(ps2clock::PrismVertex, pos)},
+            {1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(ps2clock::PrismVertex, normal)},
+            {2, 0, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(ps2clock::PrismVertex, color)},
+        };
+        PipelineBuilder builder;
+        m_prismPipeline = builder
+            .setShaders(vert, frag)
+            .setVertexInput({bind}, attrs)
+            .setTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
+            .setCullMode(VK_CULL_MODE_NONE)
+            .setPolygonMode(VK_POLYGON_MODE_FILL)
+            .setDepthTest(false, false)
+            .setBlendState(opaqueBlend())
+            .setColorFormat(m_colorFormat)
+            .setPipelineLayout(m_layout)
+            .build(m_ctx.device());
+        vkDestroyShaderModule(m_ctx.device(), vert, nullptr);
+        vkDestroyShaderModule(m_ctx.device(), frag, nullptr);
+    }
+    if (m_vbo.buffer) m_resources.destroyBuffer(m_vbo);
+    if (m_ibo.buffer) m_resources.destroyBuffer(m_ibo);
+    m_indexCount = static_cast<uint32_t>(mesh.indices.size());
+    const VkDeviceSize vSize = mesh.vertices.size() * sizeof(ps2clock::PrismVertex);
+    const VkDeviceSize iSize = mesh.indices.size() * sizeof(uint32_t);
+    m_vbo = m_resources.createBuffer(vSize,
+        VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
+    m_ibo = m_resources.createBuffer(iSize,
+        VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
+    m_resources.uploadToBuffer(m_vbo, mesh.vertices.data(), vSize);
+    m_resources.uploadToBuffer(m_ibo, mesh.indices.data(), iSize);
+    m_prism = true;
 }
 
 void ClockRenderer::setRodField(const ps2clock::RodField& field) {
@@ -95,7 +140,7 @@ void ClockRenderer::record(PassRecorder& recorder, VkImageView colorView, const 
 
     recorder.beginDebugLabel("ClockRenderer::rods");
     recorder.beginRendering(colorView, m_extent, &clear);
-    recorder.bindPipeline(m_pipeline);
+    recorder.bindPipeline(m_prism ? m_prismPipeline : m_pipeline);
     recorder.setViewportScissor(m_extent);
     recorder.pushConstants(m_layout, VK_SHADER_STAGE_VERTEX_BIT, &mvp, sizeof(ps2clock::Mat4));
     recorder.bindVertexBuffer(m_vbo.buffer);

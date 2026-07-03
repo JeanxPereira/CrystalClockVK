@@ -59,6 +59,10 @@ public:
     // applied at the shader/draw level later).
     PrismMesh buildPrismMesh() const;
 
+    // 3D prism mesh coloured by the clock state (lit hour rod in the AM/PM
+    // tint, the rest dim) — the crystal-shader input for the live clock.
+    PrismMesh buildDialPrism(const ClockState& state) const;
+
     std::vector<Rod> rods;
     DialParams params;
 };

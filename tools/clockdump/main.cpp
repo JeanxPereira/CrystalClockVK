@@ -21,11 +21,13 @@ int main(int argc, char** argv) {
     // Time source: real wall clock by default; --time HH:MM:SS forces a value
     // (deterministic renders / matching a specific dump).
     int fHour = -1, fMin = 0, fSec = 0;
+    bool prism = false;
     for (int a = 1; a < argc; ++a) {
         std::string arg = argv[a];
         if (arg == "--dump-rgba" && a + 1 < argc) outPath = argv[++a];
         else if (arg == "--time" && a + 1 < argc)
             std::sscanf(argv[++a], "%d:%d:%d", &fHour, &fMin, &fSec);
+        else if (arg == "--prism") prism = true;
     }
 
     int hour, minute, second;
@@ -61,6 +63,20 @@ int main(int argc, char** argv) {
     mvp[1][1] = -1.0f / halfH;  // world +Y (up) -> NDC -Y (Vulkan down) so up stays up
     mvp[2][2] = 1.0f;           // Z passthrough (depth test off in the flat pipeline)
 
+    // Prism mode: face-on ortho with a slight tilt + depth mapping so the bar
+    // thickness (Z) reads and the depth test sorts facets. Column-major GLM.
+    if (prism) {
+        const float tilt = 0.28f;  // radians, tip the dial so top faces show
+        const float ct = std::cos(tilt), st = std::sin(tilt);
+        ps2clock::Mat4 m(1.0f);
+        // world (x,y,z) -> tilt about X, then ortho scale, Z into [0,1].
+        m[0][0] = 1.0f / halfW;
+        m[1][1] = -ct / halfH;  m[2][1] = -st / halfH;   // Y gets a bit of Z
+        m[1][2] =  st * 0.02f;   m[2][2] = ct * 0.02f;    // depth (small range)
+        m[3][2] = 0.5f;
+        mvp = m;
+    }
+
     // ── Diagnostic: print each rod's clock position + NDC of its centre ────────
     const ps2clock::RodField field = ps2clock::RodField::Generate();
     std::fprintf(stderr, "=== Rod diagnostic (%zu rods) ===\n", field.rods.size());
@@ -75,8 +91,8 @@ int main(int argc, char** argv) {
     std::fprintf(stderr, "===============================\n");
 
     ClockRenderer renderer(ctx, resources, fmt, extent);
-    renderer.setRodField(field);
-    renderer.setDialMesh(field.buildDialMesh(clock));
+    if (prism) renderer.setPrismMesh(field.buildDialPrism(clock));
+    else       renderer.setDialMesh(field.buildDialMesh(clock));
 
     VkCommandPoolCreateInfo pci{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
     pci.queueFamilyIndex = ctx.graphicsQueueFamily();
