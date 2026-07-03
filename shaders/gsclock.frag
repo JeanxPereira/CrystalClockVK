@@ -37,7 +37,7 @@ void main() {
             t.a = (pc.texaAEM == 0 || rgbNonZero) ? pc.texaTA0 : 0.0;
         }
         c.rgb = t.rgb * vColor.rgb * GS;  // MODULATE
-        c.a   = t.a   * vColor.a;
+        c.a   = t.a   * vColor.a   * GS;  // TCC=1: At = At*Av >> 7
     }
 
     // GS blend coefficient As/128 (As is the 8-bit fragment alpha).
