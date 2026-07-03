@@ -18,8 +18,12 @@ public:
     ClockRenderer(const ClockRenderer&) = delete;
     ClockRenderer& operator=(const ClockRenderer&) = delete;
 
-    // Upload the rod field mesh to GPU buffers.
+    // Upload the rod field mesh to GPU buffers (white placeholder body).
     void setRodField(const ps2clock::RodField& field);
+
+    // Upload an arbitrary pre-built mesh (e.g. RodField::buildDialMesh with the
+    // clock-state colours). Replaces any mesh set by setRodField.
+    void setDialMesh(const ps2clock::FlatMesh& mesh);
 
     // Record the flat vertex-color draw into the given color target.
     void record(PassRecorder& recorder, VkImageView colorView, const ps2clock::Mat4& mvp);

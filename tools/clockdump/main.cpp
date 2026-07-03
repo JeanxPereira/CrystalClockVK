@@ -10,16 +10,34 @@
 #include "renderer/ResourceManager.hpp"
 #include "renderer/PassRecorder.hpp"
 #include "clock/ClockMath.hpp"
+#include "clock/ClockState.hpp"
 #include "clock/Projection.hpp"
 #include "clock/RodField.hpp"
 #include "clock/ClockRenderer.hpp"
+#include "app/TimeSync.hpp"
 
 int main(int argc, char** argv) {
     std::string outPath = "ours.rgba";
+    // Time source: real wall clock by default; --time HH:MM:SS forces a value
+    // (deterministic renders / matching a specific dump).
+    int fHour = -1, fMin = 0, fSec = 0;
     for (int a = 1; a < argc; ++a) {
         std::string arg = argv[a];
         if (arg == "--dump-rgba" && a + 1 < argc) outPath = argv[++a];
+        else if (arg == "--time" && a + 1 < argc)
+            std::sscanf(argv[++a], "%d:%d:%d", &fHour, &fMin, &fSec);
     }
+
+    int hour, minute, second;
+    if (fHour >= 0) { hour = fHour; minute = fMin; second = fSec; }
+    else {
+        const TimeInfo t = TimeSync::getCurrentTime();
+        hour = t.hour; minute = t.minute; second = t.second;
+    }
+    const ps2clock::ClockState clock = ps2clock::ClockState::fromTime(hour, minute, second);
+    std::fprintf(stderr, "clock_dump: %02d:%02d:%02d -> litRod=%d fill=%.3f %s\n",
+                 hour, minute, second, clock.litRod, clock.fill,
+                 clock.amPm == ps2clock::AmPm::PM ? "PM" : "AM");
 
     const VkExtent2D extent{640, 224};
 
@@ -58,6 +76,7 @@ int main(int argc, char** argv) {
 
     ClockRenderer renderer(ctx, resources, fmt, extent);
     renderer.setRodField(field);
+    renderer.setDialMesh(field.buildDialMesh(clock));
 
     VkCommandPoolCreateInfo pci{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
     pci.queueFamilyIndex = ctx.graphicsQueueFamily();

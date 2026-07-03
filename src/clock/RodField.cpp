@@ -53,4 +53,43 @@ FlatMesh RodField::buildFlatMesh() const {
     return m;
 }
 
+FlatMesh RodField::buildDialMesh(const ClockState& state) const {
+    FlatMesh m;
+    const float hw = 0.5f * params.rodWidth;
+    // AM blue / PM red highlight; unlit rods a dim steel blue.
+    const Vec4 lit  = (state.amPm == AmPm::PM) ? Vec4(0.95f, 0.25f, 0.20f, 1.0f)
+                                               : Vec4(0.35f, 0.70f, 1.0f, 1.0f);
+    const Vec4 base = (state.amPm == AmPm::PM) ? Vec4(0.40f, 0.14f, 0.12f, 1.0f)
+                                               : Vec4(0.16f, 0.30f, 0.44f, 1.0f);
+    const Vec4 dim(0.12f, 0.20f, 0.28f, 1.0f);
+
+    // Emit one bar quad [r0,r1] along `dir`, coloured `col`.
+    auto quad = [&](const Vec3& dir, const Vec3& perp, float r0, float r1, const Vec4& col) {
+        const Vec3 a = dir * r0, b = dir * r1;
+        const uint32_t base = static_cast<uint32_t>(m.vertices.size());
+        m.vertices.push_back({a - perp * hw, col});
+        m.vertices.push_back({a + perp * hw, col});
+        m.vertices.push_back({b + perp * hw, col});
+        m.vertices.push_back({b - perp * hw, col});
+        m.indices.insert(m.indices.end(),
+                         {base + 0, base + 1, base + 2, base + 0, base + 2, base + 3});
+    };
+
+    for (const Rod& rod : rods) {
+        const Vec3& dir = rod.direction;
+        const Vec3 perp(-dir.y, dir.x, 0.0f);
+        if (rod.hour != state.litRod) {
+            quad(dir, perp, params.innerRadius, params.outerRadius, dim);
+            continue;
+        }
+        // The hour rod: full body in the AM/PM base tint, plus the min/sec
+        // partial-fill [inner, inner+fill*len] in the bright highlight colour.
+        const float span = params.outerRadius - params.innerRadius;
+        const float fillR = params.innerRadius + state.fill * span;
+        quad(dir, perp, params.innerRadius, params.outerRadius, base);
+        if (state.fill > 0.0f) quad(dir, perp, params.innerRadius, fillR, lit);
+    }
+    return m;
+}
+
 }  // namespace ps2clock

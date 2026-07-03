@@ -67,7 +67,12 @@ ClockRenderer::~ClockRenderer() {
 }
 
 void ClockRenderer::setRodField(const ps2clock::RodField& field) {
-    const ps2clock::FlatMesh mesh = field.buildFlatMesh();
+    setDialMesh(field.buildFlatMesh());
+}
+
+void ClockRenderer::setDialMesh(const ps2clock::FlatMesh& mesh) {
+    if (m_vbo.buffer) m_resources.destroyBuffer(m_vbo);
+    if (m_ibo.buffer) m_resources.destroyBuffer(m_ibo);
     m_indexCount = static_cast<uint32_t>(mesh.indices.size());
 
     const VkDeviceSize vSize = mesh.vertices.size() * sizeof(ps2clock::RodVertex);

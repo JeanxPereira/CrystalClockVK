@@ -4,6 +4,7 @@
 #include <cstdint>
 
 #include "clock/ClockMath.hpp"
+#include "clock/ClockState.hpp"
 
 namespace ps2clock {
 
@@ -39,6 +40,12 @@ public:
     // Flat triangle mesh: one quad bar per rod, vertex-coloured white (placeholder
     // until the real prism cross-section + crystal shader land).
     FlatMesh buildFlatMesh() const;
+
+    // Flat mesh driven by the clock state: the lit (hour) rod is highlighted in
+    // the AM/PM colour (AM blue, PM red), filled `state.fill` of the way out
+    // from the inner end; the other 11 rods are dim. The lit rod's dial index
+    // is matched against each rod's `hour` field (0..11).
+    FlatMesh buildDialMesh(const ClockState& state) const;
 
     std::vector<Rod> rods;
     DialParams params;

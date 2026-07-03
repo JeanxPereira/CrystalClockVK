@@ -266,6 +266,7 @@ target_compile_definitions(clock PUBLIC GLM_FORCE_DEPTH_ZERO_TO_ONE)
 add_executable(clock_dump
     tools/clockdump/main.cpp
     src/clock/ClockRenderer.cpp
+    src/app/TimeSync.cpp
     src/core/VulkanContext.cpp
     src/core/WindowContext.cpp
     src/renderer/ResourceManager.cpp
