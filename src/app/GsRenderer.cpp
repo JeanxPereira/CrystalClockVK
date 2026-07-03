@@ -384,11 +384,23 @@ void GsRenderer::init(const VulkanContext& ctx, ResourceManager& res, const GsSc
         if (count == 0) continue;
 
         const bool lines = (type == 2);
-        const uint64_t key = pipeKey(r.blend, r.depth, lines);
+        gsvk::GsBlendRecipe blend = r.blend;
+        if (lines && p.prim.aa1 && !blend.enable) {
+            // GS AA1 forces coverage-as-alpha blending regardless of ABE; a
+            // 1px line is ALL edge, so the whole line blends by coverage.
+            // Approximate the per-pixel coverage with a constant ~64/128
+            // (reuses the FIX blend-constant plumbing).
+            blend.enable = true;
+            blend.colorOp = VK_BLEND_OP_ADD;
+            blend.srcFactor = VK_BLEND_FACTOR_CONSTANT_COLOR;
+            blend.dstFactor = VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_COLOR;
+            blend.fix = 64;
+        }
+        const uint64_t key = pipeKey(blend, r.depth, lines);
         int pipeIdx = pipelineIndexFor(key);
         if (pipeIdx < 0) {
             m_pipelineKeys.push_back(key);
-            m_pipelines.push_back(buildPipeline(r.blend, r.depth, lines));
+            m_pipelines.push_back(buildPipeline(blend, r.depth, lines));
             pipeIdx = static_cast<int>(m_pipelines.size()) - 1;
         }
 
