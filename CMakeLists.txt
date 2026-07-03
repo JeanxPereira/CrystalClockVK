@@ -284,7 +284,7 @@ endif()
 set_target_properties(clock_dump PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
 
 # clock pure-logic tests (math/geometry/projection — Vulkan-free).
-foreach(t clock_fixed124:Fixed124Test clock_rotation:RotationBasisTest clock_projection:ProjectionFitTest clock_rodfield:RodFieldTest clock_state:ClockStateTest)
+foreach(t clock_fixed124:Fixed124Test clock_rotation:RotationBasisTest clock_projection:ProjectionFitTest clock_rodfield:RodFieldTest clock_state:ClockStateTest clock_prism:PrismMeshTest)
     string(REPLACE ":" ";" parts ${t})
     list(GET parts 0 tname)
     list(GET parts 1 tsrc)

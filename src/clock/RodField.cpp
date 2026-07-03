@@ -92,4 +92,44 @@ FlatMesh RodField::buildDialMesh(const ClockState& state) const {
     return m;
 }
 
+PrismMesh RodField::buildPrismMesh() const {
+    PrismMesh m;
+    const Vec4 white(1.0f, 1.0f, 1.0f, 1.0f);
+    const float hw = 0.5f * params.rodWidth;   // half-width across the dial plane
+    const float hd = 0.5f * params.rodDepth;   // half-depth along Z
+
+    for (const Rod& rod : rods) {
+        const Vec3 axis = rod.direction;              // radial (length) axis
+        const Vec3 perp(-axis.y, axis.x, 0.0f);       // in-plane width axis
+        const Vec3 zdir(0.0f, 0.0f, 1.0f);            // depth axis
+        const Vec3 c0 = axis * params.innerRadius;    // inner end centre
+        const Vec3 c1 = axis * params.outerRadius;    // outer end centre
+
+        // 8 box corners: end (i: 0=inner,1=outer) x width sign x depth sign.
+        auto corner = [&](int end, float ws, float ds) {
+            return (end ? c1 : c0) + perp * (ws * hw) + zdir * (ds * hd);
+        };
+        // 6 faces, each a quad (4 corners CCW) with a flat outward normal.
+        struct Face { Vec3 n; Vec3 a, b, c, d; };
+        const Face faces[6] = {
+            {  zdir,       corner(0,-1,+1), corner(1,-1,+1), corner(1,+1,+1), corner(0,+1,+1) }, // front +Z
+            { -zdir,       corner(0,+1,-1), corner(1,+1,-1), corner(1,-1,-1), corner(0,-1,-1) }, // back  -Z
+            {  perp,       corner(0,+1,+1), corner(1,+1,+1), corner(1,+1,-1), corner(0,+1,-1) }, // +width
+            { -perp,       corner(0,-1,-1), corner(1,-1,-1), corner(1,-1,+1), corner(0,-1,+1) }, // -width
+            {  axis,       corner(1,-1,+1), corner(1,-1,-1), corner(1,+1,-1), corner(1,+1,+1) }, // outer cap
+            { -axis,       corner(0,+1,+1), corner(0,+1,-1), corner(0,-1,-1), corner(0,-1,+1) }, // inner cap
+        };
+        for (const Face& f : faces) {
+            const uint32_t base = static_cast<uint32_t>(m.vertices.size());
+            m.vertices.push_back({f.a, f.n, white});
+            m.vertices.push_back({f.b, f.n, white});
+            m.vertices.push_back({f.c, f.n, white});
+            m.vertices.push_back({f.d, f.n, white});
+            m.indices.insert(m.indices.end(),
+                             {base + 0, base + 1, base + 2, base + 0, base + 2, base + 3});
+        }
+    }
+    return m;
+}
+
 }  // namespace ps2clock
