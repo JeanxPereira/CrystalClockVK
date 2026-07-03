@@ -389,16 +389,14 @@ void GsRenderer::init(const VulkanContext& ctx, ResourceManager& res, const GsSc
         const bool lines = (type == 2);
         gsvk::GsBlendRecipe blend = r.blend;
         if (lines && p.prim.aa1 && !blend.enable) {
-            // GS AA1 forces alpha blending regardless of ABE. The swirl lines
-            // carry a per-vertex LIFETIME ramp (a: 0..64 along the strip): the
-            // trail must fade by OPACITY, not to dark blue — so blend src-over
-            // by the interpolated vertex alpha (SRC1 = As/128, the normal
-            // dual-source path); MSAA supplies the spatial edge coverage.
-            blend.enable = true;
-            blend.colorOp = VK_BLEND_OP_ADD;
-            blend.srcFactor = VK_BLEND_FACTOR_SRC1_COLOR;
-            blend.dstFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC1_COLOR;
-            blend.fix = 0;
+            // GS AA1 forces alpha blending regardless of ABE, using the CURRENT
+            // ALPHA register with As = coverage (PCSX2 GSDrawScanline: aa1 sets
+            // sel.abe path with ababcd from the register). The clock's swirl
+            // lines carry ALPHA=0201 (additive): Cs*cov + Cd — bright blue
+            // heads, tails fade out as the per-vertex color ramps to black.
+            // SRC1 (vertex alpha, ramping with the color) stands in for the
+            // per-pixel coverage; MSAA supplies the spatial part.
+            blend = gsvk::translateBlend(p.alpha, true);
         }
         const uint64_t key = pipeKey(blend, r.depth, lines);
         int pipeIdx = pipelineIndexFor(key);
