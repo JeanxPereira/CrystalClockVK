@@ -302,6 +302,13 @@ GsCommandStream GsDumpParser::parse(const uint8_t* data, size_t size) {
                 else gsState[addr] = val;
                 break;
             }
+            // PACKED setup-register descriptors (TEX0_1/2=0x06/07, CLAMP_1/2=
+            // 0x08/09, FOG=0x0a, XYZF3/XYZ3=0x0c/0d): the register value is the
+            // low qword, same as REGLIST. The clock's text stamps set their
+            // PSMT4 font TEX0 this way — dropping these loses the whole font.
+            case 0x06: case 0x07: case 0x08: case 0x09:
+                gsState[desc] = rdU64(o);
+                break;
             default: break;
         }
     };

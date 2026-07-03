@@ -28,6 +28,9 @@ public:
     // Specific format implementations
     static uint32_t psmct32Address(int x, int y, int bufferWidth);
     static uint32_t psmt8Address(int x, int y, int bufferWidth);
+    // PSMT4: address in NIBBLES (page 128x128, block 32x16, 512 nibbles/block;
+    // even nibble = low 4 bits of the byte, matching PCSX2 ReadPixel4).
+    static uint32_t psmt4NibbleAddress(int x, int y, int bufferWidth);
 
     // TEXA alpha expansion (GS GSLocalMemory). Input/output u32 are packed
     // R(0..7) G(8..15) B(16..23) A(24..31) — little-endian byte order R,G,B,A.
@@ -95,6 +98,10 @@ private:
 
     // PSMT8 block table
     static const int s_blockTablePSMT8[4][8];
+
+    // PSMT4 tables (page 128x128, block 32x16, 4x8 blocks/page) — GSTables.cpp
+    static const int s_blockTablePSMT4[8][4];
+    static const int s_columnTablePSMT4[16][32];
 
     // Column tables for sub-block pixel ordering
     static const int s_columnTablePSMCT32[8][8];

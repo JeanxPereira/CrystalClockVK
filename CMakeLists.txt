@@ -237,6 +237,12 @@ target_link_libraries(gs_texa_deswizzle_tests PRIVATE gs)
 set_target_properties(gs_texa_deswizzle_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
 add_test(NAME gs_texa_deswizzle COMMAND gs_texa_deswizzle_tests)
 
+# gs PSMT4 (4-bit indexed) swizzle: address invariants + round-trip.
+add_executable(gs_swizzle_addr4_tests tests/SwizzleAddress4Test.cpp)
+target_link_libraries(gs_swizzle_addr4_tests PRIVATE gs)
+set_target_properties(gs_swizzle_addr4_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
+add_test(NAME gs_swizzle_addr4 COMMAND gs_swizzle_addr4_tests)
+
 # gsdump parser: RGBAQ.Q capture (STQ perspective divisor).
 add_executable(gsdump_stq_tests tests/ParserStqQTest.cpp)
 target_link_libraries(gsdump_stq_tests PRIVATE gsdump_lib)

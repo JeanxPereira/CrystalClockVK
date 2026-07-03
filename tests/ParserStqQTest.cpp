@@ -91,6 +91,14 @@ int main() {
     putU64(gif, uint64_t(std::bit_cast<uint32_t>(0.25f)) << 32 | 0x04030201u);
     putU64(gif, (uint64_t(0) << 32) | (100u << 16) | 100u);
 
+    // Group 5: PACKED-mode register descriptors (NOT A+D): desc 0x06 = TEX0_1,
+    // desc 0x08 = CLAMP_1, register value in the low qword. The clock's text
+    // stamps set their PSMT4 font TEX0 exactly this way (dropped = invisible).
+    putGifTag(gif, 1, primStq, 0, 3, 0x586);  // PACKED, regs: TEX0_1, CLAMP_1, XYZ2
+    putU64(gif, 0x2005e00661412f05ull); putU64(gif, 0);  // TEX0: TBP0=0x2f05 PSMT4 256x512 CBP=0x2f00
+    putU64(gif, 0x5ull); putU64(gif, 0);                  // CLAMP: WMS=1 WMT=1
+    putU32(gif, 1600); putU32(gif, 1600); putU32(gif, 0); putU32(gif, 0);
+
     // Group 4: CLAMP_1 via A+D (WMS=1 CLAMP, WMT=3 REGION_REPEAT,
     // MINU=5 MAXU=100, MINV=255 MAXV=63), then a kick.
     putGifTag(gif, 2, primStq, 0, 1, 0xe);  // PACKED, reg: A+D, nloop=2
@@ -105,14 +113,16 @@ int main() {
     const std::vector<uint8_t> dump = buildDump(gif);
     const GsCommandStream s = GsDumpParser::parse(dump.data(), dump.size());
 
-    check(s.prims.size() == 5, "5 draw groups parsed, got " + std::to_string(s.prims.size()));
-    if (s.prims.size() != 5 ||
-        s.prims[0].verts.size() != 1 || s.prims[1].verts.size() != 1 ||
-        s.prims[2].verts.size() != 1 || s.prims[3].verts.size() != 1 ||
-        s.prims[4].verts.size() != 1) {
+    check(s.prims.size() == 6, "6 draw groups parsed, got " + std::to_string(s.prims.size()));
+    if (s.prims.size() != 6) {
         std::printf("FAILED (bad group/vertex structure)\n");
         return 1;
     }
+    for (const auto& pr : s.prims)
+        if (pr.verts.size() != 1) {
+            std::printf("FAILED (bad group/vertex structure)\n");
+            return 1;
+        }
 
     check(near(s.prims[0].verts[0].q, 1.0f), "reset Q = 1.0");
 
@@ -126,11 +136,21 @@ int main() {
 
     check(s.prims[3].clamp.wms == 0 && s.prims[3].clamp.wmt == 0,
           "CLAMP resets to REPEAT/REPEAT");
-    const GsClamp& c4 = s.prims[4].clamp;
-    check(c4.wms == 1, "CLAMP WMS");
-    check(c4.wmt == 3, "CLAMP WMT");
-    check(c4.minu == 5 && c4.maxu == 100, "CLAMP MINU/MAXU");
-    check(c4.minv == 255 && c4.maxv == 63, "CLAMP MINV/MAXV");
+
+    // PACKED register descriptors (group 4 in stream order).
+    const GsTex0& t4 = s.prims[4].tex0;
+    check(t4.tbp0 == 0x2f05, "PACKED TEX0 TBP0");
+    check(t4.tbw == 4, "PACKED TEX0 TBW");
+    check(t4.psm == 20, "PACKED TEX0 PSM=PSMT4");
+    check(t4.tw == 8 && t4.th == 9, "PACKED TEX0 256x512");
+    check(t4.cbp == 0x2f00, "PACKED TEX0 CBP");
+    check(s.prims[4].clamp.wms == 1 && s.prims[4].clamp.wmt == 1, "PACKED CLAMP");
+
+    const GsClamp& c5 = s.prims[5].clamp;
+    check(c5.wms == 1, "CLAMP WMS");
+    check(c5.wmt == 3, "CLAMP WMT");
+    check(c5.minu == 5 && c5.maxu == 100, "CLAMP MINU/MAXU");
+    check(c5.minv == 255 && c5.maxv == 63, "CLAMP MINV/MAXV");
 
     if (g_fails) {
         std::printf("FAILED (%d)\n", g_fails);
