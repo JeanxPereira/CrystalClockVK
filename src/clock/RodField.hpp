@@ -31,8 +31,10 @@ struct FlatMesh  { std::vector<RodVertex> vertices; std::vector<uint32_t> indice
 class RodField {
 public:
     // Generate the dial: `count` bars radiating from the origin, 360/count apart,
-    // rod 0 at 12 o'clock (+Y), going clockwise.
-    static RodField Generate(const DialParams& params = {});
+    // rod 0 at 12 o'clock (+Y), going clockwise. `spinPhase` (radians) rotates
+    // the whole dial about its centre (the group spin, ClockState::spinPhase);
+    // positive = counter-clockwise in the dial plane.
+    static RodField Generate(const DialParams& params = {}, float spinPhase = 0.0f);
 
     // Flat triangle mesh: one quad bar per rod, vertex-coloured white (placeholder
     // until the real prism cross-section + crystal shader land).

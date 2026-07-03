@@ -8,7 +8,7 @@ namespace {
 constexpr float kPi = 3.14159265358979323846f;
 }
 
-RodField RodField::Generate(const DialParams& params) {
+RodField RodField::Generate(const DialParams& params, float spinPhase) {
     RodField f;
     f.params = params;
     f.rods.reserve(static_cast<size_t>(params.count));
@@ -17,7 +17,10 @@ RodField RodField::Generate(const DialParams& params) {
     for (int h = 0; h < params.count; ++h) {
         // Clock layout: hour h at angle h*(2pi/count) measured CLOCKWISE from +Y.
         // dir = (sin a, cos a, 0): h=0 -> (0,1,0)=up=12h; h=count/4 -> (1,0,0)=3h.
-        const float a = static_cast<float>(h) * (2.0f * kPi / static_cast<float>(params.count));
+        // The group spin subtracts from the clockwise angle (positive spinPhase =
+        // counter-clockwise), rotating the whole dial rigidly.
+        const float a = static_cast<float>(h) * (2.0f * kPi / static_cast<float>(params.count))
+                        - spinPhase;
         const Vec3 dir(std::sin(a), std::cos(a), 0.0f);
         Rod r;
         r.hour = h;
