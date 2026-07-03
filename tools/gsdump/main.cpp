@@ -88,7 +88,9 @@ void writeJson(const GsCommandStream& s, const std::string& path) {
             const auto& k = p.verts[v];
             o << (v ? "," : "") << "{\"x\":" << k.x << ",\"y\":" << k.y
               << ",\"u\":" << k.u << ",\"v\":" << k.v
-              << ",\"s\":" << k.s << ",\"t\":" << k.t << ",\"q\":" << k.q << "}";
+              << ",\"s\":" << k.s << ",\"t\":" << k.t << ",\"q\":" << k.q
+              << ",\"r\":" << int(k.r) << ",\"g\":" << int(k.g)
+              << ",\"b\":" << int(k.b) << ",\"a\":" << int(k.a) << "}";
         }
         o << "]}";
         o << (i + 1 < s.prims.size() ? ",\n" : "\n");
