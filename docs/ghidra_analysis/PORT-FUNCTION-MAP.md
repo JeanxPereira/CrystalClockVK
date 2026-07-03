@@ -346,3 +346,26 @@ time. The dump is the oracle; the emit math is fit to it, not guessed.
 Methodology caution (subagent): addresses in 0x2324e8–0x236c93 and 0x2738a0+ are
 shared-tail / overlapping table entries — cross-check `decompile_function` against
 raw `disassemble_bytes` before trusting any single decompile in that range.
+
+## Port-by-contract step 1 result (2026-07-03, MEASURED, not guessed)
+
+Attempted the screen-space projection inversion of the rods from clock_sw.gs:
+- A rod = a dense mesh of ~44 additive 4-vert quads (TBP0=11520) + ~44 feedback-
+  refraction quads (TBP0=6720=FBP210) + subtractive/other = **~212 textured quads
+  per rod**, NOT a simple prism. Base vertex RGB is near-black (8,8,8 / 40,40,40);
+  the crystal look is the accumulated GS multi-pass, not a flat color.
+- Dial hub found by grid-search (min rod tangential spread): **screen (313,115)**,
+  rod half-width ~7px.
+- **Same-model-rotated test (MEASURED):** rotating rod@180° by +30° onto rod@210°
+  drops mean nearest-neighbor vertex distance from **41.7px → 15.8px**. Confirms the
+  rods ARE one model rotated, BUT the 15.8px residual (> a rod's width) means a
+  pure 2D screen-space rotation is NOT render-faithful.
+- Residual causes: perspective foreshortening (tilted dial — 2D rotation can't
+  capture it), per-rod own-axis spin, and the still-unknown FOV (blocks a proper
+  3D inverse).
+
+**CONCLUSION:** the 2D inversion proves the model is single+rotated but can't hit
+render precision. The clean unblock is a LIVE PCSX2 read of the rod MODEL geometry
+(the source verts transform+emit consumes, pre-projection) — exact, no inversion
+error. Same kind of live session already done for rotation speed / clockState.
+NEXT: live-read the rod model (rod struct 0x160 @ 0x375250, or the model template).
