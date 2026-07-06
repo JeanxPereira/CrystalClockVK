@@ -917,3 +917,29 @@ was NOT resolved this session — reported honestly rather than fudged.
 Files: `src/ee/EeInterpreter.cpp` (cfc2 special case), `tests/EeInterpreterTest.cpp`
 (test 21), `tools/eerun/main.cpp` (`EERUN_DUMP_SPR_PRE` env var added for the
 pre/post-finalize byte diff).
+
+## Phase 2 — staging format DECODED (2026-07-06) [DUMP-MEASURED]
+
+Pivot (user-approved): decode the measured staging format directly (reading a
+measured data format, not re-deriving logic). Dumped SPR bytes via
+EERUN_DUMP_SPR=1 (saved .superpowers/sdd/phase2-staging-bytes.txt). Layout:
+
+Per rod = **112 bytes = 16-byte header + 4 vertices × 24 bytes**. 3 rods
+processed (3 culled) this frame. Header line: `56/54 00 00 00 00 00 00 00 |
+00 00 00 01 00 00 00 00` (NOT a GIFtag — decoder misreads byte0 as NLOOP=0x56;
+finalize patches byte0 0x54->0x56). Per-vertex 24-byte layout [DUMP-MEASURED,
+cross-checked vs sp0-live-reads screen(1915,2118) + contract §2]:
+- +0x00, +0x04: floats (intermediate/world, e.g. 0x3CA50356 ≈ 0.0201)
+- +0x08: **RGBA** (`08 08 08 80` = 8,8,8,128) [confirmed]
+- +0x0c: float
+- +0x10: **screen X|Y in 12.4** — low16 = X (0x772B/16 = 1906.7),
+  high16 = Y (0x8441/16 = 2116.1) [confirmed vs sp0 screen coords]
+- +0x14: 0xFFFFF010 marker (Z/flag)
+Trailer (finalize): one quadword `00 00 00 70 ...` = 0x70000000 pointer.
+
+COMPARISON CAVEAT [HYPOTHESIS]: the oracle's rod draws are 60-vert TRI-STRIPs
+(type 4, TME=1) colored ~(210,230,230,64); our staging rods are 4-vert chunks
+colored (8,8,8,128). Granularity + color DIFFER — draw-level --subset likely
+won't match even with correct geometry. The honest validation is a
+COORDINATE-CLOUD check (do our decoded rod X/Y, after GS OFX/OFY offset, land
+on oracle vertices?) plus rendering the rods for the visual (Milestone A).
