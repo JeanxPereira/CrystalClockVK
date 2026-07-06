@@ -3,14 +3,34 @@
 #include <bit>
 #include <cassert>
 #include <cstdio>
+#include <cstdlib>
+#ifdef _MSC_VER
+#include <crtdbg.h>
+#endif
 
 using namespace ps2ee;
+
+// A failing assert() must exit with a nonzero code, never pop the MSVC
+// "abort() has been called" modal -- an open dialog holds the exe file lock
+// and blocks the next rebuild, which reads as a cascade of unrelated build
+// failures. Route CRT asserts/errors to stderr and suppress the popup.
+static void silenceAbortDialog() {
+#ifdef _MSC_VER
+    _set_error_mode(_OUT_TO_STDERR);
+    _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
+    _CrtSetReportMode(_CRT_ASSERT, _CRTDBG_MODE_FILE);
+    _CrtSetReportFile(_CRT_ASSERT, _CRTDBG_FILE_STDERR);
+    _CrtSetReportMode(_CRT_ERROR, _CRTDBG_MODE_FILE);
+    _CrtSetReportFile(_CRT_ERROR, _CRTDBG_FILE_STDERR);
+#endif
+}
 
 static void poke(EeMemory& m, uint32_t addr, std::initializer_list<uint32_t> words) {
     for (uint32_t w : words) { m.write32(addr, w); addr += 4; }
 }
 
 int main() {
+    silenceAbortDialog();
     EeMemory mem;
     mem.write32(0, 0);  // force RAM allocation
     EeInterpreter cpu(mem);
@@ -568,6 +588,26 @@ int main() {
     cpu39d.gpr[2].lo = uint64_t(-1); cpu39d.gpr[2].hi = ~0ull;  // not taken
     cpu39d.call(0xFC00);
     assert(cpu39d.gpr[3].lo == 10);
+
+    // 40) R5900 3-operand MULT: `mult rd, rs, rt` with rd != 0 writes the
+    //     low 32 bits of the product into rd AS WELL as LO (EE-specific;
+    //     plain MIPS mult has rd=0). The Visor position writer 0x002335E8
+    //     computes every rod pointer this way (word 0x02A41018 at 0x2336E4:
+    //     mult v0, s5, a0 -> s2 = v0 + rodBase) -- with rd unwritten, v0
+    //     keeps a stale stack pointer and ALL rod writes land in the wild
+    //     (observed: only rod 0 garbage-written, loop pointers broken).
+    //     Test: mult v1, a0, a1 = 0x00851818, a0=0x160, a1=3 -> v1 = 0x420.
+    //     v1 is pre-seeded with junk that must be overwritten.
+    poke(mem, 0xFD00, {0x00851818u, 0x03E00008u, 0u});
+    EeInterpreter cpu40(mem);
+    cpu40.gpr[3].lo = 0xDEAD; cpu40.gpr[3].hi = 0xDEAD;  // junk that must be overwritten
+    cpu40.call(0xFD00, 0x160, 3);  // a0=0x160, a1=3 (call() sets gpr[4]/gpr[5])
+    assert(cpu40.gpr[3].lo == 0x420 && cpu40.gpr[3].hi == 0);
+    assert(cpu40.lo == 0x420);
+    //     Negative product: low word sign-extends into the 64-bit reg.
+    EeInterpreter cpu40b(mem);
+    cpu40b.call(0xFD00, uint64_t(-2), 3);
+    assert(int64_t(cpu40b.gpr[3].lo) == -6);
 
     std::printf("ee_interpreter: all assertions passed\n");
     return 0;

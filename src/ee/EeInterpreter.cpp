@@ -193,12 +193,15 @@ void EeInterpreter::executeOne(uint32_t word, uint32_t atPc) {
             gpr[rd].lo = lo;
             gpr[rd].hi = 0;
             return;
-        case 0x18: {  // mult
+        case 0x18: {  // mult (R5900 3-operand form: rd, when nonzero, also
+            // receives LO -- plain MIPS encodes rd=0 here. The Visor position
+            // writer 0x2335E8 derives every rod pointer from the rd result.)
             const int64_t a = int32_t(uint32_t(gpr[rs].lo));
             const int64_t b = int32_t(uint32_t(gpr[rt].lo));
             const int64_t result = a * b;
             lo = sx32(uint32_t(uint64_t(result) & 0xFFFFFFFFu));
             hi = sx32(uint32_t((uint64_t(result) >> 32) & 0xFFFFFFFFu));
+            if (rd != 0) { gpr[rd].lo = lo; gpr[rd].hi = 0; }
             return;
         }
         case 0x1A: {  // div
