@@ -177,6 +177,13 @@ add_library(gs STATIC
 )
 target_include_directories(gs PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
+# ee — mini PS2 EE interpreter (memory, translation, MMIO, store log). No Vulkan.
+add_library(ee STATIC
+    src/ee/EeMemory.cpp
+)
+target_include_directories(ee PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_compile_features(ee PUBLIC cxx_std_23)
+
 # vramdump — deswizzle a region of the .gs VRAM freeze to raw RGBA (W4 texture bring-up).
 add_executable(vramdump tools/vramdump/main.cpp)
 target_link_libraries(vramdump PRIVATE gsdump_lib gs)
@@ -248,6 +255,12 @@ add_executable(gsdump_stq_tests tests/ParserStqQTest.cpp)
 target_link_libraries(gsdump_stq_tests PRIVATE gsdump_lib)
 set_target_properties(gsdump_stq_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
 add_test(NAME gsdump_stq COMMAND gsdump_stq_tests)
+
+# ee_memory: EE address translation, RAM image load, MMIO dispatch, store log.
+add_executable(ee_memory_tests tests/EeMemoryTest.cpp)
+target_link_libraries(ee_memory_tests PRIVATE ee)
+set_target_properties(ee_memory_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
+add_test(NAME ee_memory COMMAND ee_memory_tests WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
 # ──────────────────────────────────────────────────────────────────────────────
 # clock — pure procedural clock logic (geometry + projection math). NO Vulkan.
