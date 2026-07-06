@@ -1,11 +1,16 @@
 #include "ee/EeInterpreter.hpp"
 
+#include <bit>
+#include <cmath>
+
 namespace ps2ee {
 
 namespace {
 
 int64_t s64(uint64_t v) { return int64_t(v); }
 uint64_t sx32(uint32_t v) { return uint64_t(int64_t(int32_t(v))); }
+
+constexpr uint32_t kFcr31CondBit = 1u << 23;
 
 }  // namespace
 
@@ -87,6 +92,11 @@ void EeInterpreter::step() {
         const bool res = (rt == 0) ? (v < 0) : (v >= 0);
         isBranch = true;
         taken = res;
+        target = curPc + 4 + brOffset;
+    } else if (op == 0x11 && rs == 8 && (rt == 0 || rt == 1)) {  // bc1f/bc1t
+        const bool cond = (fcr31 & kFcr31CondBit) != 0;
+        isBranch = true;
+        taken = (rt == 1) ? cond : !cond;
         target = curPc + 4 + brOffset;
     }
 
@@ -252,6 +262,10 @@ void EeInterpreter::executeOne(uint32_t word, uint32_t atPc) {
             throw EeError{atPc, word, "unknown SPECIAL function"};
         }
     }
+    case 0x08:  // addi (overflow trap not modeled; same as addiu here)
+        gpr[rt].lo = sx32(uint32_t(gpr[rs].lo) + uint32_t(simm));
+        gpr[rt].hi = 0;
+        return;
     case 0x09:  // addiu
         gpr[rt].lo = sx32(uint32_t(gpr[rs].lo) + uint32_t(simm));
         gpr[rt].hi = 0;
@@ -348,6 +362,110 @@ void EeInterpreter::executeOne(uint32_t word, uint32_t atPc) {
     case 0x3F:  // sd
         m_mem.write64(addr, gpr[rt].lo);
         return;
+    case 0x11: {  // COP1 (single-precision FPU)
+        // COP1 register format: rs=fmt/sub, rt=GPR, rd(here)=fs, sa(here)=fd.
+        const uint32_t fs = rd;
+        const uint32_t ft = rt;
+        const uint32_t fd = sa;
+        switch (rs) {
+        case 0x00:  // mfc1
+            gpr[rt].lo = sx32(std::bit_cast<uint32_t>(fpr[fs]));
+            gpr[rt].hi = 0;
+            return;
+        case 0x04:  // mtc1
+            fpr[fs] = std::bit_cast<float>(uint32_t(gpr[rt].lo));
+            return;
+        case 0x10:  // S fmt
+            switch (fn) {
+            case 0x00: fpr[fd] = fpr[fs] + fpr[ft]; return;         // add.s
+            case 0x01: fpr[fd] = fpr[fs] - fpr[ft]; return;         // sub.s
+            case 0x02: fpr[fd] = fpr[fs] * fpr[ft]; return;         // mul.s
+            case 0x03: fpr[fd] = fpr[fs] / fpr[ft]; return;         // div.s
+            case 0x04: fpr[fd] = std::sqrt(fpr[fs]); return;        // sqrt.s
+            case 0x05: fpr[fd] = std::fabs(fpr[fs]); return;        // abs.s
+            case 0x06: fpr[fd] = fpr[fs]; return;                   // mov.s
+            case 0x07: fpr[fd] = -fpr[fs]; return;                  // neg.s
+            case 0x24:  // cvt.w.s
+                fpr[fd] = std::bit_cast<float>(uint32_t(int32_t(fpr[fs])));
+                return;
+            case 0x32:  // c.eq.s
+                if (fpr[fs] == fpr[ft]) fcr31 |= kFcr31CondBit; else fcr31 &= ~kFcr31CondBit;
+                return;
+            case 0x3C:  // c.lt.s
+                if (fpr[fs] < fpr[ft]) fcr31 |= kFcr31CondBit; else fcr31 &= ~kFcr31CondBit;
+                return;
+            case 0x3E:  // c.le.s
+                if (fpr[fs] <= fpr[ft]) fcr31 |= kFcr31CondBit; else fcr31 &= ~kFcr31CondBit;
+                return;
+            default:
+                throw EeError{atPc, word, "unknown COP1.S function"};
+            }
+        case 0x14:  // W fmt
+            if (fn == 0x20) {  // cvt.s.w
+                fpr[fd] = float(std::bit_cast<int32_t>(fpr[fs]));
+                return;
+            }
+            throw EeError{atPc, word, "unknown COP1.W function"};
+        default:
+            throw EeError{atPc, word, "unknown COP1 rs"};
+        }
+    }
+    case 0x36: {  // lqc2
+        const uint32_t a = addr & ~0xFu;
+        uint32_t words[4];
+        m_mem.read128(a, words);
+        for (int i = 0; i < 4; i++) vf[rt][i] = std::bit_cast<float>(words[i]);
+        vf[0][0] = 0.0f; vf[0][1] = 0.0f; vf[0][2] = 0.0f; vf[0][3] = 1.0f;
+        return;
+    }
+    case 0x3E: {  // sqc2
+        uint32_t words[4];
+        for (int i = 0; i < 4; i++) words[i] = std::bit_cast<uint32_t>(vf[rt][i]);
+        m_mem.write128(addr & ~0xFu, words);
+        return;
+    }
+    case 0x12: {  // COP2 macro (VU0 upper FMAC ops)
+        const uint32_t vft = rt;
+        const uint32_t vfs = rd;
+        const uint32_t vfd = sa;
+        const uint32_t dest = rs & 0xFu;   // x8 y4 z2 w1
+        const uint32_t bc = word & 3u;
+
+        auto applyDest = [&](float (&target)[4], const float value[4]) {
+            if (dest & 0x8) target[0] = value[0];
+            if (dest & 0x4) target[1] = value[1];
+            if (dest & 0x2) target[2] = value[2];
+            if (dest & 0x1) target[3] = value[3];
+        };
+
+        if (fn >= 0x3C && fn <= 0x3F) {
+            // Special2 sub-table: index = (word & 3) | ((word >> 4) & 0x7C).
+            const uint32_t idx = (word & 3u) | ((word >> 4) & 0x7Cu);
+            if (idx >= 24 && idx <= 27) {  // vmulax/y/z/w: ACC = vfs * vft.bc
+                float result[4];
+                for (int i = 0; i < 4; i++) result[i] = vf[vfs][i] * vf[vft][bc];
+                applyDest(vacc, result);
+                vf[0][0] = 0.0f; vf[0][1] = 0.0f; vf[0][2] = 0.0f; vf[0][3] = 1.0f;
+                return;
+            }
+            if (idx >= 8 && idx <= 11) {  // vmaddax/y/z/w: ACC += vfs * vft.bc
+                float result[4];
+                for (int i = 0; i < 4; i++) result[i] = vacc[i] + vf[vfs][i] * vf[vft][bc];
+                applyDest(vacc, result);
+                vf[0][0] = 0.0f; vf[0][1] = 0.0f; vf[0][2] = 0.0f; vf[0][3] = 1.0f;
+                return;
+            }
+            throw EeError{atPc, word, "unimplemented COP2 SPECIAL2 op"};
+        }
+        if (fn >= 0x08 && fn <= 0x0B) {  // vmaddx/y/z/w: fd = ACC + vfs * vft.bc
+            float result[4];
+            for (int i = 0; i < 4; i++) result[i] = vacc[i] + vf[vfs][i] * vf[vft][bc];
+            applyDest(vf[vfd], result);
+            vf[0][0] = 0.0f; vf[0][1] = 0.0f; vf[0][2] = 0.0f; vf[0][3] = 1.0f;
+            return;
+        }
+        throw EeError{atPc, word, "unimplemented COP2 macro op"};
+    }
     default:
         throw EeError{atPc, word, "unknown opcode"};
     }

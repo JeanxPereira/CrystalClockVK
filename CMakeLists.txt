@@ -269,6 +269,13 @@ target_link_libraries(ee_interpreter_tests PRIVATE ee)
 set_target_properties(ee_interpreter_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
 add_test(NAME ee_interpreter COMMAND ee_interpreter_tests WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
+# ee_realcode (Gate A): interpret real sceVu0 functions from the captured RAM
+# image, verified against C++ oracles. Skips if the image isn't present.
+add_executable(ee_realcode_tests tests/EeRealCodeTest.cpp)
+target_link_libraries(ee_realcode_tests PRIVATE ee)
+set_target_properties(ee_realcode_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
+add_test(NAME ee_realcode COMMAND ee_realcode_tests WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
 # ──────────────────────────────────────────────────────────────────────────────
 # clock — pure procedural clock logic (geometry + projection math). NO Vulkan.
 # ──────────────────────────────────────────────────────────────────────────────
