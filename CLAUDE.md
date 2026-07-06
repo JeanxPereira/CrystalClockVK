@@ -8,6 +8,9 @@ replicated IN SHADERS from GS state decoded out of the byte-perfect OSDSYS decom
 the look; read it from evidence.
 
 ## Read First
+0. `docs/superpowers/specs/2026-07-05-osdsys-1to1-master-strategy-design.md` — CURRENT master
+   strategy (boot+menu+clock INTERACTIVE 1:1, then modernize; execute-the-original doctrine;
+   docs are hypothesis logs, never evidence — every claim needs a status tag).
 1. `docs/OSDSYS-DECOMP-1to1-STRATEGY.md` — master strategy (spec = decomp; precision = GS dumps + pixel-diff).
 2. `docs/FOUNDATION-STATUS.md` — verified tooling state + live-trace corrections (ground truth).
 3. `docs/superpowers/specs/2026-06-12-phase1-gs-vk-architecture-design.md` — approved Phase 1 architecture.
