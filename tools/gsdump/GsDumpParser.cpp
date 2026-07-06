@@ -301,18 +301,21 @@ void GsDumpParser::decodeGifData(GsCommandStream& stream, const uint8_t* data, s
         if (pre) setPrim(prim);
         if (nloop == 0) continue;
 
+        // NLOOP/NREG come from the data and may claim more payload than the
+        // buffer holds (truncated dump tail, or a non-GIF blob fed through
+        // this decoder); never walk past `size`.
         if (flg == 0) {
-            for (uint32_t l = 0; l < nloop; l++)
-                for (uint32_t r = 0; r < nreg; r++) {
+            for (uint32_t l = 0; l < nloop && p + 16 <= size; l++)
+                for (uint32_t r = 0; r < nreg && p + 16 <= size; r++) {
                     handlePacked((regsDesc >> (r * 4)) & 0xf, data + p);
                     p += 16;
                 }
         } else if (flg == 1) {
-            const uint8_t* q = data + p;
-            for (uint32_t l = 0; l < nloop; l++)
-                for (uint32_t r = 0; r < nreg; r++) {
-                    handleReglist((regsDesc >> (r * 4)) & 0xf, rdU64(q));
-                    q += 8;
+            size_t qp = p;
+            for (uint32_t l = 0; l < nloop && qp + 8 <= size; l++)
+                for (uint32_t r = 0; r < nreg && qp + 8 <= size; r++) {
+                    handleReglist((regsDesc >> (r * 4)) & 0xf, rdU64(data + qp));
+                    qp += 8;
                 }
             p += ((static_cast<uint64_t>(nloop) * nreg + 1) >> 1) * 16;
         } else {

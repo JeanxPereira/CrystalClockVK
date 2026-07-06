@@ -152,6 +152,31 @@ int main() {
     check(c5.minu == 5 && c5.maxu == 100, "CLAMP MINU/MAXU");
     check(c5.minv == 255 && c5.maxv == 63, "CLAMP MINV/MAXV");
 
+    // Bounds: decodeGifData must never consume past `size`, whatever NLOOP/
+    // NREG the tag claims (Phase 2 Visor: the rod driver feeds the SPR
+    // staging blob -- NOT a hardware GIF packet -- through this decoder; its
+    // 8-byte header misreads as nloop=0x7fff-ish PACKED tags and the
+    // unchecked payload walk ran ~33MB past the 16KB buffer, segfaulting
+    // eerun). A truncated-but-honest dump tail hits the same guard.
+    {
+        std::vector<uint8_t> bad;
+        putGifTag(bad, 0x7fff, primStq, 0, 1, 0x5);  // PACKED, XYZ2, huge nloop
+        putU32(bad, 1600); putU32(bad, 1600); putU32(bad, 0); putU32(bad, 0);
+        GsCommandStream bs;
+        GsDumpParser::decodeGifData(bs, bad.data(), bad.size());  // must not read OOB
+        check(bs.counts.kicks <= 1, "PACKED payload clamped to buffer, kicks=" +
+                                        std::to_string(bs.counts.kicks));
+    }
+    {
+        std::vector<uint8_t> bad;
+        putGifTag(bad, 0x7fff, primStq, 1, 1, 0x5);  // REGLIST, XYZ2, huge nloop
+        putU64(bad, (uint64_t(0) << 32) | (100u << 16) | 100u);
+        GsCommandStream bs;
+        GsDumpParser::decodeGifData(bs, bad.data(), bad.size());  // must not read OOB
+        check(bs.counts.kicks <= 1, "REGLIST payload clamped to buffer, kicks=" +
+                                        std::to_string(bs.counts.kicks));
+    }
+
     if (g_fails) {
         std::printf("FAILED (%d)\n", g_fails);
         return 1;
