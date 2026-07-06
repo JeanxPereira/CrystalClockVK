@@ -59,46 +59,6 @@ void printUnique(const char* label, const GsCommandStream& s, F sel) {
     for (const auto& k : order) std::printf("  %4d  %s\n", seen[k], k.c_str());
 }
 
-void writeJson(const GsCommandStream& s, const std::string& path) {
-    std::ofstream o(path, std::ios::binary);
-    o << "[\n";
-    for (size_t i = 0; i < s.prims.size(); i++) {
-        const auto& p = s.prims[i];
-        o << " {\"idx\":" << p.index
-          << ",\"PRIM\":{\"type\":" << int(p.prim.type) << ",\"TME\":" << p.prim.tme
-          << ",\"ABE\":" << p.prim.abe << ",\"FST\":" << p.prim.fst << ",\"CTXT\":" << int(p.prim.ctxt) << "}"
-          << ",\"ALPHA\":{\"A\":" << int(p.alpha.a) << ",\"B\":" << int(p.alpha.b)
-          << ",\"C\":" << int(p.alpha.c) << ",\"D\":" << int(p.alpha.d) << ",\"FIX\":" << int(p.alpha.fix) << "}"
-          << ",\"TEST\":{\"ATE\":" << p.test.ate << ",\"ATST\":" << int(p.test.atst)
-          << ",\"AREF\":" << int(p.test.aref) << ",\"ZTST\":" << int(p.test.ztst) << "}"
-          << ",\"TEX0\":{\"TBP0\":" << p.tex0.tbp0 << ",\"TBW\":" << p.tex0.tbw
-          << ",\"PSM\":" << int(p.tex0.psm) << ",\"TW\":" << p.tex0.tw << ",\"TH\":" << p.tex0.th << "}"
-          << ",\"CLAMP\":{\"WMS\":" << int(p.clamp.wms) << ",\"WMT\":" << int(p.clamp.wmt)
-          << ",\"MINU\":" << p.clamp.minu << ",\"MAXU\":" << p.clamp.maxu
-          << ",\"MINV\":" << p.clamp.minv << ",\"MAXV\":" << p.clamp.maxv << "}"
-          << ",\"FRAME\":{\"FBP\":" << p.frame.fbp << ",\"FBW\":" << int(p.frame.fbw)
-          << ",\"PSM\":" << int(p.frame.psm) << "}"
-          << ",\"SCISSOR\":{\"X0\":" << p.scissor.scax0 << ",\"X1\":" << p.scissor.scax1
-          << ",\"Y0\":" << p.scissor.scay0 << ",\"Y1\":" << p.scissor.scay1 << "}"
-          << ",\"DTHE\":" << p.dthe << ",\"COLCLAMP\":" << p.colclamp
-          << ",\"PABE\":" << p.pabe << ",\"FBA\":" << p.fba
-          << ",\"nverts\":" << p.verts.size()
-          << ",\"verts\":[";
-        for (size_t v = 0; v < p.verts.size(); v++) {
-            const auto& k = p.verts[v];
-            o << (v ? "," : "") << "{\"x\":" << k.x << ",\"y\":" << k.y
-              << ",\"u\":" << k.u << ",\"v\":" << k.v
-              << ",\"s\":" << k.s << ",\"t\":" << k.t << ",\"q\":" << k.q
-              << ",\"r\":" << int(k.r) << ",\"g\":" << int(k.g)
-              << ",\"b\":" << int(k.b) << ",\"a\":" << int(k.a) << "}";
-        }
-        o << "]}";
-        o << (i + 1 < s.prims.size() ? ",\n" : "\n");
-    }
-    o << "]\n";
-    std::printf("wrote %zu prims -> %s\n", s.prims.size(), path.c_str());
-}
-
 // Asserts the known clock_viewer.gs invariants. Returns non-zero on mismatch.
 int verifyClock(const GsCommandStream& s) {
     int fails = 0;
@@ -203,7 +163,10 @@ int main(int argc, char** argv) {
         return fmt("DTHE%d COLCLAMP%d PABE%d FBA%d", p.dthe, p.colclamp, p.pabe, p.fba);
     });
 
-    if (!jsonOut.empty()) writeJson(s, jsonOut);
+    if (!jsonOut.empty()) {
+        GsDumpParser::writeJson(s, jsonOut);
+        std::printf("wrote %zu prims -> %s\n", s.prims.size(), jsonOut.c_str());
+    }
     if (verify) return verifyClock(s);
     return 0;
 }

@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <stdexcept>
+#include <string>
 
 #include "gs/GsCommandStream.hpp"
 
@@ -17,4 +18,18 @@ public:
 
     // Parses the whole dump. Throws ParseError on a malformed stream.
     static GsCommandStream parse(const uint8_t* data, size_t size);
+
+    // Decodes raw GIF packet payload bytes (a sequence of GIFtags + register
+    // data, as found in dump TRANSFER packets) into `stream`, continuing from
+    // stream's current register state (stream.decodeState). Used by the SP1
+    // interpreter capture to decode reconstructed GIF packets that never went
+    // through a .gs dump.
+    static void decodeGifData(GsCommandStream& stream, const uint8_t* data, size_t size);
+
+    // Writes the decoded draws as JSON in the schema used by `gsdump --json`
+    // and consumed by tools/vdiff/vdiff.mjs: a bare array of draws, each
+    // {idx, PRIM, ALPHA, TEST, TEX0, CLAMP, FRAME, SCISSOR, ..., verts:[...]}.
+    // Shared so both `gsdump --json` and `eerun --decode --json` produce
+    // byte-for-byte comparable output.
+    static void writeJson(const GsCommandStream& stream, const std::string& path);
 };

@@ -157,8 +157,62 @@ run to completion, not to name every callee).
 ## Files
 
 - `tools/eerun/main.cpp` — the discovery CLI (per brief, with the extent-merge
-  fix above).
+  fix above), now also `--decode <stores.bin> --json <out>` (Task 6).
 - `src/ee/EeInterpreter.cpp` — sync, COP2 broadcast group, divu.
 - `tests/EeInterpreterTest.cpp` — cases 5 (sync), 6 (VADDx), 7 (divu).
 - `re/ram/clock/stores_232618.bin` — dumped store-extent contents (gitignored,
   under `re/`).
+
+## Task 6: decoding the captured stream — the packet is register-only, 0 draws [DUMP-MEASURED]
+
+Decoded the actual DMA'd bytes with `eerun --decode`, reusing
+`GsDumpParser::decodeGifData`/`writeJson` (already public/shared from earlier
+work — no parser regression: `gsdump --verify clock_viewer.gs` output is
+byte-identical before/after, still the same 2 pre-existing FAILs: TEXA +
+blend-mode-count).
+
+**Window used**: `D2_MADR=0x00296DF0`, length = `D2_QWC * 16 = 3*16 = 48`
+bytes (`0x00296DF0..0x00296E20`) — the literal hardware-transfer size logged
+in the MMIO trace, not a guessed range. The leading GIFtag quadword
+(`0x00296DF0..0x00296E00`) is never touched by a store this run (static
+template, per the earlier "GIF-tag template staging" note), so `--decode`
+reconstructs it by overlaying the captured store extents on top of
+`re/ram/clock/eeMemory.bin` (sibling-path convention: `--base` defaults to
+`eeMemory.bin` next to the `.bin` given, matching the `re/ram/clock/` layout
+used by every gate command in this doc).
+
+**Result**: `1 giftag, 0 draws, 0 kicks`. Hand-verified byte-for-byte: the
+tag is PACKED, `nloop=2 nreg=1 regs=0xe` (A+D), and its two payload quadwords
+write `TEST_1` (addr 0x47, val 0x30000 → ZTE=1 ZTST=NEVER) and `ALPHA_1`
+(addr 0x42, val 0x44 → A=0 B=1 C=0 D=1). **This packet is pure GS
+register/blend-state setup — it carries no PRIM load and no vertex kicks.**
+`vdiff --subset re/oracle/clock_sw_prims.json re/oracle/cand_232618.json` →
+`0/0 candidate draws matched` (vacuously trivial: there is nothing to check
+against the oracle, not a real subset-match).
+
+**Why 0 draws, and what this implies** [DUMP-MEASURED, real finding, not a
+bug in the decoder]: a full `--trace` MMIO dump of this run shows a large
+block of GS-packet-shaped writes (`3F800000` = 1.0f, `80808080` = a flat
+color, plus GIFtag-like words `70000000`/`87008000`/`0E081408`) landing on
+addresses `0x10000000..0x1000004C`. These are **not real hardware
+registers** — they are the EE Scratchpad RAM (SPR), which lives at EE
+virtual `0x70000000`/`0xB0000000`+ and, after `EeMemory::translate`'s
+`& 0x1FFFFFFF` mask, aliases into exactly this `0x10000xxx` range.
+`EeMemory` has no SPR implementation (addresses ≥ `kRamSize` are treated as
+fake MMIO, logged and discarded), so **whatever packet the renderer is
+building in scratchpad — very plausibly the actual rect/SPRITE draw, given
+the float/color-shaped values — is invisible to this capture.** The one GIF
+DMA transfer we DID observe (D2, MADR/QWC/CHCR) is real and decodes cleanly,
+but it is only the state-setup fragment; the vertex data for "the rect"
+does not travel through the modeled DMA path in this run.
+
+**Conclusion for the gate**: candidate decodes cleanly (valid GIFtag,
+plausible/exact register values, matches known clock invariants — the
+decoded `ALPHA`/`TEST` shapes are consistent with the blend-mode family
+`gsdump --verify` already reports for the real dump). It does NOT produce a
+meaningful subset match because it produces no draws at all — 0x00232618's
+own D2 DMA packet is state-only. Getting an actual vertex-level subset match
+requires scratchpad-RAM emulation in `EeMemory` (new work, not scoped to
+this task) so the real vertex packet can be captured. Logged here per the
+"real finding, not a failure to hide" rule — nothing was invented or fudged
+to force a pass.

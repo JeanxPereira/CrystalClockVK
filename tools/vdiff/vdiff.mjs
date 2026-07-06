@@ -25,6 +25,46 @@ function to124(x) {
   return Math.round(x * 16);
 }
 
+// Vertex-level equality used by both exact diff() and subset matching:
+// xy within +/-1 on the raw 12.4 grid, colors/uv exact (mirrors diff()'s
+// per-vertex checks, minus the error-message bookkeeping).
+function vertsEqual(ov, cv) {
+  if (ov.length !== cv.length) return false;
+  for (let k = 0; k < ov.length; k++) {
+    const oxy = [to124(ov[k].x), to124(ov[k].y)];
+    const cxy = [to124(cv[k].x), to124(cv[k].y)];
+    if (Math.abs(oxy[0] - cxy[0]) > 1 || Math.abs(oxy[1] - cxy[1]) > 1) return false;
+    for (const ch of ["r", "g", "b", "a", "u", "v"]) {
+      if ((ov[k][ch] ?? 0) !== (cv[k][ch] ?? 0)) return false;
+    }
+  }
+  return true;
+}
+
+// Subset mode: every candidate draw must match SOME oracle draw of the same
+// PRIM.type within tolerance (0x232618 emits only a fragment of the full
+// clock stream, so an exact 1:1 draw-count match is not expected here).
+// Returns { matched, total, mismatches: [first few unmatched candidate idx] }.
+function subsetMatch(oracle, cand) {
+  const byType = new Map();
+  for (const o of oracle) {
+    const t = o.PRIM?.type;
+    if (!byType.has(t)) byType.set(t, []);
+    byType.get(t).push(o);
+  }
+  let matched = 0;
+  const mismatches = [];
+  for (let i = 0; i < cand.length; i++) {
+    const c = cand[i];
+    const pool = byType.get(c.PRIM?.type) ?? [];
+    const cv = c.verts ?? [];
+    const found = pool.some((o) => vertsEqual(o.verts ?? [], cv));
+    if (found) matched++;
+    else if (mismatches.length < 10) mismatches.push(i);
+  }
+  return { matched, total: cand.length, mismatches };
+}
+
 function diff(oracle, cand) {
   const errs = [];
   if (oracle.length !== cand.length)
@@ -64,8 +104,39 @@ if (process.argv[2] === "--self-test") {
   const c = JSON.parse(JSON.stringify(a));
   c[0].verts[0].x += 0.0625;
   if (diff(a, c).length !== 0) { console.error("false positive on ±1 raw-unit tolerance"); process.exit(1); }
+
+  // --subset self-test: oracle has two draws (a SPRITE and the TRI_STRIP
+  // from `a`); candidate is a subset containing only a perturbed-but-within-
+  // tolerance copy of the SPRITE draw, plus one draw that matches nothing.
+  const oracle2 = [
+    { PRIM: { type: 6 }, verts: [{ x: 10, y: 20, r: 1, g: 2, b: 3, a: 4, u: 5, v: 6 }] },
+    a[0],
+  ];
+  const candGood = [{ PRIM: { type: 6 }, verts: [{ x: 10.0625, y: 20, r: 1, g: 2, b: 3, a: 4, u: 5, v: 6 }] }];
+  const r1 = subsetMatch(oracle2, candGood);
+  if (r1.matched !== 1 || r1.total !== 1) { console.error("subset: expected 1/1 matched"); process.exit(1); }
+  const candBad = [...candGood, { PRIM: { type: 6 }, verts: [{ x: 999, y: 999, r: 0, g: 0, b: 0, a: 0, u: 0, v: 0 }] }];
+  const r2 = subsetMatch(oracle2, candBad);
+  if (r2.matched !== 1 || r2.total !== 2 || r2.mismatches.length !== 1) {
+    console.error("subset: expected 1/2 matched with 1 mismatch"); process.exit(1);
+  }
+  const r3 = subsetMatch(oracle2, []);
+  if (r3.matched !== 0 || r3.total !== 0) { console.error("subset: expected 0/0 on empty candidate"); process.exit(1); }
+
   console.log("vdiff self-test OK");
   process.exit(0);
+}
+
+if (process.argv[2] === "--subset") {
+  const oracle = loadDraws(process.argv[3]);
+  const cand = loadDraws(process.argv[4]);
+  const { matched, total, mismatches } = subsetMatch(oracle, cand);
+  console.log(`vdiff --subset: ${matched}/${total} candidate draws matched`);
+  if (mismatches.length) {
+    console.log("first unmatched candidate draws:");
+    for (const i of mismatches) console.log(`  cand[${i}]: PRIM.type=${cand[i].PRIM?.type} nverts=${(cand[i].verts ?? []).length}`);
+  }
+  process.exit(matched === total ? 0 : 1);
 }
 
 const errs = diff(loadDraws(process.argv[2]), loadDraws(process.argv[3]));

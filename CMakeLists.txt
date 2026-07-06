@@ -193,7 +193,7 @@ set_target_properties(vramdump PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURC
 # eerun — discovery CLI: interpret a real EE function from a captured RAM image
 # (mini interpreter in src/ee/), reporting MMIO accesses + store extents + call trace.
 add_executable(eerun tools/eerun/main.cpp)
-target_link_libraries(eerun PRIVATE ee)
+target_link_libraries(eerun PRIVATE ee gsdump_lib gs)
 set_target_properties(eerun PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
 
 if (APPLE)

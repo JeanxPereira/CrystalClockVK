@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -96,10 +97,31 @@ struct GsStreamCounts {
     uint32_t flgImage2 = 0;
 };
 
+// GS register-file + in-flight vertex-kick state carried BETWEEN
+// GsDumpParser::decodeGifData calls, so a caller can feed the decoder several
+// separate GIF-payload buffers (e.g. one per TRANSFER packet, or one per
+// store extent from the SP1 interpreter capture) and have register writes /
+// partially-open draw groups persist across the boundary, exactly as they
+// would inside one contiguous packet stream.
+struct GsDecodeState {
+    std::array<uint64_t, 256> gsState{};  // GS register file (addr -> value)
+    uint32_t curPrimField = 0;
+    bool pendingGroup = false;
+    long curDrawIdx = -1;
+    struct { uint8_t r = 0, g = 0, b = 0, a = 0; } curColor;
+    struct { float u = 0, v = 0; bool valid = false; } curUV;
+    struct { float s = 0, t = 0; bool valid = false; } curST;
+    // GS internal Q: PACKED ST carries a temp Q; a PACKED RGBAQ write latches
+    // it into RGBAQ.Q. REGLIST RGBAQ carries Q directly (bits 32-63).
+    float qTemp = 1.0f;
+    float curQ = 1.0f;
+};
+
 struct GsCommandStream {
     GsDumpHeaderInfo header;
     std::vector<uint8_t> freeze;    // GS state freeze (VRAM + state), stateSize bytes
     std::vector<uint8_t> privRegs;  // 8192-byte GSPrivRegSet
     std::vector<GsPrimitive> prims;
     GsStreamCounts counts;
+    GsDecodeState decodeState;  // reset() = 1.0 Q defaults; see GsDecodeState
 };
