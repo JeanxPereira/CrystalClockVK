@@ -981,3 +981,55 @@ output against the oracle independent of the still-open "how the staging
 record becomes a real wire GIFtag" question. Full detail, including the
 per-vertex distances and caveats on residual 1-2px error:
 `.superpowers/sdd/phase2-staging-decode-report.md`.
+
+## Phase 2 TIGHTEN — real XYOFFSET substituted, 12/12 FALSIFIED [DUMP-MEASURED]
+
+The OFX/OFY above were a FIT (empirical search), not a register read — flagged
+at the time as needing independent confirmation. This pass replaces the fit
+with the real GS XYOFFSET the rod draws actually use.
+
+`GsDumpParser::writeJson` (`tools/gsdump/GsDumpParser.cpp`) now emits
+`"xyoffset":{"ofx":N,"ofy":N}` per draw (the value was already decoded into
+`GsPrimitive::xyoffset`, just not serialized). Regenerated
+`re/oracle/clock_sw_prims.json` and located the actual rod draws: `PRIM.type=4`
+(TRI_STRIP), 60 verts, `TEX0.TBP0=11264/TBW=2/PSMCT32/128x128`, vertex color
+~(210,230,230,64), `FRAME.FBP=0` — 40 such draws in 4 clusters of 10 (dump
+indices {1-16},{949-964},{1900-1915},{2851-2866}).
+
+**Real value**: `OFX=27648 raw (1728.0px)` (all 40 rod draws agree exactly).
+`OFY` alternates between `30976` and `30984` raw (1936.0/1936.5px, a 0.5px
+shift) across the four clusters — consistent with PS2 interlaced-field
+vertical jitter, not noise; used `OFY=30984` (first cluster).
+
+**Real vs fitted — NOT close**: ΔOFX ≈ 1860 raw = **116.25px**, ΔOFY ≈
+672-680 raw = **42.0-42.5px**. Far outside coincidence/rounding range.
+
+Substituted the real value into `decodeStagingDirect()`'s `kOfxRaw`/`kOfyRaw`
+(`tools/eerun/main.cpp`) and reran:
+
+```
+bin\eerun.exe re\ram\clock\eeMemory.bin --drive-rods --json re\oracle\cand_rods.json --staging-json re\oracle\cand_rods_staging.json
+node tools\vdiff\vdiff.mjs --cloud re\oracle\clock_sw_prims.json re\oracle\cand_rods_staging.json 2
+vdiff --cloud: 1/12 candidate vertices within 2px of an oracle vertex
+```
+
+**1/12, not 12/12.** Distances range 1.4-16.9px (down from the fit's 0.003-2px
+band). **Honest verdict: the earlier 12/12 was substantially a fit artifact,
+not an independent proof.** With ~20k oracle vertices and 2 free translation
+parameters, landing 12 points within 2px by exhaustive search is weak
+evidence of correct absolute placement.
+
+What survives: `draw_crystal_rod`'s per-vertex 24-byte layout and RGBA
+extraction (from disassembly, not fit) are unchanged. What's falsified:
+absolute screen-space placement using the previously-fitted offset was never
+actually validated. The 1-12/12 gap with correctly-ordered-magnitude
+neighborhoods (decoded points land in the clock's general on-screen region,
+not off by hundreds of px) suggests either a missing linear transform between
+`draw_crystal_rod`'s raw output and the final GIFtag, or a time/jitter
+mismatch between the `eeMemory.bin` capture and the `.gs` dump capture (not
+guaranteed to be the same simulated frame). Full writeup, per-vertex distance
+table, and open questions: `.superpowers/sdd/phase2-tighten-report.md`.
+
+**Status: rod screen-space placement is OPEN/CONCERNS, not validated.**
+Geometry-decode mechanics (byte layout, RGBA) still stand; absolute placement
+does not.

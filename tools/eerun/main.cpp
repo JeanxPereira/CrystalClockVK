@@ -61,15 +61,23 @@ constexpr size_t kRodHeaderBytes = 16;
 constexpr size_t kRodVertBytes = 24;
 constexpr size_t kRodVertsPerRod = 4;
 
-// GS XYOFFSET (OFX, OFY), in raw 12.4 fixed-point units. Determined
-// EMPIRICALLY this session (phase2-staging-decode-report.md): searched the
-// full oracle vertex set (re/oracle/clock_sw_prims.json) for the translation
-// that best aligns the 7 distinct decoded rod-vertex screen positions with
-// oracle vertices; the winning offset lands one decoded vertex within 0.003px
-// of an exact oracle vertex (and all 7 within <2px), which is far tighter
-// than coincidence over ~20k oracle vertices -- not assumed/guessed.
-constexpr double kOfxRaw = 25788.0;  // 1611.75 px
-constexpr double kOfyRaw = 31656.0;  // 1978.5 px
+// GS XYOFFSET (OFX, OFY), in raw 12.4 fixed-point units. Phase 2 TIGHTEN
+// (phase2-tighten-report.md): this is now the REAL value read out of
+// re/oracle/clock_sw_prims.json's "xyoffset" field (added to gsdump's
+// writeJson this session) for the actual rod draws -- the 40 60-vert
+// TRI_STRIP (PRIM.type=4) draws with TEX0.TBP0=11264, rod-glow color
+// ~(210,230,230,64), drawn to FBP=0 (the pre-composite/refraction buffer).
+// All 40 share OFX=27648 raw; OFY alternates between 30976 and 30984 raw
+// (a 0.5px shift) across the 4 repeated draw-clusters in the dump -- this
+// is a PS2 interlaced-field jitter (odd/even field vertical offset), not
+// noise: idx clusters {1-16},{1900-1915} use 30984 and {949-964},
+// {2851-2866} use 30976, alternating in dump order. We pick the first
+// cluster's value (30984); the previous OFX=25788/OFY=31656 was a fitted
+// value from an exhaustive nearest-vertex search and is NOT close to this
+// real value (~116px off in X, ~42px off in Y) -- see the report for the
+// resulting vdiff --cloud match with this real offset.
+constexpr double kOfxRaw = 27648.0;  // 1728.0 px
+constexpr double kOfyRaw = 30984.0;  // 1936.5 px
 
 // Parses the raw internal staging bytes directly (per the mapped layout
 // above) into one GsPrimitive per rod, PRIM.type=4 (TRI_STRIP), 4 verts each.

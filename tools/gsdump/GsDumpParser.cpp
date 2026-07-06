@@ -344,6 +344,7 @@ void GsDumpParser::writeJson(const GsCommandStream& s, const std::string& path) 
           << ",\"PSM\":" << int(p.frame.psm) << "}"
           << ",\"SCISSOR\":{\"X0\":" << p.scissor.scax0 << ",\"X1\":" << p.scissor.scax1
           << ",\"Y0\":" << p.scissor.scay0 << ",\"Y1\":" << p.scissor.scay1 << "}"
+          << ",\"xyoffset\":{\"ofx\":" << p.xyoffset.ofx << ",\"ofy\":" << p.xyoffset.ofy << "}"
           << ",\"DTHE\":" << p.dthe << ",\"COLCLAMP\":" << p.colclamp
           << ",\"PABE\":" << p.pabe << ",\"FBA\":" << p.fba
           << ",\"nverts\":" << p.verts.size()
