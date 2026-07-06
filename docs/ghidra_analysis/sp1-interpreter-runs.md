@@ -1253,3 +1253,39 @@ matrix bug remains. NEXT (precise): single-step 0x2335E8 live reading full 128-b
 the constant 320.0 and the 1e5-scale blowup point at either a matrix row load (lqc2 at
 0x2738A0) reading the wrong source, or the projection divide (0x2337DC `div.s f20,f21,f20`
 with f21=1.0) fed a near-zero denominator. This is a fresh debug cycle, not a finish.
+
+## Phase 2 — "zero VF" root cause RETRACTED; the real signal = multi-object mid-render frame (2026-07-06, latest) [LIVE-VERIFIED]
+
+Followed the projection-garbage lead with native PCSX2 disasm of the two VU0 matrix
+helpers, and it FALSIFIES the "vf04-12 preloaded" conclusion from the prior note:
+- `sceVu0MulMatrix` 0x2738A0: `lqc2 vf04..vf07,(a1)` then loops 4× `lqc2 vf08,(a2)` +
+  `vmulax/vmadday/vmaddaz/vmaddw ->vf09` + `sqc2 vf09,(a0)`. Loads BOTH matrices FRESH
+  from memory; the ops are exactly the ones already implemented + Gate-A verified.
+- `sceVu0ApplyMatrix` 0x2738E8: same shape, single vector. Also self-contained.
+So VF state at 0x2335E8 entry is IRRELEVANT (helpers reload) — the interpreter dumping
+vf04-12 = 0 there is a red herring, and seeding the "fixed" viewport vf10-12 (captured
+live) did NOT correct the output (confirmed: still 5e5-scale garbage). **Retract the
+"zero VF04-12 is the root cause" claim.**
+
+**The actual signal (systematic-debugging "3+ layers, each a new coupling" → question the
+approach):** live single-stepping shows the Visor scene walker 0x22BCC8 drives 0x233F60
+over the SAME rod array 0x00375250 from MANY different scene objects per frame (observed
+active objs across passes: 0x371700, 0x371480, 0x371E80, ...), each with its OWN ctx and
+its own model-view matrix (result at sp is a sane rotation+translation, e.g. rows
+-0.16/-0.91/0.36 ... translate -13.1/7.7/121.3). The 4-deep trail (+0x00/+0x50/+0xA0/
++0xF0) × the multi-object walk = the rod array is a MULTI-PASS ACCUMULATION target, not a
+single-object output. The frozen eeMemory.bin caught ONE instant mid-walk. Calling ONE
+object's driver in isolation from that frozen image cannot reconstruct the exact
+per-object matrix inputs the real multi-pass render used — which is why every single-obj
+--drive-visor run produces internally-consistent-but-wrong geometry (+0x04 pinned 320.0,
+proj ~5e5) regardless of which object or VF seed.
+
+**What IS solid and banked:** mult fix (all 16 rods iterate); both matrix helpers use only
+implemented, verified ops; the writer + driver + whole handler all execute end-to-end with
+no opcode gaps and no Deci2. The interpreter is NOT the blocker — the harness assumption
+("pick one Visor object, drive its 0x233F60, read the rod array") is. This is a design
+fork for the next session, not a code bug to grind: either (a) drive the FULL per-frame
+walk 0x22BCC8 over the whole scene list 0x00371200 (reconstruct the accumulation), or
+(b) capture a cleaner frame (single-object or the exact active-obj at save time) to make
+the isolated drive well-posed, or (c) accept the menu-cube geometry (already validated
+same-frame) as the Milestone-A evidence and move SP1 forward. USER STEER wanted.
