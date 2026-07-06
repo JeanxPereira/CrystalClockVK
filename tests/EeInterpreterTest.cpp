@@ -65,13 +65,80 @@ int main() {
     assert(cpu6.vf[10][0] == 11.0f && cpu6.vf[10][1] == 12.0f &&
            cpu6.vf[10][2] == 13.0f && cpu6.vf[10][3] == 14.0f);
 
+    // 6b) VSUBx.xyzw vf10, vf8, vf6x  (COP2 broadcast group, subop=1 VSUB, bc=0)
+    //     Same operand layout as test 6 (dest=0xF, ft=6, fs=8, fd=10) but funct
+    //     carries subop=1: funct = (1<<2)|0 = 4 -> word = 0x49E64280 | 4.
+    //     fs=vf8={1,2,3,4}, ft=vf6={10,20,30,40} -> fd = fs - ft.x = {-9,-8,-7,-6}.
+    //     A VADD-mistake would give {11,12,13,14}; this asserts the true VSUB result.
+    poke(mem, 0x6100, {0x49E64284u, 0x03E00008u, 0u});
+    EeInterpreter cpu6b(mem);
+    cpu6b.vf[8][0] = 1.0f; cpu6b.vf[8][1] = 2.0f; cpu6b.vf[8][2] = 3.0f; cpu6b.vf[8][3] = 4.0f;
+    cpu6b.vf[6][0] = 10.0f; cpu6b.vf[6][1] = 20.0f; cpu6b.vf[6][2] = 30.0f; cpu6b.vf[6][3] = 40.0f;
+    cpu6b.call(0x6100);
+    assert(cpu6b.vf[10][0] == -9.0f && cpu6b.vf[10][1] == -8.0f &&
+           cpu6b.vf[10][2] == -7.0f && cpu6b.vf[10][3] == -6.0f);
+
+    // 6c) VMAXx.xyzw vf10, vf8, vf6x  (subop=4 VMAX, bc=0)
+    //     funct = (4<<2)|0 = 16 -> word = 0x49E64280 | 0x10 = 0x49E64290.
+    //     fs=vf8={1,5,3,8}, ft=vf6={4,20,30,40} -> ft.x=4 broadcast.
+    //     max(fs,4) = {4,5,4,8}; a VMINI-mistake would give {1,4,3,4}.
+    poke(mem, 0x6200, {0x49E64290u, 0x03E00008u, 0u});
+    EeInterpreter cpu6c(mem);
+    cpu6c.vf[8][0] = 1.0f; cpu6c.vf[8][1] = 5.0f; cpu6c.vf[8][2] = 3.0f; cpu6c.vf[8][3] = 8.0f;
+    cpu6c.vf[6][0] = 4.0f; cpu6c.vf[6][1] = 20.0f; cpu6c.vf[6][2] = 30.0f; cpu6c.vf[6][3] = 40.0f;
+    cpu6c.call(0x6200);
+    assert(cpu6c.vf[10][0] == 4.0f && cpu6c.vf[10][1] == 5.0f &&
+           cpu6c.vf[10][2] == 4.0f && cpu6c.vf[10][3] == 8.0f);
+
+    // 6d) VMINIx.xyzw vf10, vf8, vf6x  (subop=5 VMINI, bc=0)
+    //     funct = (5<<2)|0 = 20 -> word = 0x49E64280 | 0x14 = 0x49E64294.
+    //     Same operands as 6c: min(fs,4) = {1,4,3,4}; a VMAX-mistake would give
+    //     {4,5,4,8}, so this discriminates against test 6c's expectation.
+    poke(mem, 0x6300, {0x49E64294u, 0x03E00008u, 0u});
+    EeInterpreter cpu6d(mem);
+    cpu6d.vf[8][0] = 1.0f; cpu6d.vf[8][1] = 5.0f; cpu6d.vf[8][2] = 3.0f; cpu6d.vf[8][3] = 8.0f;
+    cpu6d.vf[6][0] = 4.0f; cpu6d.vf[6][1] = 20.0f; cpu6d.vf[6][2] = 30.0f; cpu6d.vf[6][3] = 40.0f;
+    cpu6d.call(0x6300);
+    assert(cpu6d.vf[10][0] == 1.0f && cpu6d.vf[10][1] == 4.0f &&
+           cpu6d.vf[10][2] == 3.0f && cpu6d.vf[10][3] == 4.0f);
+
+    // 6e) VMULx.xyzw vf10, vf8, vf6x  (subop=6 VMUL, bc=0)
+    //     funct = (6<<2)|0 = 24 -> word = 0x49E64280 | 0x18 = 0x49E64298.
+    //     fs=vf8={1,2,3,4}, ft=vf6={10,20,30,40} -> fd = fs * ft.x(=10) = {10,20,30,40}
+    //     (VMULx broadcasts ft.x across every lane). A per-lane fs*ft mistake would
+    //     give {10,40,90,160}; a VADD one {11,12,13,14}; a VSUB one {-9,-8,-7,-6}.
+    poke(mem, 0x6400, {0x49E64298u, 0x03E00008u, 0u});
+    EeInterpreter cpu6e(mem);
+    cpu6e.vf[8][0] = 1.0f; cpu6e.vf[8][1] = 2.0f; cpu6e.vf[8][2] = 3.0f; cpu6e.vf[8][3] = 4.0f;
+    cpu6e.vf[6][0] = 10.0f; cpu6e.vf[6][1] = 20.0f; cpu6e.vf[6][2] = 30.0f; cpu6e.vf[6][3] = 40.0f;
+    cpu6e.call(0x6400);
+    assert(cpu6e.vf[10][0] == 10.0f && cpu6e.vf[10][1] == 20.0f &&
+           cpu6e.vf[10][2] == 30.0f && cpu6e.vf[10][3] == 40.0f);
+
+    // 6f) VMSUBx.xyzw vf10, vf8, vf6x  (subop=3 VMSUB, bc=0): fd = ACC - fs*ft.x
+    //     funct = (3<<2)|0 = 12 -> word = 0x49E64280 | 0x0C = 0x49E6428C.
+    //     ACC={100,100,100,100}, fs=vf8={1,2,3,4}, ft=vf6={10,20,30,40} -> ft.x=10.
+    //     fs*ft.x = {10,20,30,40}; ACC - that = {90,80,70,60}. A VMADD-mistake
+    //     (ACC + fs*ft.x) would give {110,120,130,140} -- operand order is pinned.
+    poke(mem, 0x6500, {0x49E6428Cu, 0x03E00008u, 0u});
+    EeInterpreter cpu6f(mem);
+    cpu6f.vacc[0] = 100.0f; cpu6f.vacc[1] = 100.0f; cpu6f.vacc[2] = 100.0f; cpu6f.vacc[3] = 100.0f;
+    cpu6f.vf[8][0] = 1.0f; cpu6f.vf[8][1] = 2.0f; cpu6f.vf[8][2] = 3.0f; cpu6f.vf[8][3] = 4.0f;
+    cpu6f.vf[6][0] = 10.0f; cpu6f.vf[6][1] = 20.0f; cpu6f.vf[6][2] = 30.0f; cpu6f.vf[6][3] = 40.0f;
+    cpu6f.call(0x6500);
+    assert(cpu6f.vf[10][0] == 90.0f && cpu6f.vf[10][1] == 80.0f &&
+           cpu6f.vf[10][2] == 70.0f && cpu6f.vf[10][3] == 60.0f);
+
     // 7) divu v0, a1 ; mflo v0 ; jr ra ; nop
     //    divu $2,$5 = 000000 00010 00101 00000 00000 011011 = 0x0045001B
     //    mflo v0 = 0x00001012
+    //    rs=0xFFFFFFFF, rt=2: signed div truncates -1/2 == 0, but unsigned
+    //    0xFFFFFFFF/2 == 0x7FFFFFFF -- these differ, so this catches divu
+    //    being wired to the signed division path.
     poke(mem, 0x7000, {0x0045001Bu, 0x00001012u, 0x03E00008u, 0u});
     EeInterpreter cpu7(mem);
-    cpu7.gpr[2].lo = 17;  // v0; call() sets a1 (gpr5) via its args
-    assert(cpu7.call(0x7000, 0, 5) == 3);  // 17u / 5u = 3
+    cpu7.gpr[2].lo = 0xFFFFFFFFu;  // v0; call() sets a1 (gpr5) via its args
+    assert(cpu7.call(0x7000, 0, 2) == 0x7FFFFFFFu);
 
     std::printf("ee_interpreter: all assertions passed\n");
     return 0;
