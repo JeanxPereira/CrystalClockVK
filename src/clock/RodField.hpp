@@ -38,8 +38,8 @@ public:
     // positive = counter-clockwise in the dial plane.
     static RodField Generate(const DialParams& params = {}, float spinPhase = 0.0f);
 
-    // Flat triangle mesh: one quad bar per rod, vertex-coloured white (placeholder
-    // until the real prism cross-section + crystal shader land).
+    // Flat triangle mesh: one quad bar per rod, vertex-coloured; kept as evidence-grounded 2D
+    // geometry for tray-icon dialface rendering.
     FlatMesh buildFlatMesh() const;
 
     // Flat mesh driven by the clock state: the lit (hour) rod is highlighted in

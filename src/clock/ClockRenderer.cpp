@@ -5,16 +5,6 @@
 
 #include <stdexcept>
 
-namespace {
-VkPipelineColorBlendAttachmentState opaqueBlend() {
-    VkPipelineColorBlendAttachmentState s{};
-    s.blendEnable = VK_FALSE;
-    s.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
-                       VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-    return s;
-}
-}  // namespace
-
 ClockRenderer::ClockRenderer(const VulkanContext& ctx, ResourceManager& resources,
                              VkFormat colorFormat, VkExtent2D extent)
     : m_ctx(ctx), m_resources(resources), m_extent(extent), m_colorFormat(colorFormat) {
@@ -42,6 +32,11 @@ ClockRenderer::ClockRenderer(const VulkanContext& ctx, ResourceManager& resource
         {1, 0, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(ps2clock::RodVertex, color)},
     };
 
+    VkPipelineColorBlendAttachmentState blendState{};
+    blendState.blendEnable = VK_FALSE;
+    blendState.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+                                VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+
     PipelineBuilder builder;
     m_pipeline = builder
         .setShaders(vert, frag)
@@ -50,7 +45,7 @@ ClockRenderer::ClockRenderer(const VulkanContext& ctx, ResourceManager& resource
         .setCullMode(VK_CULL_MODE_NONE)
         .setPolygonMode(VK_POLYGON_MODE_FILL)
         .setDepthTest(false, false)
-        .setBlendState(opaqueBlend())
+        .setBlendState(blendState)
         .setColorFormat(colorFormat)
         .setPipelineLayout(m_layout)
         .build(m_ctx.device());

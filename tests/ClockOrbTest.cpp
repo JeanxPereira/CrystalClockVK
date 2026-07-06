@@ -1,5 +1,5 @@
 // The 8 orbiting light spots at the clock centre (US6693606 element 308,
-// live array 0x34c830). Pure logic: positions on a ring + fading-trail mesh.
+// live array 0x34c830). Pure logic: positions on a ring.
 
 #include <cmath>
 #include <cstdio>

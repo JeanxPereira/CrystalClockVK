@@ -112,7 +112,6 @@ set(SOURCES
     src/app/TimeSync.cpp
     src/app/GsScene.cpp
     src/app/GsRenderer.cpp
-    src/clock/ClockRenderer.cpp
 )
 
 # Output binary to bin/ at project root (not inside build/)
@@ -138,7 +137,6 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     gsdump_lib
     gsvk
     gs
-    clock
 )
 
 find_package(Vulkan REQUIRED)

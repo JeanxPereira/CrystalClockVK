@@ -8,7 +8,6 @@
 #include "renderer/PassRecorder.hpp"
 #include "clock/ClockMath.hpp"
 #include "clock/RodField.hpp"
-#include "clock/ClockOrb.hpp"
 
 class ClockRenderer {
 public:
