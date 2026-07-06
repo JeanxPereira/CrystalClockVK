@@ -481,3 +481,60 @@ trace. NEXT: add "dump GPRs when PC==<addr>" to eerun (a read/exec watch), run
 `eerun ... 233928 --ready-at <addr>=0 --trace` and REPORT honestly whether the
 driver then iterates the render helpers over the rod array (real vdiff --subset)
 or hits the next wall. This is the Phase 2 plan's first task.
+
+## Phase 2 task 1 — stub aimed, new (bigger) wall found: shared busy/done flag [DUMP-MEASURED]
+
+[TOOL BUILT] `tools/eerun/main.cpp`: `--regs-at <hexpc>` exec-watch (dumps all
+32 GPRs by name, capped at 5 hits, explicit `fflush` after each — needed,
+stdout is fully buffered under redirection so a killed/long-running process
+otherwise loses all interim output). Also `--max-instr N` (CLI override of the
+200M budget, used for exploration) and the `EeError` path now prints a syscall
+**count** (was one line per syscall — 18,897 of them drowned the output) plus
+the `--trace` call-graph tally (previously success-path only, so a budget/wall
+failure gave zero visibility into what was reached). No `EeInterpreter` core
+change. Suite stays 17/17.
+
+[DUMP-MEASURED] `--regs-at 2719dc` on `233928`: **s1 = 0x00410000**, confirmed
+independently by disassembling `0x2718B8`'s own prologue (`lui v0,0x41` /
+`move s1,v0` / `addiu v0,v0,0x1690`) — s1 is a fixed global, rebuilt fresh on
+every call. `s0 = s1+0x1690 = 0x00411690` (matches). **pollAddr =
+0x0041169C.**
+
+[DUMP-MEASURED] `--ready-at 41169c=0 --trace --dump-stores ...` on `233928`:
+escapes the targeted tight poll loop (0x2719D0-0x2719E0) as intended, but then
+burns the entire 200M-instruction budget in a byte-scan/formatting loop at
+`0x271948-0x27198C`, throwing `budget exceeded` at `pc=00271948`. The
+`--trace` call tally shows **zero calls to any render helper**
+(0x232da0/0x235350/0x230fe8/0x232618) — the run never gets there. Since the
+run errors, the success-path store dump never fires: **no
+`stores_233928.bin` was produced this session, no draws captured, no vdiff
+run** (nothing to diff).
+
+**Root cause, disassembly-confirmed**: `0x0041169C` is a **shared busy/done
+flag**, read at two different sites inside the same function
+(`0x002718B8`, called 18,897 times this run):
+- `0x2718E4: lw v1,0xc(v0)` (v0=s0) — an **entry guard**: `bnez v1,epilogue`
+  skips straight to return if a send is already in flight (real hardware's
+  fast path, taken almost always).
+- `0x271930: sw v0,0xc(a0)` (v0=1) — the function itself sets the flag when
+  it starts a send.
+- `0x2719DC: lw v0,0xc(s0)` — the **completion poll** the earlier session
+  targeted, waiting for an interrupt handler to clear it back to 0.
+
+Forcing every read of that address to 0 defeats the entry guard too, so
+every one of the 18,897 calls takes the full send+`Deci2Call`+wait path
+instead of the normal fast "busy, return" path — the entire budget goes into
+an unbounded-looking debug-log flood (`0x26F4A0` x18,896, `0x268B00` x37,796,
+inner formatter `0x26C61C`/`0x26C6FC` x302,341/x307,064), not into the
+renderer. Re-ran identically to rule out a fluke: byte-for-byte same failure
+signature both times — deterministic, not noise.
+
+**Recommendation**: stub at the *read site* (PC-conditional), not the
+*address* — only fake the completion-poll read at `0x2719DC`, leave the
+entry-guard read at `0x2718E4` seeing the real (currently-0, i.e. "not busy")
+value, so the fast path this function almost always wants is preserved.
+Alternatively, RE whether this whole Deci2-print subsystem is
+debug-station-only scaffolding (same open question already flagged for
+`0x00233928` itself) — if so the entry guard's true idle value may not be 0
+at all, meaning the stub value itself needs revisiting, not just its scope.
+Full detail: `.superpowers/sdd/phase2-task1-report.md`.

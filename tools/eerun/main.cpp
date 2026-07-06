@@ -38,6 +38,14 @@ std::string siblingPath(const std::string& path, const std::string& name) {
     return (slash == std::string::npos) ? name : path.substr(0, slash + 1) + name;
 }
 
+// Standard MIPS/EE GPR names, for --regs-at dumps.
+constexpr const char* kGprNames[32] = {
+    "zero", "at", "v0", "v1", "a0", "a1", "a2", "a3",
+    "t0",   "t1", "t2", "t3", "t4", "t5", "t6", "t7",
+    "s0",   "s1", "s2", "s3", "s4", "s5", "s6", "s7",
+    "t8",   "t9", "k0", "k1", "gp", "sp", "s8", "ra",
+};
+
 int runDecode(int argc, char** argv) {
     std::string storesPath, jsonOut, basePath;
     for (int i = 2; i < argc; i++) {
@@ -136,7 +144,8 @@ int main(int argc, char** argv) {
 
     if (argc < 3) {
         std::printf("usage: eerun <image.bin> <hex-addr> [a0 a1 a2 a3] "
-                    "[--dump-stores out.bin] [--trace] [--ready-at addr=val]...\n"
+                    "[--dump-stores out.bin] [--trace] [--ready-at addr=val]... "
+                    "[--regs-at hexpc] [--max-instr N]\n"
                     "       eerun --decode <stores.bin> --json <out.json> [--base <image.bin>]\n");
         return 2;
     }
@@ -146,9 +155,24 @@ int main(int argc, char** argv) {
     uint64_t args[4] = {};
     int ai = 0;
     std::string dumpPath; bool trace = false;
+    uint64_t maxInstrOverride = 0;
+    uint32_t regsAtPc = 0; bool haveRegsAt = false;
     for (int i = 3; i < argc; i++) {
         if (!std::strcmp(argv[i], "--dump-stores")) dumpPath = argv[++i];
         else if (!std::strcmp(argv[i], "--trace")) trace = true;
+        else if (!std::strcmp(argv[i], "--max-instr") && i + 1 < argc) {
+            // Phase 2 task 1 exploration: let the caller raise the retirement
+            // budget past the default 200M to distinguish "genuinely unbounded
+            // loop" from "slow but finite" when chasing a new wall.
+            maxInstrOverride = std::strtoull(argv[++i], nullptr, 10);
+        }
+        else if (!std::strcmp(argv[i], "--regs-at") && i + 1 < argc) {
+            // Phase 2 task 1: exec-watch for a runtime GPR snapshot at a chosen
+            // PC (e.g. the Deci2 poll site 0x2719dc), since s1's value there is
+            // set dynamically via the call chain and not visible statically.
+            regsAtPc = std::strtoul(argv[++i], nullptr, 16);
+            haveRegsAt = true;
+        }
         else if (!std::strcmp(argv[i], "--ready-at") && i + 1 < argc) {
             // Phase 2 spike 2: stub a single polled memory field so a
             // hardware/interrupt-driven wait loop this bare interpreter
@@ -173,6 +197,7 @@ int main(int argc, char** argv) {
 
     EeInterpreter cpu(mem);
     cpu.traceCalls = trace;
+    if (maxInstrOverride > 0) cpu.maxInstructions = maxInstrOverride;
     std::deque<uint32_t> lastPcs;
     // wrap step loop manually to keep a PC ring buffer
     cpu.gpr[4].lo = args[0]; cpu.gpr[5].lo = args[1];
@@ -180,10 +205,20 @@ int main(int argc, char** argv) {
     cpu.gpr[29].lo = EeInterpreter::kDefaultStack;
     cpu.gpr[31].lo = EeInterpreter::kReturnSentinel;
     cpu.pc = entry;
+    int regsAtHits = 0;
     try {
         while (cpu.pc != EeInterpreter::kReturnSentinel) {
             lastPcs.push_back(cpu.pc);
             if (lastPcs.size() > 8) lastPcs.pop_front();
+            if (haveRegsAt && cpu.pc == regsAtPc && regsAtHits < 5) {
+                regsAtHits++;
+                std::printf("--regs-at %08X hit #%d (instr %llu):\n", cpu.pc, regsAtHits,
+                            (unsigned long long)cpu.instructionsRetired);
+                for (int r = 0; r < 32; r++)
+                    std::printf("  %-4s ($%-2d) = %016llX\n", kGprNames[r], r,
+                                (unsigned long long)cpu.gpr[r].lo);
+                std::fflush(stdout);
+            }
             cpu.step();
             if (++cpu.instructionsRetired > cpu.maxInstructions)
                 throw EeError{cpu.pc, 0, "budget exceeded"};
@@ -195,7 +230,15 @@ int main(int argc, char** argv) {
         std::printf("\nv0=%08llX v1=%08llX a0=%08llX a1=%08llX\n",
                     (unsigned long long)cpu.gpr[2].lo, (unsigned long long)cpu.gpr[3].lo,
                     (unsigned long long)cpu.gpr[4].lo, (unsigned long long)cpu.gpr[5].lo);
-        for (int32_t sc : cpu.syscalls) std::printf("syscall %d\n", sc);
+        std::printf("%llu syscall entries logged\n", (unsigned long long)cpu.syscalls.size());
+        if (trace) {
+            // Phase 2 task 1: print the call-graph tally even on the error
+            // path, so a budget/wall failure still answers "did it ever
+            // reach the render helpers before dying" without a second run.
+            std::map<uint32_t, int> calls;
+            for (uint32_t t : cpu.trace) calls[t]++;
+            for (auto& [t, n] : calls) std::printf("call %08X x%d\n", t, n);
+        }
         return 1;
     }
     std::printf("retired %llu instructions\n",
