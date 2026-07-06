@@ -1,5 +1,7 @@
 # W0 — Projection Constants & Trig-Buffer Analysis
 
+> Audit 2026-07-05: claims status-tagged per master-strategy spec §6.
+
 > **Task:** W0-1 static RE pass — resolve the projection + rotation constants needed for the W1
 > projection oracle. All evidence is from static Ghidra disassembly of `OSDSYS.elf` plus direct
 > bytes read from the decomp ELF (`OSDSYS_A_XLF_decrypted_unpacked.elf`, load base `0x00200000`).
@@ -7,13 +9,15 @@
 >
 > **GP base resolution:** Startup code at `0x001f005c` (`daddu gp, a0, zero`) sets GP from `a0`.
 > `a0` = `lui a0, 0x002d` + `addiu a0, a0, -272` = `0x002d0000 - 0x110` = **`0x002cfef0`**.
+> [DECOMP-SOURCED] — this matches the live/correct gp (`0x002cfef0`, item 9), NOT the stale
+> `0x002AF070` base seen in other docs; addresses below are computed from the correct base.
 > The decomp ELF has a consistent GP base of `0x00377970` (delta = `0xa7a80`).
 > GP-relative globals outside `.text` (`0x001f0000–0x002b8e73`) are not in the Ghidra memory
 > image; values were read directly from the decomp ELF at `ph_offset + (vaddr − 0x200000)`.
 
 ---
 
-## 1. Projection constants — resolved float values
+## 1. Projection constants — resolved float values `[DECOMP-SOURCED]` (bytes read directly from the decomp ELF static-data segment)
 
 ### 1a. gp-relative globals (from draw_crystal_rod @ 0x00232e38)
 
@@ -69,8 +73,8 @@ FUN_002730a8(uGpffff8c28, 0x3f800000, uVar1, 0x45000000, 0x45000000,
 Both `uGpffff8c28` (FOV) and `iGpffff8d18` (widescreen flag) are in BSS — zero in the static ELF,
 initialized at runtime by the clock init path. Their values require a live PCSX2 read.
 
-**FOV hypothesis:** Given `near = 41.6` and `far = 2048.0`, and that the rods sit at world Y ≈ 14.7
-(from runtime trace), a typical PS2 clock scene FOV of approximately 60° (1.047 rad) is plausible.
+**FOV hypothesis:** `[HYPOTHESIS]` Given `near = 41.6` and `far = 2048.0`, and that the rods sit at world Y ≈ 14.7
+(from runtime trace `[LIVE-VERIFIED]`), a typical PS2 clock scene FOV of approximately 60° (1.047 rad) is plausible.
 `1/tan(30°) ≈ 1.73`. Actual value: live read pending.
 
 **Widescreen flag:** 4:3 is the default (flag = 0 = BSS default). 16:9 path writes 0.44 to halfWidth.
@@ -98,15 +102,15 @@ a0   = output matrix  = 0x29BD50
 **Confirmed static constants: `far = 2048.0`, `scale = 65536.0`, `aspect = 1.0`.**
 These are instruction-level immediates in `draw_crystal_rod`'s own code — no data dependency.
 
-**Observation on halfWidth:** `halfWidth_4:3 = 41.6` and `near = 41.6` are bit-identical
-(`0x42266666`). Whether this is intentional (the near plane IS the halfWidth at unit distance from
+**Observation on halfWidth:** `[DECOMP-SOURCED]` `halfWidth_4:3 = 41.6` and `near = 41.6` are bit-identical
+(`0x42266666`). `[HYPOTHESIS]` Whether this is intentional (the near plane IS the halfWidth at unit distance from
 camera) or coincidence is unclear without knowing the projection matrix formula in full detail.
 The `0.44` for 16:9 is close to `4/9 ≈ 0.444` — likely a ratio correction applied to the base
 halfWidth for 16:9 displays rather than a screen-halfWidth in pixel units.
 
 ---
 
-## 3. Trig-buffer layout (W0-Q4) — partial
+## 3. Trig-buffer layout (W0-Q4) — partial `[DECOMP-SOURCED]` for cited instructions/addresses; the VU0 register mapping conclusions are `[HYPOTHESIS]` per the section's own text.
 
 **Buffer address:** `0x29BCF0` (8× f32 = 32 bytes). Passed as `a1` to `rotation_build @ 0x002732d8`.
 
@@ -151,7 +155,7 @@ sin/cos expansion of which angle goes to vf12 vs vf11 requires the `a2`/`a3` dat
 
 ---
 
-## 4. Rod+0x04 lifetime (W0-Q1) — **OPEN (controller review: claim downgraded)**
+## 4. Rod+0x04 lifetime (W0-Q1) — **OPEN (controller review: claim downgraded)** `[HYPOTHESIS]` throughout this section, per its own downgrade note below.
 
 > ⚠️ **CONTROLLER REVIEW VERDICT:** the conclusion below ("rod+0x04 = clockState[0x1b], NOT the
 > angle; world-Y is not at +0x04") is **NOT accepted as resolved** — it rests on a fragile `f0`
@@ -215,7 +219,7 @@ survives unclobbered through the loop, which is unproven. The two-snapshot live 
 
 ## 5. Confidence and blockers
 
-### Confirmed (evidence-grade, instruction-level)
+### Confirmed (evidence-grade, instruction-level) `[DECOMP-SOURCED]`
 
 - `far = 2048.0` — `lui at,0x4500` immediate at `0x00232e88`. Confidence: **certain**.
 - `scale = 65536.0` — `lui at,0x4780` immediate at `0x00232e90`. Confidence: **certain**.
@@ -256,7 +260,7 @@ survives unclobbered through the loop, which is unproven. The two-snapshot live 
 
 ---
 
-## 6. Updated constant table for W1 projection oracle
+## 6. Updated constant table for W1 projection oracle `[PROVISIONAL → item 11]` — the "W1 projection oracle" this feeds is an underdetermined single-rod (rod0) regression fit, not evidence-grade; the CONFIRMED constants below (far/scale/aspect/halfWidth/near) stand on their own decomp-sourced evidence, but the oracle they feed into is provisional.
 
 ```c
 // CONFIRMED constants (use directly in Vulkan projection)
@@ -275,9 +279,9 @@ const float NEAR           = 41.6f;  // 0x42266666 @ gp−0x7b78
 
 ---
 
-## 7. Live-read attempt (session 2) — OUTCOME: FOV deferred to the W1 fit
+## 7. Live-read attempt (session 2) — OUTCOME: FOV deferred to the W1 fit `[PROVISIONAL → item 11]`
 
-A second live pass (clock on screen, memory-only, no breakpoints) could NOT read FOV or fresh rods:
+A second live pass (clock on screen, memory-only, no breakpoints) could NOT read FOV or fresh rods: `[LIVE-VERIFIED]`
 - `0x375250` (and `0x377e50`) read **all zeros** — the rod array **heap-shifted after the
   crash+reboot** (the earlier same-session capture at `0x375250` is now stale; rod arrays are per-boot
   heap, FOUNDATION-STATUS).
@@ -286,10 +290,11 @@ A second live pass (clock on screen, memory-only, no breakpoints) could NOT read
 - Registers are unusable: every pause catches the EE kernel idle loop at `PC=0x00081fc0` (zeroed
   context), so `gp` / the live rod-base pointer can't be read to relocate the moved array.
 
-**RESOLUTION — no further live read needed.** The master plan designs FOV + the projection
+**RESOLUTION — no further live read needed.** `[PROVISIONAL → item 11]` The master plan designs FOV + the projection
 column-order as **FIT parameters** (R1/R2), not reads. near/halfWidth/far/scale/aspect are resolved
 statically (§6); the rod0 world→screen oracle is already captured (`runtime-trace.md`: world
-`(-13.04, 14.67, 50.27)` → screen `(1915.2, 2118.2)` → 12.4 `0x77b3/0x8463`, + rod1-4 X spread). W1's
-`ProjectionOracleTest` solves `fov` (1 continuous) + column-order (1 discrete) from that pair.
+`(-13.04, 14.67, 50.27)` → screen `(1915.2, 2118.2)` → 12.4 `0x77b3/0x8463`, + rod1-4 X spread). `[LIVE-VERIFIED]` W1's
+`ProjectionOracleTest` solves `fov` (1 continuous) + column-order (1 discrete) from that pair. `[PROVISIONAL → item 11]`
+This is an underdetermined single-rod (rod0) regression fit — not evidence-grade — per item 11.
 **W0 is complete enough to start W1.** (A future boot that leaves the visor rods live at a findable
 address can capture spread rods to upgrade the oracle from regression-lock to correctness-proof.)

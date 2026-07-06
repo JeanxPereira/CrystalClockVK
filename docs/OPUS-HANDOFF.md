@@ -1,5 +1,7 @@
 # Opus Handoff — CrystalClockVK Restart
 
+> Audit 2026-07-05: claims status-tagged per master-strategy spec §6.
+
 > Audience: the managing agent (Opus) taking over after the Phase 0 audit.
 > Fable produced the audit + cut plan; Opus executes cuts, then drives the GS-spec rebuild,
 > delegating bulk work to smaller agents (Sonnet/Haiku). Token discipline: fan-out agents
@@ -8,10 +10,11 @@
 ## 0. Current state (UPDATED 2026-06-12 — Phase 0 COMPLETE, on main)
 - Audit DONE (`docs/PHASE0-AUDIT.md`). Phase 1 architecture spec APPROVED
   (`docs/superpowers/specs/2026-06-12-phase1-gs-vk-architecture-design.md`).
-- **Phase 0 surgical cuts EXECUTED + merged to main** (11 commits). Builds green; app renders
-  black + ImGui (intended exit). `gs/` constants live-verified, `RenderOrchestrator` stubbed,
+- **Phase 0 surgical cuts EXECUTED + merged to main** (11 commits) `[HYPOTHESIS]` (project-state
+  claim, not independently re-verified by this audit). Builds green; app renders
+  black + ImGui (intended exit). `gs/` constants live-verified `[LIVE-VERIFIED]`, `RenderOrchestrator` stubbed,
   `PipelineBuilder`→`setBlendState`, poison docs deleted, MEMORY/CLAUDE rewritten.
-- Foundation VERIFIED LIVE (`docs/FOUNDATION-STATUS.md`): ghidra (`program="OSDSYS.elf"`),
+- Foundation VERIFIED LIVE (`docs/FOUNDATION-STATUS.md`) `[LIVE-VERIFIED]`: ghidra (`program="OSDSYS.elf"`),
   CrystalOSD decomp, pcsx2-mcp (bundled patched `pcsx2-qt.exe` + DebugServer), `clock_viewer.gs`
   captured + validated, `pcsx2-ref` GS source cloned.
 - User approved this direction; do NOT re-litigate the audit.
@@ -38,8 +41,8 @@ Vulkan SDK `C:/VulkanSDK/1.4.350.0` does NOT propagate to a running process — 
    (`pktSetAlphaBlend`, `pktSetTEST_1`, `pktSetAD`, `sceGsPutDrawEnv`) are the style source.
 3. Precision = machine-readable: PCSX2 GS dumps + SW-renderer reference frames + numeric
    pixel-diff. Photo comparison is banned.
-4. No VU1 microcode exists in clock/opening. "VU work" = porting the `sceVu0*` macro lib
-   (42 funcs, known PS2SDK semantics).
+4. No VU1 microcode exists in clock/opening `[DECOMP-SOURCED]`. "VU work" = porting the `sceVu0*` macro lib
+   (42 funcs, known PS2SDK semantics) `[DECOMP-SOURCED]`.
 5. Any numeric constant entering `gs/` or shaders needs provenance: decomp address, GS dump
    packet, or live-trace register. Cite it in the commit body.
 
@@ -73,7 +76,7 @@ is exact, shader-emulated blend via `VK_KHR_dynamic_rendering_local_read` when n
 comparing blended pixel values against the GS formula in 8-bit integer math.
 
 ### W4 — First rendered element + pixel-diff loop
-Target: opening alpha quads (`func_0021E950` reference) — simplest real element.
+Target: opening alpha quads (`func_0021E950` reference) — simplest real element `[DECOMP-SOURCED]`.
 Build the diff harness: render same frame in PCSX2 SW renderer (bit-accurate) and in VK,
 compare numerically.
 **Accept:** automated per-channel diff report; agreed threshold met (define with user — start
@@ -102,20 +105,21 @@ Screen-space UV derivation (was `shaders/Crystal.vert:44-47`) — the only reusa
 vec2 ndc = gl_Position.xy / gl_Position.w;
 fragScreenUV = ndc * 0.5 + 0.5;
 ```
-Trace-confirmed rod colors + GP floats now live in `src/gs/GsConstants.hpp` (Task 1 of cut plan).
+Trace-confirmed rod colors + GP floats now live in `src/gs/GsConstants.hpp` (Task 1 of cut plan) `[LIVE-VERIFIED]`.
 
 ## 6. Tooling map
 - **ghidra-mcp** (MANDATORY for `gs/` logic): pseudocode from `hddosd.elf`. NOTE: registered in
   user-level config, not project `.mcp.json` — verify availability at session start.
 - **pcsx2-mcp** (project `.mcp.json`): live EE memory/registers, BPs, dumps. Paused PC always
   reads `0x00081fc0` (BIOS idle) — set BP inside OSDSYS code (real prologue, `addiu sp,-N`)
-  to capture context. GP = `0x002AF070`.
+  to capture context. GP = ~~`0x002AF070`~~ `[FALSIFIED → live/correct gp is 0x002CFEF0, live BP 2026-06-12]`. Any address
+  derived from the stale GP above is itself stale — see MEMORY.md live-render-chain note.
 - **CrystalOSD decomp**: CONFIRMED at `C:\CodingProjects\Personal\CrystalOSD` (the `D:\...`
   references in old docs are WRONG — that path does not exist). `asm/clock/` has
   `clock_orb_rendering_func.s`; `asm/graph/` has the GS packet builders (`pktSetAlphaBlend.s`
   etc.). See `docs/FOUNDATION-STATUS.md` for the full verified map.
 - **Ghidra program selection**: two programs are open; `hddosd.elf` is active by default but
-  clock addresses (0x0022xxxx) live in `OSDSYS.elf`. ALWAYS pass `program="OSDSYS.elf"` for
+  clock addresses (0x0022xxxx) live in `OSDSYS.elf` `[LIVE-VERIFIED]`. ALWAYS pass `program="OSDSYS.elf"` for
   clock decompiles or you silently hit the wrong binary.
 - **RenderDoc**: in-app trigger button already wired (`RenderDocWrapper`).
 - **PCSX2 SW renderer**: ground-truth frames for W4.
@@ -123,7 +127,7 @@ Trace-confirmed rod colors + GP floats now live in `src/gs/GsConstants.hpp` (Tas
 ## 7. Trust map for repo docs (post-cut)
 | Doc | Trust |
 |---|---|
-| `docs/OSDSYS-DECOMP-1to1-STRATEGY.md` | Master spec (rod stride fixed to 0x140) |
+| `docs/OSDSYS-DECOMP-1to1-STRATEGY.md` | Master spec (rod stride fixed to 0x140) `[HYPOTHESIS — possibly superseded; later measurement gives stride 0x160 for the 12-rod dial + 4 menu cubes, not on the audit's confirmed-falsified list, flagged not corrected]` |
 | `docs/PHASE0-AUDIT.md` | Audit record |
 | `MEMORY.md` live-trace section | Ground truth (addresses, GP floats, rod struct, colors) |
 | `docs/clock_patent/*` | Refraction METHOD only — never numeric spec |

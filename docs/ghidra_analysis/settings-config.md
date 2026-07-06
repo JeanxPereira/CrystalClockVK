@@ -4,9 +4,15 @@
 > Every claim cites `name @ address`. Labels marked "hypothesis" are inferred
 > from bit-field position, not yet confirmed by a live trace.
 
+> Audit 2026-07-05: claims status-tagged per master-strategy spec §6.
+
 ---
 
 ## 1. Architecture overview
+
+[HYPOTHESIS throughout this file unless a claim is re-tagged below — this
+document is Ghidra static decompile of `OSDSYS.elf`; per its own header, none
+of it has been confirmed by a live PCSX2 trace.]
 
 ```mermaid
 flowchart TD
@@ -118,6 +124,10 @@ offset `+0` of each record. Overflow guard: `config_get_timezone_city` clamps to
 
 ---
 
+[HYPOTHESIS — §2 storage-layer bit-field tables above are Ghidra decompile
+inference from getter/setter shift-mask patterns, not live-verified against
+actual RAM values.]
+
 ## 3. Config-item array (clock bridge)
 
 `module_clock_get_config_item @ 00221540`:
@@ -144,6 +154,8 @@ immediately — stub or NOP init), then zeros `uGpffff88ac` and `DAT_0028b024`. 
 initialises the "pending change" state before the config menu is shown.
 
 ---
+
+[HYPOTHESIS — §3 array base address and index mapping are explicitly unresolved per the doc's own §8 blockers.]
 
 ## 4. Change-callback mechanism
 
@@ -212,6 +224,8 @@ items) dereferences the handle to produce a pointer to the live value cell.
 
 ---
 
+[HYPOTHESIS throughout §4 — callback bodies and struct-offset claims are Ghidra decompile only.]
+
 ## 5. Per-option table
 
 | # | Option | Getter @ addr | Setter @ addr | Storage | Bits | Range | Visual impact |
@@ -233,6 +247,10 @@ items) dereferences the handle to produce a pointer to the live value cell.
 | – | ps1drv config | `module_clock_config_ps1drv_get_value @ 00215760` | (mechacon path) | `var_ps1drv_config @ 001f1224` | 3-bit nibble pairs | 0–7 per entry | No (PS1 hardware flags) |
 
 ---
+
+[HYPOTHESIS — §5 table consolidates the §2 bit-field claims and the "visual
+impact" column is inferred, not confirmed by observing the clock's rendered
+output change.]
 
 ## 6. Get/set/apply flow (detailed)
 
@@ -277,6 +295,8 @@ sequenceDiagram
 ```
 
 ---
+
+[HYPOTHESIS throughout §6 — sequence diagrams reconstructed from static decompile, not a live-traced call sequence.]
 
 ## 7. Visual impact — Vulkan rebuild port notes
 
@@ -324,6 +344,8 @@ No visual impact on the clock. Skip for Phase 1.
 boolean; set it whenever any config setter is called and on every RTC tick.
 
 ---
+
+[HYPOTHESIS throughout §7 — porting recommendations built on the unverified §1–§6 claims above; treat as provisional.]
 
 ## 8. Blockers / open items
 

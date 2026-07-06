@@ -1,5 +1,7 @@
 # W0 — Rod Angle-Step Global Constants
 
+> Audit 2026-07-05: claims status-tagged per master-strategy spec §6.
+
 > **Task:** Resolve all gp-relative angle-step globals referenced in `ui_render_3d_objects @
 > 0x00223f78` and `draw_crystal_rod @ 0x00232e38`. Values read from static data in
 > `OSDSYS_A_XLF_decrypted_unpacked.elf` (load base `0x200000`). Not from live PCSX2.
@@ -12,7 +14,7 @@
 
 ---
 
-## 1. Angle-step global table
+## 1. Angle-step global table `[DECOMP-SOURCED]` — raw bytes read directly from the decomp ELF static-data segment.
 
 | Global | Ghidra addr | Decomp vaddr | gp offset | Raw bytes (LE) | IEEE-754 f32 | Degrees |
 |--------|-------------|--------------|-----------|----------------|--------------|---------|
@@ -30,7 +32,7 @@ verified against two independent known values (`halfWidth_4:3 = 41.6` @ `gp−0x
 
 ---
 
-## 2. Per-pass usage (from decompile of `ui_render_3d_objects @ 0x00223f78`)
+## 2. Per-pass usage (from decompile of `ui_render_3d_objects @ 0x00223f78`) `[DECOMP-SOURCED]` for the code/formulas quoted; role/naming of the "group A/B" split is otherwise `[HYPOTHESIS]` unless separately confirmed.
 
 The function has two top-level branches on `param_1 > 0.0` (transition) vs `else` (steady-state).
 
@@ -78,7 +80,7 @@ bound `param_3[1]` (total rod count). There is no `0x377e50` (group-B) loop in p
 
 ## 3. Group-B steady-state resolution (C-A3)
 
-**RESOLVED: Group B has NO dedicated steady-state angle-step globals.**
+`[DECOMP-SOURCED]` **RESOLVED: Group B has NO dedicated steady-state angle-step globals.**
 
 Evidence from the clean decompile of `ui_render_3d_objects`:
 
@@ -119,15 +121,16 @@ Steady group-B pass-2/pass-3: **does not exist** — group B is absent from stea
 
 ## 5. Observations
 
-- In steady state, pass-3 angle step (0.4 rad/rod) is **2× pass-2** (0.2 rad/rod). The refraction
-  pass fans out rods twice as far as the additive surface pass.
+- In steady state, pass-3 angle step (0.4 rad/rod) is **2× pass-2** (0.2 rad/rod). `[DECOMP-SOURCED]`
+  values; "The refraction pass fans out rods twice as far as the additive surface pass" is
+  `[HYPOTHESIS]` interpretation (pass role naming not independently confirmed).
 - In transition, all four named step globals (831c/8320/8324) are **0.1 rad/rod = 5.73°/rod**,
-  making the transition a uniform-spread configuration across both groups in passes 2/3.
+  making the transition a uniform-spread configuration across both groups in passes 2/3. `[DECOMP-SOURCED]` values; interpretation `[HYPOTHESIS]`.
 - `fGpffff8328` ≈ 0 means during transition pass-3, group-B rods are drawn with no angular spread
   (all stacked at the same angle offset). Whether this is visually intentional or a seeded default
-  that gets overwritten at runtime is unknown — but the static data value is `0x361ada93`.
+  that gets overwritten at runtime is unknown — but the static data value is `0x361ada93`. `[DECOMP-SOURCED]` value; intentionality is `[HYPOTHESIS]`.
 - `fGpffff8318 = 0.1` (scale). It scales both XY outputs of `FUN_002335e8` before being used in
-  the group transform. This reduces the effective scale by 10× relative to the raw computed value.
+  the group transform. This reduces the effective scale by 10× relative to the raw computed value. `[DECOMP-SOURCED]`
 
 ---
 

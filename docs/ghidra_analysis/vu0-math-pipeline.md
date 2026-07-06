@@ -1,8 +1,14 @@
 # VU0 Math Pipeline — Crystal Clock Rod Geometry
 
+> Audit 2026-07-05: claims status-tagged per master-strategy spec §6.
+
 > **Status:** Verified from Ghidra disassembly + Python decode (decode_vu0.py). All claims cite
 > evidence. GLM pseudocode is derived from decoded instructions, not assumed. Prior vu0_decode.md
 > GLM was quarantined as unverified — this document replaces it for the port.
+> `[HYPOTHESIS]` note (audit): "Verified" here means static-disassembly-derived, not
+> live-debugger-confirmed or dump-measured. Function roles inferred from Ghidra static reads have
+> been wrong elsewhere in this project (see runtime-trace.md corrections); treat address/role
+> claims below as `[HYPOTHESIS]` unless a live/dump tag is present.
 
 ---
 
@@ -30,10 +36,15 @@ flowchart TD
     STEP2 --> STEP3
     STEP3 --> RESULT["Combined 4×4 @ 0x29BD90\nused for vertex transform"]
 ```
+> All addresses/roles in this diagram: `[HYPOTHESIS]` (Ghidra static disassembly read, not
+> live-verified against a running PCSX2 session).
 
 ---
 
 ## Memory Map (static buffers confirmed from disassembly)
+
+`[HYPOTHESIS]` — table below is static-disassembly-derived (argument-register tracing), not
+live-verified or dump-measured.
 
 | Address      | Size  | Contents                          | Evidence                          |
 |--------------|-------|-----------------------------------|-----------------------------------|
@@ -48,8 +59,12 @@ flowchart TD
 
 ### draw_crystal_rod — FUN_00232e38 @ 0x00232e38
 
-Orchestrator. Zero Vulkan symbols. Reads rod struct via `s2`, angle via `s3`, camera via `s5`.
-Entry-point disassembly confirmed — tail-calls `sceVu0MulMatrix` via `j 0x002738a0`.
+`[HYPOTHESIS]` Orchestrator role and address. Zero Vulkan symbols. Reads rod struct via `s2`,
+angle via `s3`, camera via `s5` — `[HYPOTHESIS]` (register-arg inference from static disassembly).
+Entry-point disassembly confirmed — tail-calls `sceVu0MulMatrix` via `j 0x002738a0`
+`[HYPOTHESIS]` (static read; not live-verified).
+
+`[HYPOTHESIS]` (static disassembly register-arg trace below; not live-verified numerically).
 
 **Argument build from disassembly:**
 ```
@@ -79,13 +94,16 @@ a2 = 0x29BD10              ; rotation
 
 Callers: `FUN_0020aa74 @ 0x0020aa74` (orb/particle variant, different fov/halfWidth globals),
 `FUN_00211618 @ 0x00211618` (projection-only caller), `module_clock_22A990 @ 0x00226930`
-(MulMatrix only).
+(MulMatrix only). `[HYPOTHESIS]` (static call-graph read; caller roles not live-confirmed).
 
 ---
 
 ### rotation_build — FUN_002732d8 @ 0x002732d8
 
-Body: `0x002732d8 – 0x00273387`. 44 VU0 upper instructions + 1 branch.
+`[HYPOTHESIS]` Function name/role is an inferred label; address and instruction bytes are a
+static Ghidra read (reliable as raw bytes, but the semantic interpretation below — "rotation
+build" — is not live-verified). Body: `0x002732d8 – 0x00273387`. 44 VU0 upper instructions + 1
+branch.
 
 **Decoded instruction listing (from decode_vu0.py):**
 ```
@@ -135,11 +153,18 @@ Body: `0x002732d8 – 0x00273387`. 44 VU0 upper instructions + 1 branch.
 00273384: VADDQ.w         vf11, vf9, Q
 ```
 
+`[HYPOTHESIS]` instruction decode below is a static tool-assisted disassembly read
+(decode_vu0.py); opcodes are byte-accurate but several funct codes are explicitly marked
+unresolved by the doc itself (see bracketed `[VDIV]`/`[special]` entries).
+
 **Register usage (from decode_vu0.py analysis):**
 - `vf12` is the dominant source (`fs` count = 13): this is the **running matrix accumulation register**
   or the **angle-derived direction vector** fed down the chain.
 - `vf25` is the dominant destination (`fd` count = 5): accumulating the output basis vector.
 - `vf11` appears 7× as `fs`: second basis vector / axis input.
+
+`[HYPOTHESIS]` phase interpretation below (structural inference from dest-mask grouping, not
+independently verified).
 
 **Structure — three-phase basis build:**
 
@@ -162,13 +187,21 @@ int) — this is the GS coordinate encoding in-place before storage.
 **`bc1t 0x0025bb74` at `0x00273300`:** branches to `memclr @ 0x00272fc8`. This is a VU0
 floating-point condition branch — if the FP condition bit is set (NaN/inf detected upstream),
 it jumps to zeroing the output matrix rather than writing garbage into GS packet data.
+`[HYPOTHESIS]` (branch target and byte-level operands are a direct static read; the semantic
+"NaN/inf guard" interpretation is inferred, not live-verified).
 
 ---
 
 ### projection_build — FUN_002730a8 @ 0x002730a8
 
+`[PROVISIONAL]` (audit, item 11 — "W1 projection" claims): this whole section is a single-rod,
+static-disassembly regression/inference and is explicitly flagged underdetermined by the file's
+own warning box below; treat as provisional, not evidence-grade, until cross-checked against a
+PCSX2 pixel-diff reference frame.
+
 Body: `0x002730a8 – 0x00273217`. 92 VU0 upper instructions. **This is NOT `sceVu0ViewScreenMatrix`
 (which lives at `0x002630a8`, a stub). It is a custom GS-native projection routine.**
+`[HYPOTHESIS]`
 
 **Arguments (from draw_crystal_rod disassembly):**
 ```c
@@ -202,6 +235,8 @@ void projection_build(
 00273214: VMSUBI.xy       vf26, vf14, I      ; subtract I register from column
 ```
 
+`[PROVISIONAL]` (item 11) structural analysis below is inferred, not confirmed.
+
 **Structural analysis:**
 
 All writes target `.xy` — the function computes two matrix columns in one SIMD pass, using the
@@ -220,15 +255,19 @@ Q = (far * near * (far2 - far)) / (-far2 + near)   ; perspective Z coefficient
 The `2048.0f` far plane and `65536.0f` scale factor together place vertices directly in
 **GS drawing coordinate space (0–2048 range, 12.4 fixed-point integer)** — no separate
 viewport transform is needed. The projection matrix IS the viewport transform.
+`[PROVISIONAL]` (item 11) — the `2048.0f`/`65536.0f` constants themselves are confirmed
+call-site immediates (see Confirmed Constants table below), but this conclusion about the
+projection matrix subsuming the viewport transform is inferred, not measured.
 
 ---
 
 ### sceVu0MulMatrix (matrix_multiply) — @ 0x002638a0 / alias FUN_002738a0
 
-Ghidra has two entries: `sceVu0MulMatrix @ 0x002638a0` (named) and `FUN_002738a0 @ 0x002738a0`
-(unnamed). Body of the latter spans `0x002738a0 – 0x002738e7` (COP0 instructions — these are
-`cache` + `pref` prefetch hints that Ghidra misdecodes as COP0; the actual logic follows in a
-trampoline or the named entry at `0x002638a0`). The named entry decompiles cleanly:
+`[HYPOTHESIS]` Ghidra has two entries: `sceVu0MulMatrix @ 0x002638a0` (named) and
+`FUN_002738a0 @ 0x002738a0` (unnamed). Body of the latter spans `0x002738a0 – 0x002738e7`
+(COP0 instructions — these are `cache` + `pref` prefetch hints that Ghidra misdecodes as COP0;
+the actual logic follows in a trampoline or the named entry at `0x002638a0`). The named entry
+decompiles cleanly:
 
 ```c
 // sceVu0MulMatrix @ 0x002638a0 — VERIFIED decompile
@@ -252,10 +291,16 @@ void sceVu0MulMatrix(mat4* out, mat4* m2, mat4* m3) {
 
 This is a standard column-major 4×4 matrix multiplication: **`out = m2 × m3`**.
 Called as `sceVu0MulMatrix(0x29BD90, 0x29BD50, 0x29BD10)` → **`combined = projection × rotation`**.
+`[HYPOTHESIS]` (Ghidra decompiler output of the OSDSYS binary — a static read, not the
+CrystalOSD C decomp source, and not live-verified numerically).
 
 ---
 
 ## sceVu0 Port Surface — Clock-Relevant Functions
+
+`[DECOMP-SOURCED]` function names/semantics for the standard `sceVu0*` PS2SDK macro-lib entries
+(these exist in the CrystalOSD decomp source). `[HYPOTHESIS]` for addresses and the "Used by
+clock" column (Ghidra static call-graph read, not live-verified).
 
 | Function | Address | Semantics | Used by clock |
 |----------|---------|-----------|---------------|
@@ -283,10 +328,15 @@ Called as `sceVu0MulMatrix(0x29BD90, 0x29BD50, 0x29BD10)` → **`combined = proj
 
 **The clock does NOT use sceVu0ViewScreenMatrix.** The projection is a custom function
 (`FUN_002730a8`) that embeds the GS coordinate transform directly.
+`[PROVISIONAL]` (item 11 — part of the same underdetermined single-rod projection analysis).
 
 ---
 
 ## 12.4 Fixed-Point Conversion — Exact Mechanics
+
+`[DECOMP-SOURCED]`/general PS2 hardware knowledge for the 12.4 GS format itself;
+`[HYPOTHESIS]` for the claim that this specific pipeline uses it exactly as described (inferred
+from `VFTOI4`/`VITOF4` opcodes seen in static disassembly, not live-verified).
 
 GS hardware uses **12.4 fixed-point** integers for screen-space XY coordinates:
 - Float world/screen value is multiplied by 16 (= 2^4) and stored as integer.
@@ -317,8 +367,9 @@ just outputs integer-encoded XY directly.
 
 ## Rotation Build — Verified Pseudocode
 
-Evidence: two `VOPMSUB` cross products in `FUN_002732d8`, `vf12` as the dominant source
-(13 uses), and the dest-mask sweep x→yzw→yz→yw→y→zw→z→w across 44 instructions.
+`[HYPOTHESIS]` ("Verified" = static-disassembly-derived pattern match, not live-verified or
+dump-measured). Evidence: two `VOPMSUB` cross products in `FUN_002732d8`, `vf12` as the dominant
+source (13 uses), and the dest-mask sweep x→yzw→yz→yw→y→zw→z→w across 44 instructions.
 
 The `bc1t` to `memclr` is a VU0 condition branch (FPU status bit): when the angle computation
 produces a NaN/denormal, the function zeroes the output matrix instead.
@@ -376,7 +427,7 @@ glm::mat4 rotation_build_glm(glm::vec3 forward, glm::vec3 up, float Q_trig) {
 ```
 
 **This is NOT Euler angles, NOT Rodrigues: it is a direct orthonormal basis build
-from two direction vectors using two sequential cross products.**
+from two direction vectors using two sequential cross products.** `[HYPOTHESIS]`
 
 The Q register carries a trig scalar (loaded via VDIV from the temp buffer at `0x29BCF0`)
 that scales the forward/up inputs — this is where the two angles (`angleA` from `s3` and
@@ -387,11 +438,13 @@ stored into the temp buffer before calling.
 
 ## Projection Build — Verified Pseudocode
 
+`[PROVISIONAL]` (item 11 — "W1 projection", single-rod regression fit, underdetermined).
 Evidence: 92 instructions, all writing `.xy` (two columns per SIMD pass), VDIV+VMADDQ for
-perspective divide, `2048.0f` far + `65536.0f` scale as confirmed call-site arguments.
+perspective divide, `2048.0f` far + `65536.0f` scale as confirmed call-site arguments
+`[DECOMP-SOURCED]`.
 
 The function is **custom, not sceVu0ViewScreenMatrix**. It encodes the GS viewport transform
-inside the projection matrix so no second viewport pass is needed.
+inside the projection matrix so no second viewport pass is needed. `[PROVISIONAL]` (item 11)
 
 ```c
 // projection_build @ 0x002730a8
@@ -448,16 +501,22 @@ glm::mat4 projection_build_glm(float fov, float aspect, float halfWidth,
 ```
 
 > [!WARNING]
+> `[PROVISIONAL]` (audit, item 11 — matches this exact caveat already present in the source doc)
 > The exact column ordering and sign of `tz`/`qz` must be validated against a PCSX2 pixel-diff
 > reference frame. The above pseudocode captures the correct ingredients and GS remapping logic
 > but the exact coefficient arrangement in the 4×4 needs one numeric check to confirm.
 > The `aspect=1.0` and `far=2048.0` are EVIDENCE-GRADE (from disassembly constants).
+> `[DECOMP-SOURCED]`/`[HYPOTHESIS]` — the two constants are direct call-site immediates
+> (reliable), the surrounding column-arrangement claim remains `[PROVISIONAL]`.
 
 ---
 
 ## Port Notes — Vulkan Rebuild
 
 ### What to port (in order)
+
+`[HYPOTHESIS]` — port plan below rests on the rotation_build reading above and the
+`[PROVISIONAL]` (item 11) projection_build reading; not evidence-grade for exact coefficients.
 
 1. **rotation_build → `BuildRotationMatrix(vec3 forward, vec3 up)`**
    - Two cross products: `right = normalize(cross(forward, up))`, then `upOrtho = cross(right, forward)`
@@ -497,6 +556,10 @@ glm::mat4 projection_build_glm(float fov, float aspect, float halfWidth,
 
 ### Confirmed constants (evidence-grade)
 
+`[DECOMP-SOURCED]`/`[HYPOTHESIS]` — values pulled directly from ELF `.data`/call-site immediates
+are reliable (`[DECOMP-SOURCED]`); the "BSS, runtime only" and gp-offset labels are static reads
+(`[HYPOTHESIS]` for exact runtime value until live-read).
+
 | Constant | Value | Source |
 |----------|-------|--------|
 | GS far plane | `2048.0f` (`0x45000000`) | `mtc1 at,f15` @ `0x00232e88` |
@@ -509,10 +572,15 @@ glm::mat4 projection_build_glm(float fov, float aspect, float halfWidth,
 | HalfWidth 16:9 | `*gp[-0x7b7c]` = `uGpffff8484` | taken path @ `0x00232e78` — **0.440f** (`0x3ee147ae`, from decomp ELF .data) |
 
 > GP base resolution: Ghidra OSDSYS.elf startup (`0x001f005c`) sets gp = `0x002cfef0`.
+> `[HYPOTHESIS]`/consistent with the known-correct live gp (`0x002CFEF0`, per audit item 9 —
+> this doc's gp value is NOT the stale `0x002AF070`-derived one).
 > Decomp ELF gp = `0x00377970` (delta `0xa7a80`). Globals outside `.text` read from decomp ELF.
-> See `w0-projection-constants.md` for full derivation.
+> `[DECOMP-SOURCED]` See `w0-projection-constants.md` for full derivation.
 
 ### Blockers
+
+`[HYPOTHESIS]` throughout this list — all four items are open/unresolved by the doc's own
+admission, consistent with `[PROVISIONAL]` item 11.
 
 1. **FOV value unknown:** `*gp[-0x73d8]` (FOV) is BSS in both ELFs — zero in static binary,
    written by clock init at runtime. Need PCSX2 live read at `0x002c8b18` (Ghidra space).

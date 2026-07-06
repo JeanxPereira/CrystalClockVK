@@ -1,5 +1,7 @@
 # CrystalClockVK — PS2 OSDSYS Visual Layer, 1:1 in Vulkan
 
+> Audit 2026-07-05: claims status-tagged per master-strategy spec §6.
+
 ## Project Overview
 Perceptually 1:1 Vulkan recreation of the PS2 OSDSYS VISUAL layer (crystal clock first; config
 menu and opening later). The style IS the GS rasterizer — blend `(A-B)*C/128+D` (alpha 0–128),
@@ -29,7 +31,7 @@ the look; read it from evidence.
 6. `tools/gsdump/` (Phase 1): standalone GS-dump parser.
 
 ## Ground Truth & Tooling
-- **CrystalOSD decomp** (`C:\CodingProjects\Personal\CrystalOSD`): the spec. GS-packet builders
+- **CrystalOSD decomp** (`C:\CodingProjects\Personal\CrystalOSD`) (STALE PATH — real location pending user): the spec. GS-packet builders
   (`pktSetAlphaBlend`, `pktSetTEST_1`, `pktSetAD`, `sceGsPutDrawEnv`) encode the exact state.
 - **ghidra-mcp** (MANDATORY): clock addresses live in `OSDSYS.elf` — always pass
   `program="OSDSYS.elf"` (the active program defaults to `hddosd.elf`).
@@ -37,7 +39,7 @@ the look; read it from evidence.
   (DebugServer on 21512). BIOS must be `ps2-0230a-20080220` (matches decomp). Do NOT reset with
   OSDSYS BPs armed (recLUT crash). See `docs/FOUNDATION-STATUS.md`.
 - **PCSX2 software renderer**: bit-accurate reference frames for numeric pixel-diff. Never compare by photo.
-- **PCSX2 GS source** (`C:\CodingProjects\Personal\pcsx2-ref`, `pcsx2/GS/` only): reference for the
+- **PCSX2 GS source** (`C:\CodingProjects\Personal\pcsx2`, `pcsx2/GS/` only): reference for the
   `.gs` format, GS registers, GS→VK blend mapping, swizzle. Read on demand, never bulk-load.
 - **Patent digest** (`docs/clock_patent/US6693606-DIGEST.md`): canonical patent reference — scene
   structure (rods + central sphere + light spots + after-image + optional blur), pass ORDERING

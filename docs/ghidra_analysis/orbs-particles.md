@@ -4,6 +4,8 @@
 > Decomp cross-ref: `C:\CodingProjects\Personal\CrystalOSD\asm\clock\clock_orb_rendering_func.s`.
 > Status: **COMPLETE first pass** — ring buffer, trail math, blend passes, update chain all decoded.
 
+> Audit 2026-07-05: claims status-tagged per master-strategy spec §6.
+
 ---
 
 ## 1. Orb update + render flow
@@ -32,7 +34,9 @@ graph TD
     CLK --> E048["module_clock_231E48 @ 0022e0b8\nBrowser string / UI label render (date/time digits)"]
 ```
 
-**Address skew note:** Named functions prefixed `module_clock_XXXXXX` encode the *runtime* address in the name; the Ghidra entry follows. Skew = **0x14928** (confirmed: runtime `0x225F38` → Ghidra `0x211610`). Functions in the `0x002261a0`–`0x002264c3` range are NOT separately named — they are labels *within* `FUN_002261a0`; the decomp .s file `func_002262C8/226300/2269E0` are jump targets inside that body.
+**Address skew note:** Named functions prefixed `module_clock_XXXXXX` encode the *runtime* address in the name; the Ghidra entry follows. Skew = **0x14928** (runtime `0x225F38` → Ghidra `0x211610`) [HYPOTHESIS — static-analysis internal consistency check, not live-verified]. Functions in the `0x002261a0`–`0x002264c3` range are NOT separately named — they are labels *within* `FUN_002261a0`; the decomp .s file `func_002262C8/226300/2269E0` are jump targets inside that body [DECOMP-SOURCED].
+
+The call-graph in §1 and the function-index in §2 (addresses, arg shapes, roles) are Ghidra static decompilation of `OSDSYS.elf`, not independently confirmed by a live trace or GS dump unless a specific claim below says otherwise — treat every role/name in §1–§2 as [HYPOTHESIS] except where re-tagged.
 
 ---
 
@@ -74,7 +78,7 @@ graph TD
 
 ## 3. Trail ring-buffer struct and field map
 
-The orb trail is stored in an **in-context ring buffer** passed as `in_stack_00000000` (an `int*`).
+The orb trail is stored in an **in-context ring buffer** passed as `in_stack_00000000` (an `int*`) [HYPOTHESIS — Ghidra static decompile of OSDSYS.elf, cross-referenced against `clock_orb_rendering_func.s` but not live-verified]. All offsets, the stride, and the capacity value in this section carry the same status unless noted otherwise.
 
 ### Ring-buffer header (at base)
 
@@ -110,7 +114,7 @@ Capacity = **50 entries** (`0x32`). Confirmed: modulo `% 0x32` in wrapped branch
 
 ## 4. Color attenuation math (trail fade)
 
-Implemented in `FUN_002261a0 @ 002261a0` and duplicated in `FUN_00225be8`. Key equations:
+Implemented in `FUN_002261a0 @ 002261a0` and duplicated in `FUN_00225be8`. Key equations [HYPOTHESIS — read off Ghidra decompile, not live-verified against runtime register values]:
 
 ```
 // trail index i ∈ [0, count-1], 0 = newest
@@ -151,7 +155,7 @@ GS_Z = (int)(pfVar9[2] * 16.0)               // raw depth
 
 ## 5. GS render passes
 
-`FUN_00225be8` / `ui_render_orbs_particles` both execute **3 sub-passes** per orb:
+`FUN_00225be8` / `ui_render_orbs_particles` both execute **3 sub-passes** per orb [HYPOTHESIS]:
 
 ### Pass 1 — Trail point sprites
 
@@ -162,36 +166,55 @@ GS_Z = (int)(pfVar9[2] * 16.0)               // raw depth
 
 ### Pass 2 — Orb head billboard (large halo)
 
-- `FUN_00230fe8(7,1,1)` then `FUN_00231078(base+0x7410, ...)` — sets blend mode 7
-- Scale: `unaff_f22 * 30.0` (width = height/2 = large soft glow)
-- Rectangle in GS 12.4: `XY = (head_X ± scale*16, head_Y ± scale*0.5*16)`
-- GS template: `DAT_202973d0..dc` (4 words from `unaff_s5_lo` texture handle)
-- Blend mode 7: **hypothesis subtractive** (after-image / dark halo, or src-over with low alpha)
-- Kicked via `FUN_0022fd00 @ 0022fd00`
+- ~~`FUN_00230fe8(7,1,1)` then `FUN_00231078(base+0x7410, ...)` — sets blend mode 7~~
+  [FALSIFIED → `FUN_00230fe8` is the OSDSYS icon-browser/controller-polling input
+  state machine (focus index, disc-check polling, pad-button reads, highlight
+  state); it touches no GS register (ALPHA/TEST/FRAME) anywhere in its body, so
+  it does not "set blend mode". The call site is real but the callee does not
+  do what this line claims — see `PORT-FUNCTION-MAP.md` §"GS state setters".]
+- Scale: `unaff_f22 * 30.0` (width = height/2 = large soft glow) [HYPOTHESIS]
+- Rectangle in GS 12.4: `XY = (head_X ± scale*16, head_Y ± scale*0.5*16)` [HYPOTHESIS]
+- GS template: `DAT_202973d0..dc` (4 words from `unaff_s5_lo` texture handle) [HYPOTHESIS]
+- Blend mode 7: **hypothesis subtractive** (after-image / dark halo, or src-over with low alpha) [HYPOTHESIS — "blend mode 7" framing itself is undermined by the FUN_00230fe8 correction above; treat the whole mode-7/mode-6 numbering as unconfirmed]
+- Kicked via `FUN_0022fd00 @ 0022fd00` [HYPOTHESIS]
 
 ### Pass 3 — Orb head billboard (tight core)
 
-- `FUN_00230fe8(6,1,1)` then `FUN_00231078(base+0x7410, ...)`  — sets blend mode 6
-- Scale: `unaff_f22 * 4.5` (tight bright core)
-- Same XYOFFSET formula, same `DAT_202973d0..dc` template, different texture handle (`unaff_s4_lo` vs `unaff_s5_lo`)
-- Blend mode 6: **hypothesis additive** (bright inner orb)
+- ~~`FUN_00230fe8(6,1,1)` then `FUN_00231078(base+0x7410, ...)`  — sets blend mode 6~~
+  [FALSIFIED → same correction as Pass 2: `FUN_00230fe8` is the icon-browser
+  input state machine, not a GS blend setter. See item 3 in the audit list.]
+- Scale: `unaff_f22 * 4.5` (tight bright core) [HYPOTHESIS]
+- Same XYOFFSET formula, same `DAT_202973d0..dc` template, different texture handle (`unaff_s4_lo` vs `unaff_s5_lo`) [HYPOTHESIS]
+- Blend mode 6: **hypothesis additive** (bright inner orb) [HYPOTHESIS — mode numbering unconfirmed, see Pass 2 note]
 
 ### Pass 4 — Second trail series
 
-- GS template: `_DAT_00297420 / DAT_00297428 / DAT_0029742c` (second packet at `0x00297420`)
-- `puVar1[4] = 0x82` sets a 2-vertex count
-- `FUN_00230518(0,3)` — sets Z-test / depth mode
-- `FUN_0022f720` — alloc/begin new GS packet
-- Trail points repeated with same color math (second render of the trail, possibly with different blend)
+- GS template: `_DAT_00297420 / DAT_00297428 / DAT_0029742c` (second packet at `0x00297420`) [HYPOTHESIS]
+- `puVar1[4] = 0x82` sets a 2-vertex count [HYPOTHESIS]
+- `FUN_00230518(0,3)` — sets Z-test / depth mode [HYPOTHESIS — `FUN_00230518`'s
+  role is contested: `PORT-FUNCTION-MAP.md` finds it a generic DMA/queue
+  trampoline with 26 OS-wide callers, not test/Z-specific (see audit item 4);
+  this file's "Z-test/depth mode" framing is not on the confirmed-falsified
+  list but should not be treated as settled either]
+- ~~`FUN_0022f720` — alloc/begin new GS packet~~ [FALSIFIED → `FUN_0022f720` is
+  OSD-browser icon/selection logic (disc-type check, icon-data build, font-color
+  table writes); it never touches `0x375230` or any GS register. The actual
+  16-byte register-template copy into `0x375230` happens inline in the caller
+  (`ui_render_3d_objects`), immediately after each `FUN_0022f720(...)` call —
+  not inside this function. See audit item 5.]
 
 GS packet begin/end helpers:
-- `FUN_0022f720` → allocate GS DMA packet (start new chain tag)  
-- `FUN_0022f7f8` → finalize / emit packet
+- ~~`FUN_0022f720` → allocate GS DMA packet (start new chain tag)~~ [FALSIFIED →
+  see correction above; this function is browser icon-selection logic, not a
+  GS packet allocator. The template blit is inline in `ui_render_3d_objects`.]
+- `FUN_0022f7f8` → finalize / emit packet [HYPOTHESIS — not covered by the
+  FUN_0022f720 correction; role unverified independently]
 
 ---
 
 ## 6. Time / animation offset driving orbs
 
+[HYPOTHESIS — the following symbol roles and formulas are read from Ghidra decompile, not live-verified]
 ```
 lRam002c8f80          = raw frame Δt (ticks, from system clock via FUN_00263940)
 fRam002c893c          = animation rate scale
@@ -215,10 +238,10 @@ if phase >= 1000.0: FUN_00231e60(floor(phase/1000)); phase = fmod(phase, 1000.0)
 
 ## 7. Orb count — what is known
 
-- The context slot stride is **0x970 bytes** (`set_render_context_flag @ 0022beb8`)
-- `module_clock_22A990 @ 00226930` uses `idx * 0x40` — each orb has a **0x40-byte matrix block**
-- `module_clock_22FEF0 @ 0022bf10` writes to `param + 0x400` — likely the count/phase word per slot
-- **Hypothesis**: there are at minimum 2 orbs (the function reads `unaff_s4_lo` and `unaff_s5_lo` as two separate texture handles in the billboard passes). The patent digest confirms "light spots" are multiple (≥2).
+- The context slot stride is **0x970 bytes** (`set_render_context_flag @ 0022beb8`) [HYPOTHESIS]
+- `module_clock_22A990 @ 00226930` uses `idx * 0x40` — each orb has a **0x40-byte matrix block** [HYPOTHESIS]
+- `module_clock_22FEF0 @ 0022bf10` writes to `param + 0x400` — likely the count/phase word per slot [HYPOTHESIS]
+- **Hypothesis**: there are at minimum 2 orbs (the function reads `unaff_s4_lo` and `unaff_s5_lo` as two separate texture handles in the billboard passes). The patent digest confirms "light spots" are multiple (≥2). [HYPOTHESIS / DECOMP-SOURCED for the patent-digest reference only]
 - **Blocker**: the exact iteration count and spawn positions come from the fn-table at `DAT_0029b3c0` dispatched by `module_clock_22F5D0 @ 0022b5f0`. That table was not decompiled this pass.
 
 ---
@@ -226,10 +249,13 @@ if phase >= 1000.0: FUN_00231e60(floor(phase/1000)); phase = fmod(phase, 1000.0)
 ## 8. Port notes (Vulkan rebuild)
 
 ### Blend modes
-Per pass:
-- Trail points (pass 1 + 4): **additive** `(A-B)*C/128+D` where A=src, B=0, C=alpha, D=dst. Map to `VkBlendFactor`: srcColor=ONE, dstColor=ONE (standard additive).
-- Head halo (pass 2, mode 7): likely **src-over** or **subtractive** — wait for GS dump confirmation.
-- Head core (pass 3, mode 6): **additive** — matches glow.
+Per pass [HYPOTHESIS throughout this subsection; the "mode 6/7" labels rest on
+`FUN_00230fe8`, which is now known to be the icon-browser input state machine,
+not a GS blend setter — see the §5 correction. The actual GS ALPHA register
+values for these passes are unconfirmed]:
+- Trail points (pass 1 + 4): **additive** `(A-B)*C/128+D` where A=src, B=0, C=alpha, D=dst. Map to `VkBlendFactor`: srcColor=ONE, dstColor=ONE (standard additive). [HYPOTHESIS]
+- Head halo (pass 2, mode 7): likely **src-over** or **subtractive** — wait for GS dump confirmation. [HYPOTHESIS]
+- Head core (pass 3, mode 6): **additive** — matches glow. [HYPOTHESIS]
 
 ### Trail geometry
 - Do NOT use a mesh. Each trail point is a **2D point sprite** (GS primitive type). In Vulkan: emit one quad per point, centered at the GS XY, with size derived from the alpha (or fixed small).
@@ -254,4 +280,10 @@ Per pass:
 3. **GS packet templates** `DAT_00297420` and `DAT_00297430` — read the raw 128-bit words to extract ALPHA/TEST register values and confirm blend mode mapping.
 4. **`unaff_f22` source** in `FUN_00225be8` — this is the orb brightness/scale float, needs to be traced to its write site (controls both billboard sizes).
 5. **Trail push function** — where does the fn-table orbiter push a new (X,Y,Z,R,G,B) entry into the ring buffer each frame? Find this to get the exact spawn/update math.
-6. **Blend pass for mode 6 vs 7** — confirm by reading `FUN_00230fe8` to decode which of the 3 GS ALPHA register values (src-over/additive/subtractive) each numeric argument selects.
+6. ~~**Blend pass for mode 6 vs 7** — confirm by reading `FUN_00230fe8` to decode which of the 3 GS ALPHA register values (src-over/additive/subtractive) each numeric argument selects.~~
+   [FALSIFIED → this blocker's premise is wrong: `FUN_00230fe8` was decompiled
+   in full and is the icon-browser/controller-polling input state machine; it
+   contains no GS ALPHA/TEST/FRAME register writes at all, so it cannot decode
+   blend-mode arguments. The real GS ALPHA values for mode 6 vs 7 (if that
+   framing is even correct) remain UNLOCATED — see audit item 3 and
+   `PORT-FUNCTION-MAP.md`.]

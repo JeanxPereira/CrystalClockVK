@@ -3,9 +3,15 @@
 > Source: `OSDSYS.elf`, ghidra-mcp analysis, base `0x001f0000`.
 > Every claim cites `name @ address`. Guesses are labelled "hypothesis".
 
+> Audit 2026-07-05: claims status-tagged per master-strategy spec §6.
+
 ---
 
 ## 1. Call-graph context
+
+[HYPOTHESIS throughout §1 — this call-graph is Ghidra static decompilation of
+`OSDSYS.elf`, not independently confirmed by a live PCSX2 trace or GS dump.
+Individual nodes are tagged again below only where evidence status differs.]
 
 `ui_render_menu_animation @ 0x0023a318` is one of three top-level render passes
 dispatched by the per-frame loop. Its caller is `FUN_0022af60 @ 0x0022af60`, a
@@ -42,7 +48,7 @@ graph TD
 
 ## 2. Menu-state struct (globals at `0x002c8xxx`)
 
-Extracted from `ui_render_menu_animation @ 0x0023a318` and `FUN_0022af60 @ 0x0022af60`:
+Extracted from `ui_render_menu_animation @ 0x0023a318` and `FUN_0022af60 @ 0x0022af60` [HYPOTHESIS — field names and meanings are inferred from Ghidra decompile, not live-verified]:
 
 | Address | Name (hypothesis) | Width | Meaning |
 |---------|-------------------|-------|---------|
@@ -89,7 +95,8 @@ Offsets from `0x002c83ec`:
 ## 3. Alpha/fade animation — timing constants
 
 `ui_render_menu_animation` computes a 0–127 alpha ramp via integer linear
-interpolation: `alpha = (counter * 0x7F) / total_frames`.
+interpolation: `alpha = (counter * 0x7F) / total_frames`. [HYPOTHESIS — from
+Ghidra decompile, not live-verified]
 
 Two timing constants exist, selected by `aspect_widescreen @ 0x002c8c08`:
 
@@ -98,22 +105,27 @@ Two timing constants exist, selected by `aspect_widescreen @ 0x002c8c08`:
 | 4:3 (NTSC) | 15 frames | counter > 10 | `iVar6 = 0xf`, gated at `iRam002c8ccc > 10` |
 | 16:9 (widescreen) | 12 frames | counter > 8 | `iVar6 = 0xc`, gated at `iRam002c8ccc > 8` |
 
+[HYPOTHESIS — frame-count constants read directly off Ghidra decompile
+literals; not cross-checked against a live 60fps trace.]
+
 The computed `alpha` (0–127, GS half-intensity scale) is passed to
 `FUN_0020a730(channel, alpha)` where `channel` is 0 or 1 depending on
-`FUN_0024e140()` (hypothesis: checks whether second display/port is active).
+`FUN_0024e140()` (hypothesis: checks whether second display/port is active). [HYPOTHESIS]
 
 A secondary fade path in `menu_state==1` uses longer counters (0x1e=30 frames
 for 4:3, 0x19=25 frames for 16:9) with a two-phase ramp: fast-ramp at `+0x14`
-frames, slow-ramp at `+0x10` frames, making a cubic-feeling ease-in.
+frames, slow-ramp at `+0x10` frames, making a cubic-feeling ease-in. [HYPOTHESIS]
 
 Confirmation sub-panel (`FUN_0023ab60 @ 0x0023ab60`) uses the same constants
-and the same ramp arithmetic, confirming this is a shared animation primitive.
+and the same ramp arithmetic — this is a shared animation primitive by static
+reading of both decompiles [HYPOTHESIS, not live-verified].
 
 ---
 
 ## 4. Scroll animation (`menu_state == 2`)
 
-When `menu_state == 2` and `uRam002c8ce4 != 0`:
+When `menu_state == 2` and `uRam002c8ce4 != 0` [HYPOTHESIS throughout §4 —
+Ghidra decompile only]:
 
 1. `fRam002c8c60` (scroll angle) is incremented each frame by `fRam002c83f8`
    (4:3 rate) or `fRam002c83f4` (16:9 rate).
@@ -130,8 +142,8 @@ When `menu_state == 2` and `uRam002c8ce4 != 0`:
 ## 5. Screen coordinate / fixed-point scheme
 
 Source evidence from `FUN_00226110 @ 0x00226110` (a `draw_crystal_rod` helper
-that also draws the light-spot sprite backdrop — confirmed by its call from
-`menupos_p3_p8_tgt`):
+that also draws the light-spot sprite backdrop — call site confirmed by static
+xref from `menupos_p3_p8_tgt`, not live-verified) [HYPOTHESIS]:
 
 ```c
 // Sprite vertex X in GS coords:
@@ -143,7 +155,8 @@ DAT_202973e0 = (int)(((fVar9 - fVar11) + (float)(_screenW / 2)) * 16.0);
 DAT_202973e4 = (int)(((fVar12 - fVar11 * 0.5) + (float)(_screenH / 2)) * 16.0);
 ```
 
-Rules:
+Rules [HYPOTHESIS — inferred from the decompiled code above, not confirmed by
+a live register read or GS dump for this specific code path]:
 - All GS XY coords are 12.4 fixed-point: `screen_pixel * 16`.
 - **+2048 offset** is applied to X before multiply: `(x_world + 2048.0) * 16`.
   This is the standard GS XYOFFSET where the rasteriser's scissor origin is at
@@ -158,7 +171,7 @@ Rules:
   (e.g. `FUN_00247408(0xac - iVar6)` passes Y = `0xac - offset` = 172 px minus
   a small offset). X is passed separately.
 
-Key coordinate constants observed in `ui_render_menu_animation`:
+Key coordinate constants observed in `ui_render_menu_animation` [HYPOTHESIS — decompile literals, not live-verified]:
 - `0xac` (172) — base Y for the menu-item name row.
 - `0x9e` (158) — base Y for the confirmation panel body row.
 - `0xa2` (162) — base Y for a secondary row.
@@ -171,6 +184,8 @@ Key coordinate constants observed in `ui_render_menu_animation`:
 ---
 
 ## 6. Text / glyph draw path
+
+[HYPOTHESIS throughout §6 unless noted — Ghidra static decompile only.]
 
 ```mermaid
 graph LR
@@ -217,11 +232,12 @@ struct). String indices seen in the UI:
 DMA to the GS to rasterise glyphs from the freeze atlas (TBP0 = 8960).
 
 `FUN_0020c6f8 @ 0x0020c6f8` is the **refraction / light-intensity texture
-fill** function (confirmed by its 20×20 pixel nested loop, radial-distance
-intensity formula, and output stride of `0x50` bytes to `DAT_0034a070`). It
+fill** function (static-decompile-confirmed by its 20×20 pixel nested loop,
+radial-distance intensity formula, and output stride of `0x50` bytes to
+`DAT_0034a070`, but not live/dump-verified) [HYPOTHESIS]. It
 fills a 20×20 tile buffer that is used as the refraction map, NOT glyph draw.
 It is called after `browser_str_related` in the menu path — the glyph sets up
-which atlas tile to sample, and this fills the per-tile intensity.
+which atlas tile to sample, and this fills the per-tile intensity. [HYPOTHESIS]
 
 ---
 
@@ -236,16 +252,18 @@ table at `0x002c83ec`) and zeroes a block of fields within it:
 ```
 
 Hypothesis: these are GS PRIM / FOG / CLAMP registers in the draw-env struct.
-Clearing them resets them to "no texture / no fog" before rebuilding the packet.
+Clearing them resets them to "no texture / no fog" before rebuilding the packet. [HYPOTHESIS]
 
 `FUN_0020a730 @ 0x0020a730` (alpha setter) dispatches through a vtable:
 `(**(code **)(alpha_value + channel))()` — i.e. `alpha_value` (0 or 1) selects
 a row in the per-channel blend vtable, and the int alpha (0–127) selects the
-column. This matches the GS ALPHA register `(A-B)*C/128+D` blend where C=alpha.
+column. This matches the GS ALPHA register `(A-B)*C/128+D` blend where C=alpha. [HYPOTHESIS — decompile-derived, not live-verified against a GS register read]
 
 ---
 
 ## 8. Sprite draw helpers
+
+[HYPOTHESIS throughout §8 — Ghidra static decompile only.]
 
 | Function | Signature (reconstructed) | Role |
 |----------|--------------------------|------|
@@ -255,11 +273,13 @@ column. This matches the GS ALPHA register `(A-B)*C/128+D` blend where C=alpha.
 | `FUN_00247040 @ 0x00247040` | `draw_string_rpc(x_idx, y, handle)` | `sceSifCallRpc(0x410f40, 2, ...)` — direct IOP RPC for text |
 
 All sprite Y coordinates passed as raw pixel values (NOT ×16). The ×16 scaling
-is applied inside the IOP-side renderer.
+is applied inside the IOP-side renderer. [HYPOTHESIS]
 
 ---
 
 ## 9. Navigation / input dispatch
+
+[HYPOTHESIS throughout §9 — Ghidra static decompile only.]
 
 `menupos_p3_p8_tgt @ 0x0021e5c0` (input handler — runtime addr 0x001be5c0):
 - Reads `uRam002c8948` (pad buttons).
@@ -277,6 +297,8 @@ command, ID 0x5200, channel 1, event 6 = menu-scroll click.
 ---
 
 ## 10. Layout table `DAT_0029c3e0` / `DAT_0029c3c0`
+
+[HYPOTHESIS throughout §10 — Ghidra static decompile only.]
 
 In `ui_render_menu_animation`, the item-count check branch:
 
@@ -300,6 +322,10 @@ browser icon slots.
 ---
 
 ## 11. Full function index
+
+[HYPOTHESIS throughout §11 — role column is Ghidra static decompile / naming
+convention only, not live-verified, except where an entry duplicates a
+function already re-tagged elsewhere in this file.]
 
 | Function | Address | Role |
 |----------|---------|------|
@@ -344,6 +370,10 @@ browser icon slots.
 ---
 
 ## 12. Port notes (Vulkan rebuild)
+
+[HYPOTHESIS throughout §12 — porting recommendations built on the §1–§11
+static-decompile hypotheses above; treat as provisional until cross-checked
+against a live trace or GS dump.]
 
 ### Coordinate mapping
 

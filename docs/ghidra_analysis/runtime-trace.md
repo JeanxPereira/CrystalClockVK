@@ -1,15 +1,22 @@
 # OSDSYS Clock — Live PCSX2 Runtime Trace (captured 2026-06-13)
 
+> Audit 2026-07-05: claims status-tagged per master-strategy spec §6.
+
 > Runtime values read live from PCSX2 (DebugServer) with the crystal clock on screen. These fill
 > the runtime-numeric gaps the static RE could not (see CLOCK-SYSTEM-MAP §7). All addresses are
-> **EE runtime (cached RAM)** unless noted. Memory reads are live & valid; **register reads were NOT**
+> **EE runtime (cached RAM)** unless noted. Memory reads are live & valid `[LIVE-VERIFIED]`;
+> **register reads were NOT** `[LIVE-VERIFIED]` (attempted, but failed)
 > (returned a zeroed/halted snapshot — gp=0, pc=0x81fc0) so gp-relative globals (FOV/near, orbit
-> angle) are still pending. Setting an exec BP at `0x00232618` dropped the DebugServer (PCSX2 crash);
+> angle) are still pending `[HYPOTHESIS]`. Setting an exec BP at `0x00232618` dropped the
+> DebugServer (PCSX2 crash) `[LIVE-VERIFIED]`. Note (audit): `0x00232618` is the corrected
+> per-frame rod render address (item 1) — this doc already uses the correct address, not the
+> falsified `0x00225E80`.
 > retry with memory-only reads or a save-state, or extract those statically (projection_build).
 
 ## GS packet templates (the 5-pass blend/test state)
 
 ### Rod templates @ `0x002973a0` (64 bytes, u32)
+`[LIVE-VERIFIED]` raw bytes below (live PCSX2 memory read).
 ```
 0x2973a0: 00008000 c4000000  43431880 00004343   <- DAT_002973a0 group
 0x2973b0: 00008000 a4000000  43434310 00000043
@@ -18,10 +25,14 @@
 ```
 - Recurring `0x00008000` low word + `0xc4/0xa4/0xe4 000000` high → A+D register VALUE qwords
   (`0x..000000_00008000`). The `0xc4/0xa4/0xe4` selects the blend/test variant per pass.
+  `[HYPOTHESIS]` (interpretation of live-verified bytes, not itself independently confirmed).
 - Trailing `ff ff ff 80` = vertex color white, **alpha 0x80 = 128** (the GS additive/full alpha).
+  `[LIVE-VERIFIED]` (raw byte read) / `[HYPOTHESIS]` (semantic "additive/full alpha" label).
 - TODO: decode each qword as its GS A+D register (ALPHA 0x42 / TEST 0x47) — the bytes encode A,B,C,D.
+  `[HYPOTHESIS]` (unresolved, acknowledged TODO).
 
 ### Orb templates @ `0x00297420` (64 bytes, u32)
+`[LIVE-VERIFIED]` raw bytes below (live PCSX2 memory read).
 ```
 0x297420: 00008000 24000000  00000010 00000000
 0x297430: 00008000 24000000  00000041 00000000
@@ -29,19 +40,24 @@
 0x297450: 000000ff 000000ff   000000ff 00000080
 ```
 - `0x24000000` high word = the orb blend variant (additive). Colors all `0x80` = the glow tint.
+  `[HYPOTHESIS]` (interpretation of live-verified bytes).
 
 ## Orbit integrate function table @ `0x0029b3c0`
 
+`[LIVE-VERIFIED]` raw table values (live PCSX2 memory read).
 ```
 [0] = 0x00239440   [1] = 0x00238d60   (rest zero)
 ```
 Two function pointers — the orbit/position integrate dispatch (called via `module_clock_22F5D0`).
+`[HYPOTHESIS]` (role inferred, not confirmed by tracing execution into these functions).
 **→ decompile these two statically in Ghidra** (no live emu needed) to recover angular velocity /
 radius / tilt math. This was the orbs doc's primary blocker.
 
 ## Menu layout / display list @ `0x00274c00` (256 bytes, u32)
 
-A command list (NOT a flat XY table), 16-byte records `[tag][ptr][0][0]`:
+`[LIVE-VERIFIED]` raw bytes (live PCSX2 memory read); `[HYPOTHESIS]` for the command-list
+structural interpretation below. A command list (NOT a flat XY table), 16-byte records
+`[tag][ptr][0][0]`:
 ```
 30000000 00100000 ....   <- tag 0x30000000, arg 0x00100000 (separator/blank?)
 3000003c 00275c90 ....   <- tag 0x3000003c -> ptr 0x00275c90  (entry, count 0x3c)
@@ -51,13 +67,17 @@ A command list (NOT a flat XY table), 16-byte records `[tag][ptr][0][0]`:
 ... pattern repeats (3 groups seen): ptrs 0x276050/0x277310, 0x276490/0x2773f0
 ```
 - Tag hi-nibble `0x3` = draw/item, `0x7` = end. The `0x002760xx`/`0x002772xx` pointers are the
-  per-item data (strings/positions). **→ follow 0x00275c90 etc.** for the actual XY/glyph records.
+  per-item data (strings/positions). `[HYPOTHESIS]` **→ follow 0x00275c90 etc.** for the actual
+  XY/glyph records.
 
 ## Rod array @ `0x00375250` (ROD_GROUP_A, live-confirmed s3)
 
-Records repeat every **0x50 bytes** (20 u32). The struct stride is 0x160 (from the render loop), so
-each rod likely holds **current + 2 history snapshots** (0x50 each = after-image trail) + tail.
-Decoded **rod 0** (first 0x50):
+`[LIVE-VERIFIED]` base address and register (s3). Records repeat every **0x50 bytes** (20 u32)
+`[LIVE-VERIFIED]` (measured from live memory layout). The struct stride is 0x160
+`[HYPOTHESIS]`/consistent-with-audit (item 8 — the corrected "12-rod dial + 4 menu cubes, 16
+slots, stride 0x160" figure uses this same stride value; this doc does not itself claim "8 rods
+on a circle"), so each rod likely holds **current + 2 history snapshots** (0x50 each =
+after-image trail) + tail `[HYPOTHESIS]`. Decoded **rod 0** (first 0x50):
 ```
 +0x00  c150a0c4  -13.039   (world X)
 +0x04  416aaa34   14.666   (world Y)        [render loop reads angle at +0x04 — verify]
@@ -78,15 +98,28 @@ Decoded **rod 0** (first 0x50):
 +0x40  3ca2f4fc    0.0199  (small float — perspective 1/w?)
 +0x44..+0x4f  0
 ```
+`[LIVE-VERIFIED]` raw field values above (live memory read); field-name/semantic labels in the
+`[...]` comments are `[HYPOTHESIS]` (e.g. "render loop reads angle at +0x04 — verify" is flagged
+unverified in the source text itself).
+
 Subsequent rods: rod1 X=-13.347, rod2 X=-7.916, rod3 X=-8.224, rod4 X=0.234 … → the radial ring
-world positions. Screen Y ~2118 for all (they sit on a ring). **This array IS the rod geometry the
-procedural port must reproduce** (world XYZ + scale → project → 12.4 fixed screen coords).
+world positions `[LIVE-VERIFIED]` (raw values) / `[HYPOTHESIS]` ("radial ring" interpretation).
+Screen Y ~2118 for all (they sit on a ring) `[LIVE-VERIFIED]`/`[HYPOTHESIS]`. **This array IS the
+rod geometry the procedural port must reproduce** (world XYZ + scale → project → 12.4 fixed
+screen coords) `[HYPOTHESIS]`.
 
 ## Still pending (need a stable live read or static extraction)
 
-- **Projection FOV** `gp[-0x73d8]` + **near** `gp[-0x7b78]`: need valid `gp` (register read failed).
+`[HYPOTHESIS]`/acknowledged-open — all items below are explicitly unresolved by this doc.
+
+- **Projection FOV** `gp[-0x73d8]` + **near** `gp[-0x7b78]`: need valid `gp` (register read failed
+  `[LIVE-VERIFIED]` as a failed attempt).
   Alternative: disassemble `projection_build @ 0x002730a8` to see if loaded as immediate vs gp-data.
+  Note (audit, item 9): the gp value elsewhere resolved for this project is `0x002CFEF0`, not the
+  stale `0x002AF070`-derived one; this doc does not itself cite a gp value.
 - **Orbit angle/velocity globals** `fGpffff8b88/8464/8bc0`: dynamic; the constants live in the two
-  fn-table funcs above (static-decompilable).
+  fn-table funcs above (static-decompilable). `[HYPOTHESIS]`
 - **Config storage** base addr: disassemble `module_clock_get_config_item @ 0x00221540`.
+  `[HYPOTHESIS]`
 - Decode the GS A+D qwords above into explicit ALPHA/TEST register fields (A,B,C,D / ATST/ZTST).
+  `[HYPOTHESIS]`

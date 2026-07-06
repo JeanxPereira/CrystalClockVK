@@ -1,5 +1,7 @@
 # W0 Blend Decode — Crystal Clock GS Alpha Blend Mapping
 
+> Audit 2026-07-05: claims status-tagged per master-strategy spec §6.
+
 Static RE only. Sources: CrystalOSD decomp assembly, pcsx2-ref GSRegs.h, runtime-trace.md.
 No live PCSX2 reads. All Ghidra addresses are OSDSYS.elf.
 
@@ -19,7 +21,7 @@ No live PCSX2 reads. All Ghidra addresses are OSDSYS.elf.
 
 ---
 
-## 1. GIF A+D Entry Layout
+## 1. GIF A+D Entry Layout `[DECOMP-SOURCED]`
 
 From `sceVif1PkAddGsAD@0x0027DC98` (decomp path: `asm/core/sceVif1PkAddGsAD.s`):
 
@@ -45,7 +47,7 @@ sw 0,  8(v0+4)     ; [+12] = 0
 
 ---
 
-## 2. GS ALPHA Register Bit Layout
+## 2. GS ALPHA Register Bit Layout `[DECOMP-SOURCED]` (sourced from pcsx2-ref `GSRegs.h`, the reference GS register spec — not CrystalOSD decomp, but a verifiable source file, not a guess)
 
 From `GIFRegALPHA` in `pcsx2/GS/GSRegs.h` (line 521):
 
@@ -68,7 +70,7 @@ PABE register = 0x49 (per-pixel blend enable; 0 = ALPHA always applied, 1 = only
 
 ---
 
-## 3. pktSetAlphaBlend Argument → ALPHA Packing
+## 3. pktSetAlphaBlend Argument → ALPHA Packing `[DECOMP-SOURCED]`
 
 From `pktSetAlphaBlend@0x0021B9C8` (decomp: `asm/graph/pktSetAlphaBlend.s`):
 
@@ -90,7 +92,7 @@ The FIX_alpha is put into the HIGH 32 bits via `dsll32 s1, s1, 0` before OR-ing 
 
 ---
 
-## 4. D_002B0CC0 Blend Mode Table
+## 4. D_002B0CC0 Blend Mode Table `[DECOMP-SOURCED]` for the raw table bytes/layout; the "Name" column (SRC-OVER/ADDITIVE/SUBTRACTIVE etc.) is `[HYPOTHESIS]` naming from the equation shape, not independently confirmed per-entry.
 
 Static data at Ghidra `0x002B0CC0` (decomp: `asm/data/datasect.data.s` line 13088).
 10 entries, stride 16 bytes, layout = [A, B, C, D] (each i32).
@@ -113,7 +115,11 @@ Indices 0–3 are used for state setup where ABE_flag=0 (ABE disabled during ini
 
 ---
 
-## 5. Call-Site Evidence: Blend Mode Usage
+## 5. Call-Site Evidence: Blend Mode Usage `[FALSIFIED → item 3]`: every row below that names
+`FUN_00230fe8` as the function receiving/processing the blend-mode argument is wrong — item 3
+established `FUN_00230fe8` is an icon-browser/input state machine that touches no GS registers,
+confirmed later in this same section (§5 note below the tables) and not a blend setter. Treat the
+"a0/a1/a2" columns for those rows as unverified pass-through guesses, not confirmed blend calls.
 
 All addresses are Ghidra/decomp addresses.
 
@@ -135,9 +141,11 @@ All addresses are Ghidra/decomp addresses.
 | 0x00226248   | FUN_00230fe8      | 7         | 1        | 1        | orb trail/halo  |
 | 0x00226374   | FUN_00230fe8      | 6         | 1        | 1        | orb CORE (2nd)  |
 
-**Important**: `FUN_00230fe8` in the decomp corresponds to `func_00230FD8@0x00230FD8` (the function
+**Important**: `[FALSIFIED → item 3, DECOMP-SOURCED correction]` `FUN_00230fe8` in the decomp corresponds to `func_00230FD8@0x00230FD8` (the function
 body starts at 0x00230FD8; 0x00230FE8 is 0x10 bytes in). It is a UI/controller input handler
-(reads button state, calls 0x0024b330 etc.) — NOT the blend setter directly. The (a0,a1,a2)
+(reads button state, calls 0x0024b330 etc.) — NOT the blend setter directly, and per item 3 it is
+an icon-browser/input state machine touching no GS registers at all (not merely "not the blend
+setter directly" — it plays no GS role whatsoever). The (a0,a1,a2)
 arguments may be passed through to an inner call. Further tracing needed to identify the actual
 blend setter that processes these indices.
 
@@ -156,7 +164,9 @@ These confirm: mode 4 = src-over, mode 5 = additive, used consistently across gr
 
 ---
 
-## 6. Orb Blend Correction
+## 6. Orb Blend Correction `[CONTESTED → item 10]` — this whole "W0 blend remap" section is not
+confirmed either way (see controller-review verdict at the top of this file, and item 3's
+falsification of `FUN_00230fe8` as a blend setter, which this section's argument reading depends on).
 
 orbs-particles.md had halo/core blend REVERSED. Correct assignment from call-site evidence:
 
@@ -167,10 +177,14 @@ orbs-particles.md had halo/core blend REVERSED. Correct assignment from call-sit
 
 orbs-particles.md hypothesis (halo=subtractive, core=additive) is WRONG.
 Correct: core=subtractive, halo=src-over. Confidence: HIGH (direct call-site arg read).
+`[CONTESTED → item 10]` — this "correction" is itself contested per the controller-review verdict
+and item 3 (its evidence chain runs through `FUN_00230fe8`, now falsified as a non-blend function);
+do not treat "Confidence: HIGH" as authoritative. The GS dump (3 blends, counted draws) remains the
+authoritative source per this file's top-of-file verdict.
 
 ---
 
-## 7. Rod Blend Mode Mapping
+## 7. Rod Blend Mode Mapping `[CONTESTED → item 10]` — part of the same "W0 blend remap" not confirmed either way; see §6 note and top-of-file controller-review verdict.
 
 | Rod pass            | Mode arg | Table idx | Blend equation         | Name           | Confidence |
 |---------------------|----------|-----------|------------------------|----------------|------------|
@@ -178,10 +192,10 @@ Correct: core=subtractive, halo=src-over. Confidence: HIGH (direct call-site arg
 | Pass 2 crystal      | 2        | 2         | (Cs-Cd)×0/128+Cd = Cd  | PASSTHROUGH    | CONFIRMED  |
 | Pass 3 back-face    | 1 (env)  | —         | draw env 1 setup       | (via env)      | HYPOTHESIS |
 
-Mode 2 → table idx 2 → (Cs-Cd)×FIX/128+Cd with C=2(FIX) and FIX=0 → Cd passthrough.
+Mode 2 → table idx 2 → (Cs-Cd)×FIX/128+Cd with C=2(FIX) and FIX=0 → Cd passthrough. `[CONTESTED → item 10]`
 This means the crystal pass writes geometry with zero color contribution. The visual effect of
 the refraction pass must come from PABE=0 (ABE disabled for specific pixels) or depth-buffer
-interaction, not from direct color blending. This needs further investigation.
+interaction, not from direct color blending. This needs further investigation. `[HYPOTHESIS]`
 
 Expected 3 clock blends from gs-dump-format-and-clock-regs.md: src-over, additive, subtractive.
 - Src-over: present (orb halo mode 7 = idx4; rod pass 1 via draw env)
@@ -194,7 +208,7 @@ the additive crystal pass. The additive pass is encoded in the draw environment,
 
 ---
 
-## 8. Template Bytes at 0x002973a0 — Partial Decode, BLOCKED
+## 8. Template Bytes at 0x002973a0 — Partial Decode, BLOCKED `[LIVE-VERIFIED]` for the raw bytes (per runtime-trace.md), `[HYPOTHESIS]` for every decode interpretation attempted below — explicitly unresolved per this section's own text.
 
 Runtime dump from runtime-trace.md:
 ```
@@ -228,24 +242,28 @@ larger surrounding packet (VIF DIRECT wrapper). The init function that writes to
 must be traced to resolve this. No further static decode is possible without that trace.
 
 Row 3 (`000000ff 000000ff 000000ff 00000080`) = vertex RGBA constant: white (0xFF,0xFF,0xFF)
-with alpha 0x80 = 128. This is the vertex color for the full-alpha additive draw. Confirmed.
+with alpha 0x80 = 128. This is the vertex color for the full-alpha additive draw. Confirmed. `[LIVE-VERIFIED]` for the bytes; "full-alpha additive draw" role is `[HYPOTHESIS]`.
 
 ---
 
 ## 9. Summary
 
+`[CONTESTED → item 10]` The "CONFIRMED" ratings on the orb/rod blend-remap rows below are not
+accepted as fact — see top-of-file controller-review verdict and §6/§7 notes. The GS dump (3
+blends: src-over/additive/subtractive, draw counts in MEMORY.md) is the authoritative source.
+
 | Finding                                    | Confidence |
 |--------------------------------------------|------------|
-| D_002B0CC0 blend table (10 entries)        | CONFIRMED  |
-| GIF A+D layout [lo32, hi32, reg, 0]        | CONFIRMED  |
-| pktSetAlphaBlend packing (FIX in hi32)     | CONFIRMED  |
-| Orb CORE = SUBTRACTIVE (mode 6)            | CONFIRMED  |
-| Orb HALO/TRAIL = SRC-OVER (mode 7=idx4)   | CONFIRMED  |
-| Rod crystal pass = Cd PASSTHROUGH (mode 2) | CONFIRMED  |
+| D_002B0CC0 blend table (10 entries)        | CONFIRMED [DECOMP-SOURCED] |
+| GIF A+D layout [lo32, hi32, reg, 0]        | CONFIRMED [DECOMP-SOURCED] |
+| pktSetAlphaBlend packing (FIX in hi32)     | CONFIRMED [DECOMP-SOURCED] |
+| Orb CORE = SUBTRACTIVE (mode 6)            | CONFIRMED → `[CONTESTED → item 10]`, also depends on falsified `FUN_00230fe8` role (item 3) |
+| Orb HALO/TRAIL = SRC-OVER (mode 7=idx4)   | CONFIRMED → `[CONTESTED → item 10]`, same caveat |
+| Rod crystal pass = Cd PASSTHROUGH (mode 2) | CONFIRMED → `[CONTESTED → item 10]` |
 | Rod glow/back-face = via draw environment  | HYPOTHESIS |
-| Template bytes A,B,C,D field decode        | BLOCKED    |
+| Template bytes A,B,C,D field decode        | BLOCKED `[HYPOTHESIS]` |
 | Template REG = ALPHA_2 (0x43)              | HYPOTHESIS (BE display only) |
 
-3 clock blends confirmed present (src-over, additive, subtractive) but additive for rods
-comes from draw environments, not from an inline pktSetAlphaBlend call with mode 5.
-The Cd-passthrough mode 2 for the crystal rod pass is the refraction/depth-write pass.
+3 clock blends confirmed present (src-over, additive, subtractive) `[DUMP-MEASURED]` but additive for rods
+comes from draw environments, not from an inline pktSetAlphaBlend call with mode 5. `[HYPOTHESIS]`
+The Cd-passthrough mode 2 for the crystal rod pass is the refraction/depth-write pass. `[CONTESTED → item 10]`

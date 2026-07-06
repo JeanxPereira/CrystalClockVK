@@ -1,5 +1,7 @@
 # Crystal Clock — Port Function Map (evidence-based)
 
+> Audit 2026-07-05: claims status-tagged per master-strategy spec §6.
+
 > Goal: generate the clock's GS command stream procedurally (no dump), feeding the
 > SAME faithful GsRenderer that already replays dumps at 5–10% pixel-diff. This map
 > is the complete inventory of OSDSYS functions to port, each VERIFIED in Ghidra
@@ -15,7 +17,7 @@
 is the whole per-frame draw. `clockState[0]` = rotation phase; `[1]` = rod count;
 `[0x1b]` = transition trigger; `[0x28..]` = pass-2 matrix ctx; `[0x2c]/[0x2d]` =
 pass-3 per-group angle offsets. Rod arrays: **0x375250 (group A) + 0x377e50 (group
-B)**, stride **0x160**, field **+0x150** = front/back-face pass selector.
+B)**, stride **0x160**, field **+0x150** = front/back-face pass selector. [DECOMP-SOURCED]/[HYPOTHESIS] (direct Ghidra decompile per this section's header; not independently cross-checked in this file against a live trace)
 
 Base rod angle: `fVar18 = clockState[0] * in_f1`. Steady-state (else branch) draws
 these passes IN ORDER. **⚠️ The "GS-state call" labels below were WRONG in my first
@@ -23,8 +25,8 @@ pass — the TODO decompile session (below) falsified them: `FUN_002324e8/002325
 are a WaitSema DMA-sync, `FUN_00230fe8` is the icon-browser state machine (not
 even in the render path per its callers), `FUN_00230518` is a generic DMA/queue
 trampoline whose payload won't decompile. So the between-pass calls are
-buffer/DMA sync + submit, NOT blend-register writes.** The per-pass ORDER and the
-emit calls + angle steps ARE verified:
+buffer/DMA sync + submit, NOT blend-register writes.** [FALSIFIED → self-corrected in place; matches known-falsified items 2 (`FUN_002324e8`/`FUN_00232538`), 3 (`FUN_00230fe8`), 4 (`FUN_00230518`)] The per-pass ORDER and the
+emit calls + angle steps ARE verified: [HYPOTHESIS] (decompile-verified per this section, not independently re-confirmed here)
 
 | # | Pass | Emit call | Angle step |
 |---|------|-----------|-----------|
@@ -34,30 +36,34 @@ emit calls + angle steps ARE verified:
 | 4 | back surface | `FUN_00232da0` (rods +0x150!=0) | — |
 | 5 | back highlight | `FUN_00232da0` (…, 0xff) | — |
 
+[HYPOTHESIS] (this 5-pass enumeration is decompile-sourced here; note CLOCK-SYSTEM-MAP.md §7 cites a differently-worded "5 passes" from `rod-pipeline.md` — not confirmed to be the identical enumeration, flagged as ambiguous)
+
 The `DAT_002973a0` / `DAT_002973c0` 16-byte blocks copied into the packet buffer
 `0x375230` per pass ARE real GS register templates (their bytes match the dump's
-per-pass ALPHA/TEX register values). **`FUN_0022f720` is NOT their writer** (that
+per-pass ALPHA/TEX register values) [DUMP-MEASURED]. **`FUN_0022f720` is NOT their writer** (that
 was falsified — it's browser icon-selection logic); the template copy is inline in
-`ui_render_3d_objects` itself (the `*puRam00375230 = DAT_002973a0; …` stores).
+`ui_render_3d_objects` itself (the `*puRam00375230 = DAT_002973a0; …` stores). [FALSIFIED → self-corrected in place; matches known-falsified item 5]
 `FUN_00235350()` kick: its tail shares the same orbit code as the light spots;
-the actual GIF/VIF1 DMA submit was NOT located (see gaps).
+the actual GIF/VIF1 DMA submit was NOT located (see gaps). [FALSIFIED → self-corrected in place; matches known-falsified item 6]
 
 ## Rod draw — `draw_crystal_rod @ 0x00232e38` (VERIFIED)
 
-Calls exactly three, then the built vertices go to the GS packet buffer:
+Calls exactly three, then the built vertices go to the GS packet buffer: [DECOMP-SOURCED]/[HYPOTHESIS]
 - **`FUN_002732d8(0x29bd10, 0x29bcf0)`** = rotation_build — 2× cross-product
   orthonormal basis. Ported: `ps2clock::BuildRotationMatrix` (Projection.cpp). PARTIAL
-  (handedness flagged in RotationBasisTest).
+  (handedness flagged in RotationBasisTest). [HYPOTHESIS]
 - **`FUN_002730a8(fov, 1.0, fovVariant, 2048.0, 2048.0, 1.0, …, 0x29bd50)`** =
   projection_build — GS-native perspective embedding the viewport. Constants confirmed
-  live here: `0x45000000`=2048.0 (far/scale), `0x3f800000`=1.0 (aspect); FOV =
+  live here: `0x45000000`=2048.0 (far/scale), `0x3f800000`=1.0 (aspect) [LIVE-VERIFIED]; FOV =
   `uGpffff8480` (4:3) / `uGpffff8484` (16:9), selected by `iGpffff8d18`. Ported:
-  `ps2clock::BuildProjectionMatrix`. PARTIAL (FOV gp-global still needs a live value).
+  `ps2clock::BuildProjectionMatrix`. PARTIAL (FOV gp-global still needs a live value). [HYPOTHESIS] (this is the underlying static analysis for the doc's later "W1 projection" claim, which is PROVISIONAL per the known-falsified/contested list — see §"Port-by-contract step 1" below)
 - **`FUN_002738a0(0x29bd90, 0x29bd50, 0x29bd10)`** = transform+emit — applies the
   matrices to the rod's model vertices and appends GS XYZ/UV/RGBA to the packet.
   UNVERIFIED internals (the actual vertex→GS-packet write). NEXT to decompile.
 
 ## TODO decompile session (2026-07-03, direct Ghidra decompile, program=OSDSYS.elf)
+
+[DECOMP-SOURCED] This whole section is the primary evidence source for known-falsified items 2, 3, and 4 (it documents the falsification directly, in place — no further correction needed beyond tagging).
 
 **Headline correction: the "GS state setter" hypothesis is falsified for 3 of 4
 candidates, and the crux transform+emit function is sitting on a misclassified
@@ -70,6 +76,8 @@ not tool misuse. `program="OSDSYS.elf"` was passed on every call; `switch_progra
 not an hddosd.elf mixup.
 
 ### GS state setters — hypothesis REJECTED for FUN_00230fe8; PARTIAL for the other three
+
+[DECOMP-SOURCED] [FALSIFIED → matches known-falsified items 2 (`FUN_002324e8`/`FUN_00232538`), 3 (`FUN_00230fe8`), 4 (`FUN_00230518`); this section is the origin evidence for those corrections, already self-corrected in place]
 
 - **`FUN_002324e8@0x002324e8`** (body 0x2324e8-0x232537, `void(void)`). Calls
   `FUN_00241cc0(6)`, then computes `iVar1=((s0 - *(s1+0xc54))/2)*0x10` and
@@ -132,6 +140,8 @@ not an hddosd.elf mixup.
 
 ### Packet/DMA
 
+[DECOMP-SOURCED] [FALSIFIED → matches known-falsified items 5 (`FUN_0022f720`) and 6 (`FUN_00235350`); this section is the origin evidence, already self-corrected in place]
+
 - **`FUN_0022f720@0x0022f720`** (body 0x22f720-0x22f7f7, decompiled signature
   `(undefined8,undefined8,undefined4,int)`). Real decompile is **OSD-browser
   icon/selection logic** (`FUN_00205830` disc-type check, `FUN_00243c30`
@@ -167,9 +177,11 @@ not an hddosd.elf mixup.
 - **0x375230 buffer / DMA path to VIF1/GIF**: not located this session — the
   actual `sceGsPutDrawEnv`/`sceDmaSend`-equivalent call was not identified
   (the two candidates suggested by the TODO, FUN_0022f720 and FUN_00235350,
-  both turned out to be something else on inspection). UNVERIFIED, open.
+  both turned out to be something else on inspection). UNVERIFIED, open. [HYPOTHESIS]
 
 ### Surface pass draw
+
+[DECOMP-SOURCED]/[HYPOTHESIS] (direct decompile, internally consistent, but not independently live-confirmed)
 
 - **`FUN_00232da0@0x00232da0`** (`(int,undefined8,long,long)`, the `+0x150` face
   pass, `param_4`=alpha-ish flag matching the render spine's `(…, 0xff)` call
@@ -187,7 +199,7 @@ not an hddosd.elf mixup.
 
 ### Transform+emit — `FUN_002738a0` / `FUN_002738e8`: address holds a misclassified DATA region, not code
 
-This is the most important finding of the session. `draw_crystal_rod`
+[DECOMP-SOURCED]/[HYPOTHESIS] (disassembly-confirmed the tail-jump edge and the data-vs-code anomaly; the "why" — overlay/bank switch vs. stale Ghidra classification — remains unresolved hypothesis) This is the most important finding of the session. `draw_crystal_rod`
 (`FUN_00232e38`) really does end with a genuine tail-jump to 0x002738a0 —
 confirmed by direct disassembly of `FUN_00232e38`'s last instructions:
 ```
@@ -222,6 +234,8 @@ PCSX2 trace (single-step through the tail-jump with a breakpoint at
 
 ### Geometry setup
 
+[DECOMP-SOURCED]/[HYPOTHESIS]
+
 - **`FUN_002335e8@0x002335e8`** (`(undefined8,undefined8,undefined8,undefined8,
   int param_5)`). Much smaller than hypothesized: body is exactly
   `*(param_5+0x130) = param_3; uRam002c8b3c = 0; *(param_5+0x140) = 0;`. Given
@@ -254,6 +268,8 @@ PCSX2 trace (single-step through the tail-jump with a breakpoint at
   call) is wrong and it needs re-deriving from a live trace.
 
 ### Light spots — RESOLVED position formula, draw function still open
+
+[DECOMP-SOURCED]/[HYPOTHESIS] (formula readable from static decompile; not independently live/dump-confirmed in this file)
 
 - **`FUN_0020eda0@0x0020eda0`** (`(undefined8,undefined8,int param_3)`).
   **This is the light-spot position updater** — confirmed by a literal, direct
@@ -293,7 +309,7 @@ PCSX2 trace (single-step through the tail-jump with a breakpoint at
 
 ### Shared-tail / overlap anomaly (methodology note, applies to several entries above)
 
-Multiple addresses in this cluster (0x2324e8/0x232538; 0x230518/0x2401c8;
+[DECOMP-SOURCED] Multiple addresses in this cluster (0x2324e8/0x232538; 0x230518/0x2401c8;
 0x235350/0x2354c8/0x20eda0) turned out to be **Ghidra function-table entries
 that don't correspond to independent, self-contained functions** — they're
 either mid-body labels of a shared tail (confirmed via `disassemble_bytes`
@@ -307,26 +323,26 @@ correctness in this binary. Recommend the same cross-check for any further
 work in this address range (0x2324e8-0x236c93 and 0x2738a0+ especially).
 
 ## Port target
-Generated geometry (the 12-rod dial we have) → these ported passes emit a GS command
+Generated geometry (the 12-rod dial we have) [DUMP-MEASURED] (12-rod dial + 4 menu cubes, 16 slots total, per known-corrected count — supersedes the earlier "8 rods on a circle" hypothesis) → these ported passes emit a GS command
 stream (GsPrimitive list with the REAL register templates + textures 11520/11200/…)
 → existing GsRenderer draws it faithfully. Validate: render generated clock at a
-fixed time, pixel-diff vs GSRunner (the same gate, must reach the dump's 5–10%).
+fixed time, pixel-diff vs GSRunner (the same gate, must reach the dump's 5–10%). [DUMP-MEASURED]
 
 ## ⚠️ STATIC-RE WALL (2026-07-03) — and why the port still works
 
 The TODO session hit a hard limit: **the transform+emit function `FUN_002738a0`
 (the vertex → GS-packet crux that BOTH `draw_crystal_rod` and `FUN_00232da0`
 tail-jump into) is a data table misclassified as code in this Ghidra DB** — its
-bytes decode as ~30 monotonic cop0/cop1 ops; the decompiler aborts. The GIF/VIF1
+bytes decode as ~30 monotonic cop0/cop1 ops; the decompiler aborts. [DECOMP-SOURCED] The GIF/VIF1
 DMA kick and the light-spot draw consumer were also not statically locatable
-(computed-pointer dispatch). So "port every function by decompiling" is BLOCKED
+(computed-pointer dispatch) [HYPOTHESIS] (unresolved gap, consistent with known-falsified item 6's "the real GS kick is UNLOCATED"). So "port every function by decompiling" is BLOCKED
 for exactly the functions that emit pixels.
 
 **But the port does not need those internals — it needs their CONTRACT, and both
 ends are observable.** `FUN_002738a0`'s inputs (rod model verts + rotation +
 projection matrices) and its outputs (the GS packet vertices) are BOTH known: the
 outputs are literally the parsed vertices in the dump (prims_sw.json — screen XY
-in 12.4, UV, RGBA, per pass). So we reproduce transform+emit BY CONTRACT:
+in 12.4, UV, RGBA, per pass) [DUMP-MEASURED]. So we reproduce transform+emit BY CONTRACT:
   rod model verts → (rotation_build × projection_build, both already ported) →
   GS screen XY/UV/RGBA → GsPrimitive with the dump's per-pass register template
   + the real texture (11520/11200/8960…).
@@ -349,6 +365,8 @@ raw `disassemble_bytes` before trusting any single decompile in that range.
 
 ## Port-by-contract step 1 result (2026-07-03, MEASURED, not guessed)
 
+[DUMP-MEASURED] This whole section is the underlying single-rod projection-fit work; per the known-falsified/contested list, "W1 projection" claims (1-rod projection fit) are PROVISIONAL — an underdetermined single-rod regression fit, not evidence-grade. Treat the measurements below as DUMP-MEASURED but the fit conclusions as PROVISIONAL.
+
 Attempted the screen-space projection inversion of the rods from clock_sw.gs:
 - A rod = a dense mesh of ~44 additive 4-vert quads (TBP0=11520) + ~44 feedback-
   refraction quads (TBP0=6720=FBP210) + subtractive/other = **~212 textured quads
@@ -365,14 +383,14 @@ Attempted the screen-space projection inversion of the rods from clock_sw.gs:
   3D inverse).
 
 **CONCLUSION:** the 2D inversion proves the model is single+rotated but can't hit
-render precision. The clean unblock is a LIVE PCSX2 read of the rod MODEL geometry
+render precision. [PROVISIONAL — W1 projection, single-rod fit] The clean unblock is a LIVE PCSX2 read of the rod MODEL geometry
 (the source verts transform+emit consumes, pre-projection) — exact, no inversion
 error. Same kind of live session already done for rotation speed / clockState.
 NEXT: live-read the rod model (rod struct 0x160 @ 0x375250, or the model template).
 
 ## Rod tessellation — INFERRED FROM DUMP (2026-07-03, one rod fully characterized)
 
-One physical rod (rod@210° in clock_sw.gs) = **338 textured GS quads across 5
+[DUMP-MEASURED] One physical rod (rod@210° in clock_sw.gs) = **338 textured GS quads across 5
 layers**. The rod is a parametric bar (~146px radial × ~20px wide) covered by
 large overlapping quads (NOT fine tessellation), each drawn 3-4× for additive/
 subtractive intensity accumulation:

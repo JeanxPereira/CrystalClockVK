@@ -1,13 +1,21 @@
 # VU0 Micro-instruction Decode — OSDSYS Crystal Clock
 
+> Audit 2026-07-05: claims status-tagged per master-strategy spec §6.
+
 > **SUPERSEDED (2026-06-13):** The GLM pseudocode below is UNVERIFIED and must not be ported.
 > The verified replacement is `docs/ghidra_analysis/vu0-math-pipeline.md` — derived from full
 > instruction decode via decode_vu0.py + Ghidra disassembly. The raw instruction observations
 > below remain valid background; the GLM section is kept for history only.
+> `[HYPOTHESIS]` note (audit): "verified replacement" means static-disassembly-derived, not
+> live-debugger-confirmed. See vu0-math-pipeline.md audit tags for the current status of that
+> replacement document — it too is largely `[HYPOTHESIS]`/`[PROVISIONAL]`, not live-verified.
 
 ## TL;DR: Can we decode them?
 
-**YES!** We successfully decoded the `cop1` hex values from Ghidra as COP2/VU0 macro instructions. Ghidra doesn't have a PS2 EE processor module, so it labels COP2 (VU0) instructions as `cop1` with raw hex operands. The bit layout is:
+**YES!** `[HYPOTHESIS]` (methodology claim, static tooling — not independently cross-checked at
+the time of writing). We successfully decoded the `cop1` hex values from Ghidra as COP2/VU0 macro
+instructions. Ghidra doesn't have a PS2 EE processor module, so it labels COP2 (VU0) instructions
+as `cop1` with raw hex operands. The bit layout is:
 
 ```
 Ghidra shows: cop1 <25-bit value>
@@ -25,7 +33,8 @@ VU0 upper layout (bits 24-0):
 
 ## FUN_00232e38 — `draw_crystal_rod` Pipeline
 
-The caller function reveals a clean 3-step pipeline:
+`[HYPOTHESIS]` (static disassembly interpretation; see vu0-math-pipeline.md for the superseding,
+also-unverified reading). The caller function reveals a clean 3-step pipeline:
 
 ```mermaid
 graph LR
@@ -35,12 +44,15 @@ graph LR
 ```
 
 ### Step 1: Store angle into rod
+`[HYPOTHESIS]`
 ```asm
 swc1 f0, 0x04(s2)     ; rod->angle = input_angle
 sw   zero, 0x08(s2)    ; rod->field_0x08 = 0
 ```
 
 ### Step 2: Build rotation matrix (43 VU0 instructions)
+`[HYPOTHESIS]` (instruction count differs from vu0-math-pipeline.md's later "44 VU0 upper
+instructions + 1 branch" recount — flagged, not resolved here).
 ```c
 rotation_build(
     output = 0x29BD10,    // 4x4 matrix (64 bytes)
@@ -51,6 +63,7 @@ rotation_build(
 ```
 
 ### Step 3: Check widescreen
+`[HYPOTHESIS]`
 ```c
 float halfWidth;
 if (iGpffff8d18 != 0)   // widescreen flag
@@ -60,6 +73,7 @@ else
 ```
 
 ### Step 4: Build projection matrix (92 VU0 instructions)
+`[PROVISIONAL]` (audit item 11 — "W1 projection" single-rod fit, underdetermined).
 ```c
 projection_build(
     output    = 0x29BD50,      // 4x4 matrix (64 bytes)
@@ -77,8 +91,12 @@ projection_build(
 
 > [!IMPORTANT]
 > **far = 2048.0** confirms the PS2 renders directly into GS screen coordinates (0-2048 range), NOT world-space. The projection embeds the screen coordinate transform.
+> `[DECOMP-SOURCED]` for the `far = 2048.0` constant itself; `[PROVISIONAL]` (item 11) for the
+> broader "embeds the screen coordinate transform" conclusion.
 
 ### Step 5: Multiply (tail call, 18 VU0 instructions)
+`[HYPOTHESIS]` (instruction count differs from vu0-math-pipeline.md's decompiled
+`sceVu0MulMatrix` loop; not reconciled here).
 ```c
 matrix_multiply(
     result     = 0x29BD90,   // output combined matrix
@@ -94,7 +112,7 @@ matrix_multiply(
 
 ### Instruction listing with dest-field grouping
 
-The function builds a 4×4 rotation matrix using the VU0 accumulator chain pattern. The `dest` field groups reveal the matrix column being computed:
+`[HYPOTHESIS]` The function builds a 4×4 rotation matrix using the VU0 accumulator chain pattern. The `dest` field groups reveal the matrix column being computed:
 
 | Phase | Dest | Instr Count | Purpose |
 |-------|------|-------------|---------|
@@ -109,6 +127,7 @@ The function builds a 4×4 rotation matrix using the VU0 accumulator chain patte
 | 8 | `.w` | 1 | Final W (perspective = 1.0?) |
 
 ### Key decoded instructions
+`[HYPOTHESIS]` (static decode; opcode bytes reliable, comments/semantics inferred).
 ```asm
 ; Phase 1: X column (dest=.x)
 VMSUBQ.x  vf22, vf6, Q        ; vf22.x = ACC.x - vf6.x * Q  (sin/cos application)
@@ -137,11 +156,15 @@ VADDw.yzw  vf18, vf12, vf0w   ; vf12 + vf0.w (vf0.w = 1.0)
 > result.y = fs.z * ft.x - fs.x * ft.z  
 > result.z = fs.x * ft.y - fs.y * ft.x
 > ```
-> This confirms the rotation is built using cross products of angle-derived vectors — **a proper axis-angle rotation**, not Euler decomposition!
+> This confirms the rotation is built using cross products of angle-derived vectors — **a proper axis-angle rotation**, not Euler decomposition! `[HYPOTHESIS]` ("confirms" overstates a static
+> pattern-match inference; not live-verified or dump-measured).
 
 ---
 
 ## What this means for CrystalClockVK
+
+`[HYPOTHESIS]` Entire section below is superseded (see top-of-file note) — kept for history only,
+still `[HYPOTHESIS]`-grade even where not explicitly re-tagged line by line.
 
 ### The rotation is NOT Euler angles!
 
@@ -181,6 +204,7 @@ glm::mat4 BuildRotation(float angleA, float angleB) {
 
 ### The projection is GS-native
 
+`[PROVISIONAL]` (item 11)
 ```cpp
 glm::mat4 BuildProjection(float fov, float halfWidth, float near) {
     // Custom projection that maps directly to GS coordinates (0-2048)
@@ -200,6 +224,7 @@ glm::mat4 BuildProjection(float fov, float halfWidth, float near) {
 
 ### Memory Layout Summary
 
+`[HYPOTHESIS]` (static arg-register trace; matches vu0-math-pipeline.md's memory map).
 ```
 Address      Size    Contents
 --------------------------------------

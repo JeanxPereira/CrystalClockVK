@@ -1,5 +1,7 @@
 # OSDSYS Crystal Clock — Orbit Motion Analysis (W0-4)
 
+> Audit 2026-07-05: claims status-tagged per master-strategy spec §6.
+
 > Source: `OSDSYS.elf` via ghidra-mcp (static only, program="OSDSYS.elf", base 0x001f0000).
 > Runtime-trace complement: `runtime-trace.md` §Orbit integrate function table.
 > All claims cite `name @ address`.
@@ -8,9 +10,12 @@
 
 ## 1. Orbit angle accumulator and advance
 
-### Confirmed from static decompilation
+### Confirmed from static decompilation [DECOMP-SOURCED]
 
-`FUN_0022fd00 @ 0022fd00` contains the per-frame orbit angle update. From static disassembly at `0022ff18`:
+`FUN_0022fd00 @ 0022fd00` contains the per-frame orbit angle update — function identity/role not
+independently live-verified; this is a Ghidra static-disassembly read of `OSDSYS.elf`, not a live
+trace. `[DECOMP-SOURCED]` for the instruction bytes; the semantic role ("orbit angle update") is
+`[HYPOTHESIS]` inference from that disassembly. From static disassembly at `0022ff18`:
 
 ```asm
 0022ff18: lwc1 f1, -0x7478(gp)    ; f1 = fGpffff8b88  (orbit angle accumulator, float)
@@ -46,8 +51,8 @@ This is a parallel orbit-angle in a different subsystem (same pattern, different
 ### Angular velocity constant — BLOCKER
 
 `fGpffff8464` (the advance per frame) is at `gp - 0x7b9c`. This global is in BSS
-(zero-initialized in the ELF static image). No static write to this address was found
-via byte-pattern search. **HYPOTHESIS**: the value is written by some per-frame computation
+(zero-initialized in the ELF static image). `[DECOMP-SOURCED]` No static write to this address was found
+via byte-pattern search. `[HYPOTHESIS]`: the value is written by some per-frame computation
 or a config-driven init function not yet traced. Extracting this constant requires:
 - A live read via PCSX2 (register reads were dead in previous session), OR
 - Tracing the init chain from `module_clock_init_resources @ 00211488` deeper.
@@ -56,13 +61,16 @@ The advance constant controls the **orbital period**:
 ```
 period_frames = 1048576.0 / fGpffff8464
 ```
-At 60 fps a period of ~8 seconds → advance ≈ `1048576 / (60 * 8) ≈ 2185`.
+At 60 fps a period of ~8 seconds → advance ≈ `1048576 / (60 * 8) ≈ 2185`. `[HYPOTHESIS]` — the
+8-second period is an assumption, not a measured value.
 
 ---
 
 ## 2. Orbit position math in `FUN_0022eb10 @ 0022eb10`
 
-This function IS the orbit billboard transform, called once per frame from `FUN_00211598 @ 00211598`.
+`[DECOMP-SOURCED]` (Ghidra static disassembly/decompile of `OSDSYS.elf`) for the code structure
+below; the "orbit billboard transform" role and per-variable semantic names are `[HYPOTHESIS]`
+unless separately confirmed. This function IS the orbit billboard transform, called once per frame from `FUN_00211598 @ 00211598`.
 
 ```c
 void FUN_0022eb10(void)
@@ -108,9 +116,9 @@ void FUN_0022eb10(void)
 - X-position/radius = `fGpffff8410`
 - Scale factor `iVar1` is 1 in normal mode, 4 in special mode (triple-speed)
 
-`fGpffff8408` and `fGpffff8410` are gp-relative globals in BSS — values are runtime init. They encode the **orbital tilt/Y-offset** and **orbital radius/X-offset** respectively. **BLOCKER**: exact numeric values require live read or tracing init code.
+`fGpffff8408` and `fGpffff8410` are gp-relative globals in BSS — values are runtime init. They encode the **orbital tilt/Y-offset** and **orbital radius/X-offset** respectively. `[HYPOTHESIS]` role naming; **BLOCKER**: exact numeric values require live read or tracing init code.
 
-`FUN_0022eaf0 @ 0022eaf0` is a duplicate of `FUN_0022eb10` without the language check at top (same body; both the billboard position setups). Same globals used.
+`FUN_0022eaf0 @ 0022eaf0` is a duplicate of `FUN_0022eb10` without the language check at top (same body; both the billboard position setups). Same globals used. `[DECOMP-SOURCED]`
 
 ---
 
@@ -131,8 +139,8 @@ Static disassembly confirmed:
 
 ### Table contents (static ELF vs runtime)
 
-- **Static ELF** (`0x0029b3c0`): all zeros. Pointers are installed at runtime.
-- **Runtime** (from `runtime-trace.md`): `table[0] = 0x00239440`, `table[1] = 0x00238D60`.
+- **Static ELF** (`0x0029b3c0`): all zeros. Pointers are installed at runtime. `[DECOMP-SOURCED]`
+- **Runtime** (from `runtime-trace.md`): `table[0] = 0x00239440`, `table[1] = 0x00238D60`. `[LIVE-VERIFIED]` (per runtime-trace.md; not independently re-verified by this doc's author).
 
 ### Who calls the dispatch and what index
 
@@ -174,7 +182,7 @@ push is what makes the trail from the orbit path.
 
 ### Evidence from renderer callers
 
-`FUN_00225be8 @ 00225be8` (the GS packet orb renderer) has exactly **4 callers**, all in
+`[DECOMP-SOURCED]` `FUN_00225be8 @ 00225be8` (the GS packet orb renderer) has exactly **4 callers**, all in
 the `0x001f5xxx`–`0x001f6xxx` range:
 
 | Caller | Ghidra addr | Orb context base | Condition |
@@ -205,7 +213,9 @@ This global tracks how many orb slots are active.
 
 ### Conclusion on orb count
 
-**ORB COUNT = 2 physics orbits, 3 render orbs normally (4 when a texture is loaded).**
+`[HYPOTHESIS]` **ORB COUNT = 2 physics orbits, 3 render orbs normally (4 when a texture is loaded).**
+Not on the known-falsified list, but never independently confirmed live — treat as inference from
+static call-site counting, not a measured fact.
 
 The 2 fn-table entries correspond to 2 distinct orbit paths. The render layer shows 3 orbs
 because one orbit may be rendered twice (e.g., core + halo on the same path) or because
@@ -272,7 +282,7 @@ not a count of active orbs per se — but "0 < iGpffff8b4c" still gates renderin
 
 ---
 
-## 8. Vulkan port guidance (what IS implementable now)
+## 8. Vulkan port guidance (what IS implementable now) `[HYPOTHESIS]` — placeholder constants below (`Y_OFFSET`, `X_RADIUS`) are unverified guesses, not measured values.
 
 ```c
 // Per-frame orbit update (exact, from static analysis):

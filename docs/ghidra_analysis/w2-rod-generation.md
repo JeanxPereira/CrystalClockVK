@@ -1,5 +1,7 @@
 # W2 — Per-Frame Rod Generation (Ghidra RE)
 
+> Audit 2026-07-05: claims status-tagged per master-strategy spec §6.
+
 > Target: the code that runs **every frame** to move the 12-rod dial + map real time onto it,
 > distinct from `ui_render_3d_objects` (the GS-packet emitter, already mined in
 > `rod-pipeline.md`). Program: `OSDSYS.elf` (`program="OSDSYS.elf"` on every call, base
@@ -31,13 +33,17 @@ graph TD
     RENDER -.reads clockState[0]/[1]/[0x1b]/[0x28]/[0x2c]/[0x2d].-> CLOCKSTATE["clockState struct\n(pointer only — owning global NOT located)"]
     RENDER -.reads/writes rod+0x00..0x150.-> RODARR["rod array 0x00375250 (12 dial) / 0x00377e50 (transition, 4 cubes)"]
 ```
+> [DECOMP-SOURCED] Call-graph topology from static decompile. The "12 dial / 4 cubes" split shown for
+> the rod array matches the settled model from known-falsified item 8 ("8 rods on a circle" → 12-rod
+> dial + 4 menu cubes). `init_rotation_state` and `set_render_context_flag` are labeled MISNOMER
+> in-diagram already — see the corrected descriptions in §3 below. [DECOMP-SOURCED]
 
 **No function other than `ui_render_3d_objects` (and its Ghidra-split continuation blocks
 `FUN_00224630@00224630`, `FUN_002246a0@002246a0`, `module_clock_2384C8@00224a68`) references
 the rod-array base addresses `0x375250` / `0x377e50` anywhere in the binary** — confirmed by an
-exhaustive instruction-operand search (§5). This is the load-bearing negative result of this
+exhaustive instruction-operand search (§5). [DECOMP-SOURCED — static search result] This is the load-bearing negative result of this
 session: the classic "find the generator, walk callers" method fails because **there is no
-separate generator function to find** — everything happens inline in the render/emit function.
+separate generator function to find** — everything happens inline in the render/emit function. [HYPOTHESIS/conclusion drawn from the negative search result]
 
 ## 1. `ui_render_3d_objects @ 0x00223f78` IS the per-frame generator (not just the renderer)
 
@@ -74,7 +80,7 @@ do {
 **This loop *is* the position/rotation generation.** There is no earlier "fill the array"
 pass — each frame, for each rod `i`, the function computes an angle from scratch
 (`base + i*step[+group_offset]`) and hands it straight to `draw_crystal_rod` (rotation +
-projection build). The confirmed formula:
+projection build). [DECOMP-SOURCED] The confirmed formula [DECOMP-SOURCED]:
 
 ```
 base       = clockState[0] * in_f1                       // group phase this frame
@@ -83,17 +89,17 @@ angle_p3   = base + i * angleStep_p3 + groupOffset[A|B]   // refraction/subtract
 ```
 
 - **Group rotation** = `base` (`clockState[0] * in_f1`), shared by every rod → the whole
-  dial turning together.
+  dial turning together. [DECOMP-SOURCED]
 - **Per-rod own-axis spin** = `i * angleStep` — NOT true own-axis spin in the patent sense
   (S306-308 describes each rod ALSO spinning individually); here it reads as a **fixed
   per-index angular offset that separates pass-2's surface angle from pass-3's refraction
-  angle for the SAME physical rod**, producing the glass double-surface look (see §2).
+  angle for the SAME physical rod**, producing the glass double-surface look (see §2). [DECOMP-SOURCED for the formula; the "producing the glass double-surface look" interpretation is HYPOTHESIS]
 - The **transition variant** (`param_1 > 0.0`, opening-into-clock animation) additionally
   translates the whole group: `FUN_00236a80(0, clockState[0x1b]*26.0*param_1, 0)` — a
   Y-axis push-translate on the matrix stack, scaled by the transition fraction. This is the
-  only place a **group translation/orbit** (as opposed to pure rotation) was found.
+  only place a **group translation/orbit** (as opposed to pure rotation) was found. [DECOMP-SOURCED]
 
-## 2. Angle-step constants (confirmed, static data — see `w0-angle-steps.md` for full table)
+## 2. Angle-step constants (confirmed, static data — see `w0-angle-steps.md` for full table) [DECOMP-SOURCED]
 
 | Global | Ghidra addr | Value | Used for |
 |---|---|---|---|
@@ -102,17 +108,17 @@ angle_p3   = base + i * angleStep_p3 + groupOffset[A|B]   // refraction/subtract
 | `fGpffff831c/8320/8324/8328` | `0x002c820c..8218` | 0.10/0.10/0.10/~0 rad | transition variant, groups A/B × passes 2/3 |
 | `fGpffff8318` | `0x002c8208` | 0.10 | group-transform XY input scale (both variants) |
 
-Pass-3's step is **exactly 2×** pass-2's (0.4 vs 0.2 rad/rod) in steady state — the
+Pass-3's step is **exactly 2×** pass-2's (0.4 vs 0.2 rad/rod) in steady state [DECOMP-SOURCED] — the
 refraction pass fans the same 12 rods out twice as far as the additive surface pass,
 which is the mechanism that produces the visible prism-edge/glass-refraction offset between
-the two draws of each rod, not a literal geometric duplication.
+the two draws of each rod, not a literal geometric duplication. [HYPOTHESIS interpretation]
 
-**These are NOT the 12-dial-position spacing** (`360°/12 = 30°`). The live C++ port
+**These are NOT the 12-dial-position spacing** (`360°/12 = 30°`). [DECOMP-SOURCED for the constants themselves; the "12-dial-position" framing reflects the settled model from known-falsified item 8] The live C++ port
 (`RodField::Generate`, `src/clock/RodField.hpp`) places the 12 rods at fixed 30°-apart dial
 positions and only needs a *global spin phase* per frame — these constants are OSDSYS's
 internal per-rod angle applied on top of a shared base, not a substitute for the dial-position
-math. Treat `angleStep_p2/p3` as **render-time surface/refraction offset**, not the dial layout
-itself (dial spacing is geometry baked at rod-origin time — see §4).
+math. [HYPOTHESIS/port-design decision] Treat `angleStep_p2/p3` as **render-time surface/refraction offset**, not the dial layout
+itself (dial spacing is geometry baked at rod-origin time — see §4). [HYPOTHESIS]
 
 ## 3. Time source: `osd_decode_bcd_time` — found, consumer NOT located
 
@@ -154,31 +160,32 @@ void osd_decode_bcd_time(uint param_1, uint *param_2)
 ```
 
 This decodes the PS2 RTC's 7 BCD bytes (seconds/minutes/hours/day/month/year + one more) into
-15 nibble fields — **this is the real HH:MM:SS source for the clock face.** However, **the
+15 nibble fields — **this is the real HH:MM:SS source for the clock face.** [DECOMP-SOURCED] However, **the
 function(s) that read these decoded digits and convert them into "which rod index is `306a`
-(the hour rod)" or "how much of it is colored" were not located this session.** All of
+(the hour rod)" or "how much of it is colored" were not located this session.** [DECOMP-SOURCED negative result] All of
 `osd_decode_bcd_time`'s own tail calls write into an unrelated config struct (video
-mode/timezone/DVD flags), not a rod-highlight field. The consumer must be one of:
+mode/timezone/DVD flags), not a rod-highlight field. [DECOMP-SOURCED] The consumer must be one of:
 - a function inside the still-unclassified `module_clock_<addr>` list (`CLOCK-SYSTEM-MAP.md
   §6`, ~40 entries, most unexamined), or
 - baked directly into `+0x150` (face_flag) or a per-rod color-vertex write inside
   `draw_crystal_rod`/`FUN_00232da0` that this session's static reads did not isolate.
+  [HYPOTHESIS — open, both candidates unconfirmed]
 
 **`init_rotation_state @ 0x002216d8` and `set_render_context_flag @ 0x0022beb8` are prior-session
-MISNOMERS**, corrected here:
+MISNOMERS**, corrected here [DECOMP-SOURCED — not one of the 11 known-falsified items, but a self-reported correction from decompile evidence within this doc]:
 - `init_rotation_state`: body is `fVar1 = FUN_00231a48(); *(int*)(unaff_s0_lo+0x2c) = (int)fVar1;`.
   `FUN_00231a48` is a **pad-input/camera-orbit state machine** (reads `iGpffff8c04/8c08/8c10`,
   writes `fGpffff8bc0` — the same camera-angle global used by `update_camera_angles_input`).
-  Nothing here initializes rod rotation.
+  Nothing here initializes rod rotation. [DECOMP-SOURCED]
 - `set_render_context_flag`: body is `*(int*)(param_1*0x970 + 0x3a8bcc) = param_2;` — a generic
-  per-slot OS/thread context flag array, unrelated to GS render state or rods.
+  per-slot OS/thread context flag array, unrelated to GS render state or rods. [DECOMP-SOURCED]
 
 ## 4. Rod ORIGIN / dial-position write: NOT FOUND (confirmed absent from all reachable code)
 
 `w2-rod-geometry-live.md` (live PCSX2 read) already showed the rod struct's `+0x00/04/08`
 (world origin) values are small and tightly clustered near a shared centre point, and that all
 12 dial rods + 4 cubes have **their own distinct `+0x140` unit vector** ("normal", not the
-render-time ring angle). This session adds a definitive negative result:
+render-time ring angle). [LIVE-VERIFIED, per `w2-rod-geometry-live.md`; count reflects the settled 12+4 model from known-falsified item 8] This session adds a definitive negative result:
 
 ```
 search_instructions(operand_pattern="0x5250") → 18 matches, ALL inside ui_render_3d_objects
@@ -189,15 +196,15 @@ search_instructions(operand_pattern="0x7e50") → 11 matches, same scope (plus 1
 ```
 
 No `lui`/`addiu` pair anywhere in `OSDSYS.elf` builds `0x375250` or `0x377e50` outside
-`ui_render_3d_objects`. Conclusion: **either the rod origin/normal fields are static data
+`ui_render_3d_objects`. [DECOMP-SOURCED negative search result] Conclusion: **either the rod origin/normal fields are static data
 baked once at load time and never rewritten by CPU code** (most consistent with the small,
 near-constant live values already measured), **or they are produced by a mechanism invisible
-to literal-address scanning** (e.g. a VU0-macro/scratchpad DMA path). The `FUN_00230e10(0..9)`
+to literal-address scanning** (e.g. a VU0-macro/scratchpad DMA path). [HYPOTHESIS] The `FUN_00230e10(0..9)`
 ×10 calls in `module_clock_init_resources @ 0x00211488` were considered as a candidate
 per-slot initializer but the count (10) does not match either 12 (dial rods) or 16 (array
 slots) — more likely a 10-digit font/glyph table init (it runs immediately before
-`do_load_font`). **This remains the single open item that blocks a fully-grounded origin/
-dial-spacing port** — see §6 checklist item 1.
+`do_load_font`). [DECOMP-SOURCED for the call count; the font/glyph interpretation is HYPOTHESIS] **This remains the single open item that blocks a fully-grounded origin/
+dial-spacing port** — see §6 checklist item 1. [HYPOTHESIS/open]
 
 ## 5. Vertex-rewrite path (link to `draw_crystal_rod`)
 
@@ -207,44 +214,48 @@ this doc's completeness, not re-derived:
 - `draw_crystal_rod = FUN_00232e38 @ 0x00232e38` receives `(angleA, angleB, rodPtr,
   matrixSlotPtr)` from the loops in §1. It writes `clockState[0x1b]` (global scale) into
   `rod+0x04` and zeroes `rod+0x08` (W0-1 correction: `+0x04` is NOT the angle, despite the
-  field's former name).
+  field's former name). [DECOMP-SOURCED]
 - Calls `rotation_build @ 0x002732d8` (2× VOPMSUB cross-product → orthonormal basis, NOT
   Euler/Rodrigues) then `projection_build @ 0x002730a8` (custom GS-native, far=2048,
-  scale=65536, aspect=1.0) then `matrix_multiply = sceVu0MulMatrix @ 0x002638a0`.
+  scale=65536, aspect=1.0) then `matrix_multiply = sceVu0MulMatrix @ 0x002638a0`. [DECOMP-SOURCED]
 - `FUN_00232da0 @ 0x00232da0` (thunk → `0x00242ac8`) computes per-rod glow alpha
-  (`rod+0x60`) from position index / group / selection state — the after-image trail write.
-- Each pass writes a fresh GS A+D header (`DAT_002973a0`/`DAT_002973c0` template blocks) via
-  `FUN_0022f720`(begin)/`FUN_00235350`(kick) — one `vkCmdDraw` per rod per pass in the port.
+  (`rod+0x60`) from position index / group / selection state — the after-image trail write. [DECOMP-SOURCED]
+- ~~Each pass writes a fresh GS A+D header (`DAT_002973a0`/`DAT_002973c0` template blocks) via
+  `FUN_0022f720`(begin)/`FUN_00235350`(kick) — one `vkCmdDraw` per rod per pass in the port.~~
+  **[FALSIFIED → `FUN_0022f720` is actually browser icon-selection logic, not a GS-packet-begin
+  call (known-falsified item 5); `FUN_00235350`'s "kick" is not actually visible in the function —
+  it's the orbit-update tail, and the real GS kick is UNLOCATED (known-falsified item 6). See
+  `rod-pipeline.md §2` for the corrected function roles.]**
 
 ## 6. Port checklist
 
 | # | Item | Status | Notes |
 |---|---|---|---|
-| 1 | 12 dial positions (even 30° spacing) | **RESOLVED (by design, not by RE)** | OSDSYS's own origin-write path is unlocated (§4); the C++ port (`RodField::Generate`) independently derives 12 evenly-spaced positions from the patent + live screen-space measurements. Do not block on finding the OSDSYS writer — build from the patent-grounded model already in `w2-rod-geometry-live.md`. |
-| 2 | Group rotation (shared base angle) | **NEEDS-LIVE-READ** | Formula `base = clockState[0]*in_f1` confirmed (§1); the writer that increments `clockState[0]` per frame was not located. A live watch on `clockState[0]` across consecutive frames (once `clockState`'s address is pinned) settles rotation speed directly — cheaper than more static hunting. |
-| 3 | Per-rod pass-offset angle steps | **RESOLVED** | `fGpffff832c=0.20 rad`, `fGpffff8330=0.40 rad` (steady); `831c/8320/8324≈0.10, 8328≈0` (transition). See `w0-angle-steps.md`. |
-| 4 | Group translate (transition only) | **RESOLVED** | `FUN_00236a80(0, clockState[0x1b]*26.0*transitionT, 0)`, Y-axis push-translate, transition variant only. |
-| 5 | Rotation basis construction | **RESOLVED** | 2× cross-product orthonormal basis, `vu0-math-pipeline.md`. |
-| 6 | Projection matrix | **RESOLVED** (minus FOV) | far=2048, scale=65536, aspect=1.0; FOV still needs a live gp-relative read (`w0-projection-constants.md`). |
-| 7 | Hour → colored rod index (`306a`) | **NEEDS-LIVE-READ** | `osd_decode_bcd_time` (RTC decode) confirmed as the time source (§3); the consumer that picks the highlighted dial index from the decoded hour digits was not found statically this session. Live: freeze on "Ajuste do Relógio" (per `w2-rod-geometry-live.md`, already shows rod-0 highlighted at 00:00) and diff `+0x150` / a vertex-color field across a manually-advanced hour. |
-| 8 | Min/sec → partial color fill on `306a` | **NEEDS-LIVE-READ** | Patent-specified (S304-305) as a per-vertex color RANGE, not a flag; no OSDSYS field for this was isolated. Not `+0x150` (that's front/back face selector, confirmed in `rod-pipeline.md`). |
-| 9 | AM=blue / PM=red | **NEEDS-LIVE-READ** | Patent-specified; no OSDSYS color-select code path found this session. |
-| 10 | Rod struct field map (0x160 stride) | **RESOLVED** | `rod-pipeline.md §4` + `w2-rod-geometry-live.md` (live-confirmed offsets). |
-| 11 | GS packet / blend per pass | **RESOLVED** (blend equations); **NEEDS-LIVE-READ** (exact ALPHA/TEST bit patterns) | `rod-pipeline.md §3, §6`. |
-| 12 | Light-spot array (`0x34c830`, 8×0x10) | **RESOLVED** (position formula); separate from rods | `FUN_002354c8`/`FUN_0020eda0`, quadratic-radius polar spread — patent's `308`, not dial rods. |
-| 13 | Menu cubes (slots 12-15 of the 16-slot array) | **HYPOTHESIS, not decisively tested** | `w2-rod-geometry-live.md §"CAVEAT to confirm"` — diff slots 12-15 between menu-mode and pure-Visor screenshots. |
+| 1 | 12 dial positions (even 30° spacing) | **RESOLVED (by design, not by RE)** | OSDSYS's own origin-write path is unlocated (§4); the C++ port (`RodField::Generate`) independently derives 12 evenly-spaced positions from the patent + live screen-space measurements. Do not block on finding the OSDSYS writer — build from the patent-grounded model already in `w2-rod-geometry-live.md`. [HYPOTHESIS/port-design decision, not RE-confirmed; 12-count reflects known-falsified item 8's settled model] |
+| 2 | Group rotation (shared base angle) | **NEEDS-LIVE-READ** | Formula `base = clockState[0]*in_f1` confirmed (§1); the writer that increments `clockState[0]` per frame was not located. A live watch on `clockState[0]` across consecutive frames (once `clockState`'s address is pinned) settles rotation speed directly — cheaper than more static hunting. [DECOMP-SOURCED formula; rest HYPOTHESIS/open] |
+| 3 | Per-rod pass-offset angle steps | **RESOLVED** | `fGpffff832c=0.20 rad`, `fGpffff8330=0.40 rad` (steady); `831c/8320/8324≈0.10, 8328≈0` (transition). See `w0-angle-steps.md`. [DECOMP-SOURCED] |
+| 4 | Group translate (transition only) | **RESOLVED** | `FUN_00236a80(0, clockState[0x1b]*26.0*transitionT, 0)`, Y-axis push-translate, transition variant only. [DECOMP-SOURCED] |
+| 5 | Rotation basis construction | **RESOLVED** | 2× cross-product orthonormal basis, `vu0-math-pipeline.md`. [DECOMP-SOURCED] |
+| 6 | Projection matrix | **RESOLVED** (minus FOV) | far=2048, scale=65536, aspect=1.0; FOV still needs a live gp-relative read (`w0-projection-constants.md`). [DECOMP-SOURCED] |
+| 7 | Hour → colored rod index (`306a`) | **NEEDS-LIVE-READ** | `osd_decode_bcd_time` (RTC decode) confirmed as the time source (§3); the consumer that picks the highlighted dial index from the decoded hour digits was not found statically this session. Live: freeze on "Ajuste do Relógio" (per `w2-rod-geometry-live.md`, already shows rod-0 highlighted at 00:00) and diff `+0x150` / a vertex-color field across a manually-advanced hour. [DECOMP-SOURCED for the source function; rest HYPOTHESIS/open] |
+| 8 | Min/sec → partial color fill on `306a` | **NEEDS-LIVE-READ** | Patent-specified (S304-305) as a per-vertex color RANGE, not a flag; no OSDSYS field for this was isolated. Not `+0x150` (that's front/back face selector, confirmed in `rod-pipeline.md`). [HYPOTHESIS, patent-sourced] |
+| 9 | AM=blue / PM=red | **NEEDS-LIVE-READ** | Patent-specified; no OSDSYS color-select code path found this session. [HYPOTHESIS, patent-sourced] |
+| 10 | Rod struct field map (0x160 stride) | **RESOLVED** | `rod-pipeline.md §4` + `w2-rod-geometry-live.md` (live-confirmed offsets). [DECOMP-SOURCED / LIVE-VERIFIED, cross-file] |
+| 11 | GS packet / blend per pass | **RESOLVED** (blend equations); **NEEDS-LIVE-READ** (exact ALPHA/TEST bit patterns) | `rod-pipeline.md §3, §6`. [HYPOTHESIS — see falsified-role caveats in `rod-pipeline.md §3.2`] |
+| 12 | Light-spot array (`0x34c830`, 8×0x10) | **RESOLVED** (position formula); separate from rods | `FUN_002354c8`/`FUN_0020eda0`, quadratic-radius polar spread — patent's `308`, not dial rods. [DECOMP-SOURCED] |
+| 13 | Menu cubes (slots 12-15 of the 16-slot array) | **HYPOTHESIS, not decisively tested** | `w2-rod-geometry-live.md §"CAVEAT to confirm"` — diff slots 12-15 between menu-mode and pure-Visor screenshots. [HYPOTHESIS, as labeled] |
 
 ### Fastest remaining unblock (if a live PCSX2 pass becomes available)
 
 1. Pin `clockState`'s real address (watch what pointer lands in `$a2`/`$s2` at the
    `jal ui_render_3d_objects` call site, `0x002144a4`) → then watch `clockState[0]` across
-   frames (rotation speed) and `clockState[0x2c]/[0x2d]` (pass-3 per-group angle offsets).
+   frames (rotation speed) and `clockState[0x2c]/[0x2d]` (pass-3 per-group angle offsets). [HYPOTHESIS/plan]
 2. With clockState pinned, diff its bytes across a manually-advanced RTC hour (via "Ajuste do
    Relógio") to find the hour→highlight write — likely a small integer field, not necessarily
-   inside the 16-slot rod array at all.
+   inside the 16-slot rod array at all. [HYPOTHESIS/plan]
 3. Only then chase item 4 (origin/dial-spacing writer) if still needed — low priority since
    the C++ port already has a working, patent-grounded 12-position generator independent of
-   finding OSDSYS's exact mechanism.
+   finding OSDSYS's exact mechanism. [HYPOTHESIS/plan]
 
 ---
 
@@ -252,41 +263,43 @@ this doc's completeness, not re-derived:
 
 - BP @ 0x002144a4 (jal ui_render_3d_objects) FIRES per frame on the clock screen. At entry:
   gp=0x002CFEF0 (matches doc), a2=0x006800B0 (small flag struct, not clockState),
-  v0=v1=0x002C4180 (a STATIC JUMP TABLE containing 0x2144a4 etc — not state).
+  v0=v1=0x002C4180 (a STATIC JUMP TABLE containing 0x2144a4 etc — not state). [LIVE-VERIFIED; this
+  is the correct live gp=0x002CFEF0, per known-falsified item 9 — any address elsewhere derived
+  from a stale gp=0x002AF070 should be treated as stale, not this one]
 - BP @ 0x00221610 (osd_decode_bcd_time entry): a0=0x0036C780 (ctx ptr; RTC raw @0x0036C880),
-  a1=dst=0x0036C7C0 (stack; consumed within the frame — read at entry shows stale/zero).
+  a1=dst=0x0036C7C0 (stack; consumed within the frame — read at entry shows stale/zero). [LIVE-VERIFIED]
 - **GROUP ROTATION PHASE FOUND (at decode-entry stack snapshot): float @ 0x0036C7D0**,
   decreasing by **-0.001671 rad/frame ≈ -0.1 rad/s** (constant across 3 samples;
   1.64722 → 1.64554 → 1.64388). Neighbouring floats: @+4 a slow-increasing value ~13.03;
-  @+0x10 the projection constants block (2048.0 far, 65536.0 scale — matches W0 ✓).
+  @+0x10 the projection constants block (2048.0 far, 65536.0 scale — matches W0 ✓). [LIVE-VERIFIED]
   NOTE: this is a per-frame STACK slot along the decode call path (stable per frame,
-  not a persistent global) — the persistent phase global still unlocated.
+  not a persistent global) — the persistent phase global still unlocated. [LIVE-VERIFIED observation; conclusion HYPOTHESIS]
 - NEXT (hour→rod): diff a persistent BSS window across a manual hour advance
   ("Ajuste do Relógio"): candidate windows 0x34C000+4K (near light-spot array),
   0x375000+4K (rod array neighbourhood), 0x2C7000+4K (gp data). Seconds-field can be
-  isolated first by diffing the same windows across ~2s of free run (no user input).
+  isolated first by diffing the same windows across ~2s of free run (no user input). [HYPOTHESIS/plan]
 
 ## §8 LIVE STATE BLOCK FOUND (2026-07-03, hour-advance diff)
 
-Method: snapshot 0x2C8000 window, advance RTC hour +1 in "Ajuste do Relógio", diff.
+Method: snapshot 0x2C8000 window, advance RTC hour +1 in "Ajuste do Relógio", diff. [LIVE-VERIFIED method]
 The clock's persistent state block lives at **0x002C8000+** (EE main RAM, stable across
-free-run frames — NOT the per-frame animation floats at 0x37xxxx).
+free-run frames — NOT the per-frame animation floats at 0x37xxxx). [LIVE-VERIFIED]
 
 - **HOUR-linked field: 0x002C8884, duplicated at 0x002C888C** (a min/target or
   current/display pair — always move in lockstep on hour change). Small int, observed
-  values 3-6. Likely the highlighted-dial-index (hour%12 through an offset), NOT the raw
+  values 3-6. [LIVE-VERIFIED] Likely the highlighted-dial-index (hour%12 through an offset), NOT the raw
   hour — value sequence wasn't monotonic +1 with hour +1, consistent with a 12-position
-  wrap/offset. CONFIRM during W2-2 by correlating with on-screen lit rod.
+  wrap/offset. CONFIRM during W2-2 by correlating with on-screen lit rod. [HYPOTHESIS interpretation]
 - **FILL/HIGHLIGHT floats: 0x002C8F50 cluster** — moved with the highlighted rod on
   hour change. Read: 0x2C8F50=0xf64cb6c4, +4=0x3ee8d1ea (~0.454), +8=0x3f0b5a1a (~0.545),
-  +0xc=0x00000005 (index?), +0x10=0x28,+0x14=0x28 (40,40). The two ~0.45/0.55 floats are
+  +0xc=0x00000005 (index?), +0x10=0x28,+0x14=0x28 (40,40). [LIVE-VERIFIED raw reads] The two ~0.45/0.55 floats are
   strong candidates for the **min/sec partial-fill fraction** (patent S304-305, a 0..1
-  range per rod), the int 5 for the selected slot.
-- Rotation speed (from §7): **-0.1 rad/s** group spin.
+  range per rod), the int 5 for the selected slot. [HYPOTHESIS interpretation]
+- Rotation speed (from §7): **-0.1 rad/s** group spin. [LIVE-VERIFIED]
 
 ### W2-2 port anchors (RESOLVED enough to build)
-- Group spin phase: advance -0.1 rad/s (0.001671 rad per 60fps frame).
-- Per-rod angle: base + i*0.20 (additive pass) / i*0.40 (refraction pass).
-- 12 dial rods at 30 deg spacing (patent + w2-rod-geometry-live).
+- Group spin phase: advance -0.1 rad/s (0.001671 rad per 60fps frame). [LIVE-VERIFIED]
+- Per-rod angle: base + i*0.20 (additive pass) / i*0.40 (refraction pass). [DECOMP-SOURCED]
+- 12 dial rods at 30 deg spacing (patent + w2-rod-geometry-live). [HYPOTHESIS/port-design, per known-falsified item 8's settled 12-rod model — not independently live-verified as evenly 30°-spaced]
 - Hour->lit index and min/sec->fill: live anchors 0x2C8884 / 0x2C8F50 to finish
-  numerically against the dump oracle (prims_sw.json rod vertex colors at 17:57).
+  numerically against the dump oracle (prims_sw.json rod vertex colors at 17:57). [LIVE-VERIFIED anchors; correlation itself is HYPOTHESIS/open]

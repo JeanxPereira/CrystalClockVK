@@ -1,5 +1,7 @@
 # W4 — GS Accuracy Plan (PCSX2-guided, pixel-diff-gated)
 
+> Audit 2026-07-05: claims status-tagged per master-strategy spec §6.
+
 > Decision (2026-06-13): make the GS replay faithful FIRST (Stage 1 done right),
 > then port the real generation logic (W2). Reference = PCSX2 GS source (the logic
 > spec) + the captured `.png` next to each `.gs` (the hardware frame, for pixel-diff).
@@ -7,8 +9,10 @@
 ## Where we are
 The multi-target replay renders the crystal clock recognizably (rods + glow + orb),
 but asset fidelity is incomplete: text/UI render as gray rectangles, the tunnel
-background is flat, the orb trail is missing, refraction is approximate. Root cause
-is GS-memory/texture faithfulness, not the pipeline (which works).
+background is flat, the orb trail is missing, refraction is approximate. [HYPOTHESIS —
+own-renderer visual observation, not cross-checked against a pixel-diff harness at time
+of writing] Root cause is GS-memory/texture faithfulness, not the pipeline (which
+works). [HYPOTHESIS]
 
 ## Methodology
 1. **Spec = PCSX2 GS source** (`C:\CodingProjects\Personal\pcsx2-ref\pcsx2\GS\`). For
@@ -19,6 +23,11 @@ is GS-memory/texture faithfulness, not the pipeline (which works).
    by extracting the asset (`tools/vramdump`) and/or the pixel-diff.
 
 ## Comparative findings so far (vs GSLocalMemory.h)
+[HYPOTHESIS — the following four points are read directly from PCSX2 reference source
+(`pcsx2-ref/pcsx2/GS/GSLocalMemory.h`), which is reference behavior for GS hardware in
+general, not a claim independently verified against OSDSYS's own dumps/live state at
+the time these were written. Ambiguous fit for the tag vocabulary — flagged, not
+force-tagged as DECOMP-SOURCED since that tag is reserved for the CrystalOSD decomp.]
 - **Swizzle uses BUFFER WIDTH, not texture width.** PCSX2 `PixelAddress32(x,y,bp,bw)`
   addresses by `bw` (TBW). Our `SwizzleEngine::deswizzle` passes the texture width as
   the stride → wrong whenever `TBW*64 != 2^TW` (e.g. the 1024-wide / 640-buffer cases).
@@ -32,23 +41,26 @@ is GS-memory/texture faithfulness, not the pipeline (which works).
   feedback path binds the target image, but the sampled region can exceed the 224-tall
   framebuffer (v up to ~470) — the buffer is part of taller VRAM. FIX: model framebuffers
   as regions of one taller VRAM image, or seed/sample with correct stride+offset.
-- **TEXA / TFX / COLCLAMP exactness**: fold in once the above land.
+- **TEXA / TFX / COLCLAMP exactness**: fold in once the above land. [HYPOTHESIS — planned, not yet done]
 
 ## Progress / learnings (2026-06-13)
 - DONE: swizzle-by-buffer-width + PSMCT24 decode + PSMCT24-feedback routing → the
-  radial **tunnel background now renders** (was flat purple). Committed 86fa888.
+  radial **tunnel background now renders** (was flat purple). [HYPOTHESIS — own-renderer
+  visual observation] Committed 86fa888.
 - The remaining broken assets (text, orbital rings, exact refraction) are the
   **unified-memory feedback**: feedback textures sample v up to ~470, into the VRAM
   rows BELOW a 224-tall framebuffer, where the glyph/sprite **atlas** lives (verified:
   `tools/vramdump` of FBP 280 as 640×512 shows button glyphs + text + sprites at rows
-  224+). Two naive fixes were tried and REVERTED:
-  - seed-from-freeze (init the 224 target from VRAM): no visible text gain.
+  224+). [DUMP-MEASURED] Two naive fixes were tried and REVERTED:
+  - seed-from-freeze (init the 224 target from VRAM): no visible text gain. [HYPOTHESIS
+    — own-renderer visual observation]
   - tall 640×512 targets (let feedback read the atlas rows): **regressed** — the
-    scattered atlas pixels bleed onto the rods as colorful noise.
+    scattered atlas pixels bleed onto the rods as colorful noise. [HYPOTHESIS —
+    own-renderer visual observation]
   Conclusion: faithful feedback needs the proper VRAM model (PCSX2 texture-cache
   style: VRAM as one memory; textures/framebuffers are regions; reads resolve to the
   current contents with correct stride+offset, NOT separate clamped 224 images).
-  This is the substantial GS-core mile.
+  [HYPOTHESIS] This is the substantial GS-core mile.
 
 ## Decision: A then B (2026-06-13)
 "Style IS the GS rasterizer", so faithful refraction/glow/blend are the clock's
@@ -57,6 +69,9 @@ then feeds generated geometry into the SAME renderer — inherently hybrid (A is
 backend; the GS style carries into B).
 
 ## A — refined impl: GPU ping-pong VRAM (no CPU readback)
+[HYPOTHESIS — proposed design; the FBP-row arithmetic below is derived from GS
+register semantics, not independently confirmed against a live/dump trace at time
+of writing.]
 Key insight: GS framebuffers are ROW-REGIONS of one VRAM addressed at stride 640
 (FBP row = fbp*8192/2560: FBP 0→0, 70→224, 210→672, 280→896). So model VRAM as a
 single 640×~1408 linear image; render each FBP to its row-region; feedback samples
@@ -68,6 +83,7 @@ narrow textures (64/128-wide) stay separate deswizzled images. Init both VRAM
 images by deswizzling the freeze at stride 640. Display = blit FBP-0 rows [0,224].
 
 ## A — VRAM texture-cache model (the root fix)
+[HYPOTHESIS — proposed design, not yet implemented/verified at time of writing.]
 1. **VRAM = one mutable buffer** (4MB, init from freeze) — source of truth.
 2. **Deswizzle on-demand**: before sampling a texture (TBP0/TBW/PSM), decode the
    VRAM region → linear VkImage (SwizzleEngine math).
@@ -82,21 +98,24 @@ a static dump). First verifiable step either way: a deswizzle that matches
 
 ## Progress 2026-07-02 — exactness pass (pixel-diff gated)
 Baseline mean abs err R43/G52/B62 (79.1% pixels >16) → **R18/G20/B20 (63.8%)**.
+[HYPOTHESIS — own pixel-diff harness output; not one of the four evidence categories
+in the audit vocabulary, flagged as ambiguous.]
 Root causes found by dump inspection (gsdump + per-draw JSON), fixed in order:
 1. **RGBAQ.Q was never parsed** → rod STQ faces sampled one texel. PACKED ST
-   dword2 = temp Q, latched by PACKED RGBAQ; REGLIST RGBAQ bits 32-63.
+   dword2 = temp Q, latched by PACKED RGBAQ; REGLIST RGBAQ bits 32-63. [DUMP-MEASURED]
 2. **Feedback UV wrap (REPEAT)**: refraction UVs bake +256 in v (TH=8); the wrap
    lands back in the source framebuffer band — the clock is a 210↔280 ping-pong,
-   NEVER self-feedback. Unwrapped v read the glyph atlas = colorful rod noise.
+   NEVER self-feedback. Unwrapped v read the glyph atlas = colorful rod noise. [DUMP-MEASURED]
 3. **Z-buffer missing**: ZBP=140 ZMSK=0 on all 3936 draws; 1584 GEQUAL + 200
-   GREATER. Now a D32 plane over the VRAM image (clear 0, GS larger=nearer).
-4. **FIX blend constants** were the VK zero default → 96 draws were no-ops.
-5. **LINE_STRIP** (56 draws) = the orb swirl lines; were skipped entirely.
+   GREATER. Now a D32 plane over the VRAM image (clear 0, GS larger=nearer). [DUMP-MEASURED]
+4. **FIX blend constants** were the VK zero default → 96 draws were no-ops. [DUMP-MEASURED]
+5. **LINE_STRIP** (56 draws) = the orb swirl lines; were skipped entirely. [DUMP-MEASURED]
 6. **Framebuffer alpha**: shader wrote A=1.0; GS stores fragment alpha and the
-   feedback MODULATE depends on it (compose weight doubled → washed-out bg).
+   feedback MODULATE depends on it (compose weight doubled → washed-out bg). [HYPOTHESIS
+   — mechanism explanation, not itself a raw dump measurement]
 Remaining known gaps: PSMT8/PSMT4 CLUT glyphs (text = gray blocks), bg mottle
 texture strength, right-side light wedge, GS integer alpha semantics (the
-exact At*Av>>7 chain overshoots in float — needs the 0..255 int model).
+exact At*Av>>7 chain overshoots in float — needs the 0..255 int model). [HYPOTHESIS]
 
 ## Task order
 1. Pixel-diff harness (render→PNG→compare to the `.png`). The measurement gate.
