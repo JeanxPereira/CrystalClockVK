@@ -48,6 +48,31 @@ int main() {
     }
     assert(threw);
 
+    // 5) sync (SPECIAL fn=0x0F): memory barrier, no-op here.
+    //    sync.p = 0x0000000F ; jr ra ; nop
+    poke(mem, 0x5000, {0x0000000Fu, 0x03E00008u, 0u});
+    EeInterpreter cpu5(mem);
+    cpu5.call(0x5000);  // must not throw
+
+    // 6) VADDx.xyzw vf10, vf8, vf6x  (COP2 macro broadcast group, fn=0 -> subop=0 VADD, bc=0)
+    //    dest=0xF(xyzw), ft=6, fs=8, fd=10: 010010 01111 00110 01000 01010 000000
+    //    = 0x49E64280 ; jr ra ; nop
+    poke(mem, 0x6000, {0x49E64280u, 0x03E00008u, 0u});
+    EeInterpreter cpu6(mem);
+    cpu6.vf[8][0] = 1.0f; cpu6.vf[8][1] = 2.0f; cpu6.vf[8][2] = 3.0f; cpu6.vf[8][3] = 4.0f;
+    cpu6.vf[6][0] = 10.0f; cpu6.vf[6][1] = 20.0f; cpu6.vf[6][2] = 30.0f; cpu6.vf[6][3] = 40.0f;
+    cpu6.call(0x6000);
+    assert(cpu6.vf[10][0] == 11.0f && cpu6.vf[10][1] == 12.0f &&
+           cpu6.vf[10][2] == 13.0f && cpu6.vf[10][3] == 14.0f);
+
+    // 7) divu v0, a1 ; mflo v0 ; jr ra ; nop
+    //    divu $2,$5 = 000000 00010 00101 00000 00000 011011 = 0x0045001B
+    //    mflo v0 = 0x00001012
+    poke(mem, 0x7000, {0x0045001Bu, 0x00001012u, 0x03E00008u, 0u});
+    EeInterpreter cpu7(mem);
+    cpu7.gpr[2].lo = 17;  // v0; call() sets a1 (gpr5) via its args
+    assert(cpu7.call(0x7000, 0, 5) == 3);  // 17u / 5u = 3
+
     std::printf("ee_interpreter: all assertions passed\n");
     return 0;
 }

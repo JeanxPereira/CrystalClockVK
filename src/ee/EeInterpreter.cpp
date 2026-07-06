@@ -1,5 +1,6 @@
 #include "ee/EeInterpreter.hpp"
 
+#include <algorithm>
 #include <bit>
 #include <cmath>
 
@@ -160,6 +161,8 @@ void EeInterpreter::executeOne(uint32_t word, uint32_t atPc) {
             gpr[rd].hi = 0;
             return;
         }
+        case 0x0F:  // sync (memory barrier; no-op in this single-threaded interpreter)
+            return;
         case 0x0A:  // movz
             if (gpr[rt].lo == 0 && gpr[rt].hi == 0) gpr[rd] = gpr[rs];
             return;
@@ -191,6 +194,18 @@ void EeInterpreter::executeOne(uint32_t word, uint32_t atPc) {
             } else {
                 lo = sx32(uint32_t(a / b));
                 hi = sx32(uint32_t(a % b));
+            }
+            return;
+        }
+        case 0x1B: {  // divu
+            const uint32_t a = uint32_t(gpr[rs].lo);
+            const uint32_t b = uint32_t(gpr[rt].lo);
+            if (b == 0) {
+                lo = 0;
+                hi = 0;
+            } else {
+                lo = sx32(a / b);
+                hi = sx32(a % b);
             }
             return;
         }
@@ -457,9 +472,36 @@ void EeInterpreter::executeOne(uint32_t word, uint32_t atPc) {
             }
             throw EeError{atPc, word, "unimplemented COP2 SPECIAL2 op"};
         }
-        if (fn >= 0x08 && fn <= 0x0B) {  // vmaddx/y/z/w: fd = ACC + vfs * vft.bc
+        if (fn <= 0x1B) {
+            // Broadcast group: fn = (subop << 2) | bc, bc selects vft's component.
+            // subop 0..6: VADDbc VSUBbc VMADDbc VMSUBbc VMAXbc VMINIbc VMULbc.
+            const uint32_t subop = fn >> 2;
             float result[4];
-            for (int i = 0; i < 4; i++) result[i] = vacc[i] + vf[vfs][i] * vf[vft][bc];
+            switch (subop) {
+            case 0:  // vaddx/y/z/w: fd = vfs + vft.bc
+                for (int i = 0; i < 4; i++) result[i] = vf[vfs][i] + vf[vft][bc];
+                break;
+            case 1:  // vsubx/y/z/w: fd = vfs - vft.bc
+                for (int i = 0; i < 4; i++) result[i] = vf[vfs][i] - vf[vft][bc];
+                break;
+            case 2:  // vmaddx/y/z/w: fd = ACC + vfs * vft.bc
+                for (int i = 0; i < 4; i++) result[i] = vacc[i] + vf[vfs][i] * vf[vft][bc];
+                break;
+            case 3:  // vmsubx/y/z/w: fd = ACC - vfs * vft.bc
+                for (int i = 0; i < 4; i++) result[i] = vacc[i] - vf[vfs][i] * vf[vft][bc];
+                break;
+            case 4:  // vmaxx/y/z/w: fd = max(vfs, vft.bc)
+                for (int i = 0; i < 4; i++) result[i] = std::max(vf[vfs][i], vf[vft][bc]);
+                break;
+            case 5:  // vminix/y/z/w: fd = min(vfs, vft.bc)
+                for (int i = 0; i < 4; i++) result[i] = std::min(vf[vfs][i], vf[vft][bc]);
+                break;
+            case 6:  // vmulx/y/z/w: fd = vfs * vft.bc
+                for (int i = 0; i < 4; i++) result[i] = vf[vfs][i] * vf[vft][bc];
+                break;
+            default:
+                throw EeError{atPc, word, "unimplemented COP2 broadcast subop"};
+            }
             applyDest(vf[vfd], result);
             vf[0][0] = 0.0f; vf[0][1] = 0.0f; vf[0][2] = 0.0f; vf[0][3] = 1.0f;
             return;
