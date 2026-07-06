@@ -422,6 +422,9 @@ int runDecode(int argc, char** argv) {
 }  // namespace
 
 int main(int argc, char** argv) {
+    // Unbuffered stdout: this is a diagnostic CLI whose run can die inside
+    // interpreted code -- buffered progress lines must not be lost.
+    std::setvbuf(stdout, nullptr, _IONBF, 0);
     if (argc >= 2 && !std::strcmp(argv[1], "--decode"))
         return runDecode(argc, argv);
 

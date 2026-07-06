@@ -30,6 +30,7 @@ public:
     uint32_t fcr31 = 0;
     float vf[32][4] = {};
     float vacc[4] = {};
+    float vq = 0.0f;  // VU0 Q register (macro-mode DIV/SQRT/RSQRT result)
     uint32_t cop0[32] = {};  // COP0 (system control) register file: plain storage,
                              // no MMU/interrupt/exception semantics modeled
 

@@ -611,6 +611,87 @@ void EeInterpreter::executeOne(uint32_t word, uint32_t atPc) {
                 vf[0][0] = 0.0f; vf[0][1] = 0.0f; vf[0][2] = 0.0f; vf[0][3] = 1.0f;
                 return;
             }
+            if (idx >= 16 && idx <= 23) {
+                // Fixed-point conversion group (PCSX2 tbl_COP2_SPECIAL2
+                // [16..23] = VITOF0/4/12/15 + VFTOI0/4/12/15, VUops.cpp
+                // intToFloat<n>/floatToInt<n>). dest = vft, src = vfs (the
+                // reverse of the arithmetic ops' vfd). FTOI results are raw
+                // int32 BIT PATTERNS stored in the vf lanes (the GS XYZ path
+                // reads them as 12.4 integers); truncation is toward zero and
+                // the scaled magnitude saturates at 2^31. Hardware treats
+                // vft=0 as a no-op sink (VF0 is read-only).
+                static constexpr float kScale[4] = {1.0f, 16.0f, 4096.0f, 32768.0f};
+                const float s = kScale[idx & 3u];
+                if (vft != 0) {
+                    float result[4];
+                    if (idx >= 20) {  // VFTOIn: float -> scaled int bits
+                        for (int i = 0; i < 4; i++) {
+                            const float scaled = vf[vfs][i] * s;
+                            const uint32_t bits = std::bit_cast<uint32_t>(scaled);
+                            uint32_t out;
+                            if ((bits & 0x7F800000u) >= 0x4F000000u)
+                                out = (bits & 0x80000000u) ? 0x80000000u : 0x7FFFFFFFu;
+                            else
+                                out = uint32_t(int32_t(scaled));
+                            result[i] = std::bit_cast<float>(out);
+                        }
+                    } else {  // VITOFn: int bits -> float / scale
+                        for (int i = 0; i < 4; i++) {
+                            const int32_t iv = std::bit_cast<int32_t>(vf[vfs][i]);
+                            result[i] = float(iv) / s;
+                        }
+                    }
+                    applyDest(vf[vft], result);
+                }
+                vf[0][0] = 0.0f; vf[0][1] = 0.0f; vf[0][2] = 0.0f; vf[0][3] = 1.0f;
+                return;
+            }
+            if (idx >= 56 && idx <= 59) {
+                // Q-pipeline group (PCSX2 R5900OpcodeTables.cpp
+                // tbl_COP2_SPECIAL2[56..59] = VDIV/VSQRT/VRSQRT/VWAITQ,
+                // semantics from VUops.cpp _vuDIV/_vuSQRT/_vuRSQRT). These
+                // read single components selected by fsf/ftf, which occupy
+                // the dest-field bits: fsf = (word>>21)&3, ftf = (word>>23)&3.
+                // Macro-mode Q resolves synchronously here, so VWAITQ (59)
+                // is a pure no-op and there is no in-flight Q latency model.
+                const uint32_t fsf = (word >> 21) & 3u;
+                const uint32_t ftf = (word >> 23) & 3u;
+                const float fsv = vf[vfs][fsf];
+                const float ftv = vf[vft][ftf];
+                switch (idx) {
+                case 56:  // VDIV: Q = vfs.fsf / vft.ftf
+                    if (ftv == 0.0f) {
+                        // Hardware saturates to +/-MAX float by the operands'
+                        // sign xor (VUops.cpp _vuDIV ft==0 branch).
+                        const bool neg = ((std::bit_cast<uint32_t>(fsv) ^
+                                           std::bit_cast<uint32_t>(ftv)) >> 31) != 0;
+                        vq = std::bit_cast<float>(neg ? 0xFF7FFFFFu : 0x7F7FFFFFu);
+                    } else {
+                        vq = fsv / ftv;
+                    }
+                    return;
+                case 57:  // VSQRT: Q = sqrt(|vft.ftf|) (magnitude, per _vuSQRT)
+                    vq = std::sqrt(std::fabs(ftv));
+                    return;
+                case 58:  // VRSQRT: Q = vfs.fsf / sqrt(|vft.ftf|)
+                    if (ftv == 0.0f) {
+                        if (fsv != 0.0f) {
+                            const bool neg = ((std::bit_cast<uint32_t>(fsv) ^
+                                               std::bit_cast<uint32_t>(ftv)) >> 31) != 0;
+                            vq = std::bit_cast<float>(neg ? 0xFF7FFFFFu : 0x7F7FFFFFu);
+                        } else {
+                            const bool neg = ((std::bit_cast<uint32_t>(fsv) ^
+                                               std::bit_cast<uint32_t>(ftv)) >> 31) != 0;
+                            vq = std::bit_cast<float>(neg ? 0x80000000u : 0u);
+                        }
+                    } else {
+                        vq = fsv / std::sqrt(std::fabs(ftv));
+                    }
+                    return;
+                case 59:  // VWAITQ
+                    return;
+                }
+            }
             throw EeError{atPc, word, "unimplemented COP2 SPECIAL2 op"};
         }
         if (fn <= 0x1B) {
@@ -642,6 +723,39 @@ void EeInterpreter::executeOne(uint32_t word, uint32_t atPc) {
                 break;
             default:
                 throw EeError{atPc, word, "unimplemented COP2 broadcast subop"};
+            }
+            applyDest(vf[vfd], result);
+            vf[0][0] = 0.0f; vf[0][1] = 0.0f; vf[0][2] = 0.0f; vf[0][3] = 1.0f;
+            return;
+        }
+        if (fn == 0x1C || fn == 0x20 || fn == 0x21 || fn == 0x24 || fn == 0x25) {
+            // Q-broadcast group (PCSX2 tbl_COP2_SPECIAL1[28/32/33/36/37] =
+            // VMULq/VADDq/VMADDq/VSUBq/VMSUBq, VUops.cpp _vuMULq etc.):
+            // same field layout as the bc-broadcast group but the broadcast
+            // operand is the Q register (set by VDIV/VSQRT/VRSQRT above),
+            // not a vft component. Phase 2 Visor dial render: the transform
+            // 0x00232DA0's VU0 callee moves VSQRT's result out via
+            // VADDq.x vf5, vf0, Q (word 0x4B000160 at pc=00273838).
+            // The I-register siblings (VMULi/VADDi/..., fn 0x1D/0x1E/0x22/
+            // 0x23/0x26/0x27) are deliberately NOT included -- no I register
+            // is modeled and none has been observed in this codebase yet.
+            float result[4];
+            switch (fn) {
+            case 0x1C:  // VMULq: fd = vfs * Q
+                for (int i = 0; i < 4; i++) result[i] = vf[vfs][i] * vq;
+                break;
+            case 0x20:  // VADDq: fd = vfs + Q
+                for (int i = 0; i < 4; i++) result[i] = vf[vfs][i] + vq;
+                break;
+            case 0x21:  // VMADDq: fd = ACC + vfs * Q
+                for (int i = 0; i < 4; i++) result[i] = vacc[i] + vf[vfs][i] * vq;
+                break;
+            case 0x24:  // VSUBq: fd = vfs - Q
+                for (int i = 0; i < 4; i++) result[i] = vf[vfs][i] - vq;
+                break;
+            case 0x25:  // VMSUBq: fd = ACC - vfs * Q
+                for (int i = 0; i < 4; i++) result[i] = vacc[i] - vf[vfs][i] * vq;
+                break;
             }
             applyDest(vf[vfd], result);
             vf[0][0] = 0.0f; vf[0][1] = 0.0f; vf[0][2] = 0.0f; vf[0][3] = 1.0f;

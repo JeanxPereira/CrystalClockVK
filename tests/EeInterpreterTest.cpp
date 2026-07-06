@@ -336,6 +336,188 @@ int main() {
     assert(cpu22.vf[10][0] == 20.0f && cpu22.vf[10][1] == 60.0f &&
            cpu22.vf[10][2] == 120.0f && cpu22.vf[10][3] == 200.0f);
 
+    // 23) VSQRT Q, vf6y  (COP2 SPECIAL2 idx=57 -- Phase 2 Visor dial render:
+    //     the transform-prep 0x00232DA0 path hits this group; PCSX2
+    //     R5900OpcodeTables.cpp tbl_COP2_SPECIAL2[57] = VSQRT, VUops.cpp
+    //     _vuSQRT: Q = sqrt(fabs(vft.ftf)), ftf = (word>>23)&3).
+    //     Word: COP2|CO=0x4A000000, ftf=1<<23, ft=6<<16, low bits 0x3BD
+    //     (fn=0x3D so idx = (word&3)|((word>>4)&0x7C) = 1|0x38 = 57)
+    //     = 0x4A8603BD. vf6={4,9,16,25} -> Q = sqrt(vf6.y) = 3. A
+    //     wrong-component (x) mistake gives 2; z gives 4.
+    poke(mem, 0xE900, {0x4A8603BDu, 0x03E00008u, 0u});
+    EeInterpreter cpu23(mem);
+    cpu23.vf[6][0] = 4.0f; cpu23.vf[6][1] = 9.0f; cpu23.vf[6][2] = 16.0f; cpu23.vf[6][3] = 25.0f;
+    cpu23.call(0xE900);
+    assert(cpu23.vq == 3.0f);
+    //     Negative input: Q = sqrt(fabs(ft)) (hardware takes the magnitude).
+    EeInterpreter cpu23b(mem);
+    cpu23b.vf[6][1] = -9.0f;
+    cpu23b.call(0xE900);
+    assert(cpu23b.vq == 3.0f);
+
+    // 24) VDIV Q, vf8z, vf6y  (SPECIAL2 idx=56, _vuDIV: Q = vfs.fsf / vft.ftf,
+    //     fsf=(word>>21)&3, ftf=(word>>23)&3). Word: 0x4A000000 | fsf=2<<21 |
+    //     ftf=1<<23 | ft=6<<16 | fs=8<<11 | 0x3BC = 0x4AC643BC.
+    //     vf8.z=30, vf6.y=5 -> Q=6. An operand-order mistake gives 1/6.
+    poke(mem, 0xEA00, {0x4AC643BCu, 0x03E00008u, 0u});
+    EeInterpreter cpu24(mem);
+    cpu24.vf[8][2] = 30.0f; cpu24.vf[6][1] = 5.0f;
+    cpu24.call(0xEA00);
+    assert(cpu24.vq == 6.0f);
+    //     Divide by zero with opposite signs: Q = 0xFF7FFFFF (-MAX float),
+    //     same signs would give 0x7F7FFFFF (VUops.cpp _vuDIV ft==0 branch).
+    EeInterpreter cpu24b(mem);
+    cpu24b.vf[8][2] = -5.0f; cpu24b.vf[6][1] = 0.0f;
+    cpu24b.call(0xEA00);
+    assert(std::bit_cast<uint32_t>(cpu24b.vq) == 0xFF7FFFFFu);
+
+    // 25) VRSQRT Q, vf8z, vf6y  (SPECIAL2 idx=58, _vuRSQRT:
+    //     Q = vfs.fsf / sqrt(fabs(vft.ftf))). Word = VDIV word | 2 in the low
+    //     bits = 0x4AC643BE. vf8.z=12, vf6.y=9 -> Q = 12/3 = 4. A VDIV
+    //     mistake gives 12/9; a VSQRT mistake gives 3.
+    poke(mem, 0xEB00, {0x4AC643BEu, 0x03E00008u, 0u});
+    EeInterpreter cpu25(mem);
+    cpu25.vf[8][2] = 12.0f; cpu25.vf[6][1] = 9.0f;
+    cpu25.call(0xEB00);
+    assert(cpu25.vq == 4.0f);
+
+    // 26) VWAITQ  (SPECIAL2 idx=59, _vuWAITQ: pure pipeline sync, no state
+    //     change -- macro-mode Q is already synchronous here). Word =
+    //     0x4A0003BF. Must not throw and must leave Q untouched.
+    poke(mem, 0xEC00, {0x4A0003BFu, 0x03E00008u, 0u});
+    EeInterpreter cpu26(mem);
+    cpu26.vq = 7.5f;
+    cpu26.call(0xEC00);
+    assert(cpu26.vq == 7.5f);
+
+    // 27) VADDq.xyzw vf10, vf8, Q  (COP2 macro Q-broadcast group, fn=0x20 --
+    //     Phase 2 Visor: the real word 0x4B000160 at pc=00273838 (inside the
+    //     0x00232DA0 transform's VU0 callee) is VADDq.x vf5, vf0, Q = "move Q
+    //     into vf5.x" right after VSQRT. PCSX2 tbl_COP2_SPECIAL1[32]=VADDq,
+    //     VUops.cpp _vuADDq: fd = vfs + Q per selected field. This test uses
+    //     dest=0xF/ft=0/fs=8/fd=10, word = 0x49E042A0.
+    //     fs=vf8={1,2,3,4}, Q=10 -> fd = {11,12,13,14}. A VMULq mistake gives
+    //     {10,20,30,40}; a VSUBq one {-9,-8,-7,-6}.
+    poke(mem, 0xED00, {0x49E042A0u, 0x03E00008u, 0u});
+    EeInterpreter cpu27(mem);
+    cpu27.vf[8][0] = 1.0f; cpu27.vf[8][1] = 2.0f; cpu27.vf[8][2] = 3.0f; cpu27.vf[8][3] = 4.0f;
+    cpu27.vq = 10.0f;
+    cpu27.call(0xED00);
+    assert(cpu27.vf[10][0] == 11.0f && cpu27.vf[10][1] == 12.0f &&
+           cpu27.vf[10][2] == 13.0f && cpu27.vf[10][3] == 14.0f);
+
+    // 28) VMULq.xyzw vf10, vf8, Q  (fn=0x1C, _vuMULq: fd = vfs * Q).
+    //     Word = 0x49E0429C. Same operands -> {10,20,30,40}.
+    poke(mem, 0xEE00, {0x49E0429Cu, 0x03E00008u, 0u});
+    EeInterpreter cpu28(mem);
+    cpu28.vf[8][0] = 1.0f; cpu28.vf[8][1] = 2.0f; cpu28.vf[8][2] = 3.0f; cpu28.vf[8][3] = 4.0f;
+    cpu28.vq = 10.0f;
+    cpu28.call(0xEE00);
+    assert(cpu28.vf[10][0] == 10.0f && cpu28.vf[10][1] == 20.0f &&
+           cpu28.vf[10][2] == 30.0f && cpu28.vf[10][3] == 40.0f);
+
+    // 29) VSUBq.xyzw vf10, vf8, Q  (fn=0x24, _vuSUBq: fd = vfs - Q).
+    //     Word = 0x49E042A4. Same operands -> {-9,-8,-7,-6}.
+    poke(mem, 0xEF00, {0x49E042A4u, 0x03E00008u, 0u});
+    EeInterpreter cpu29(mem);
+    cpu29.vf[8][0] = 1.0f; cpu29.vf[8][1] = 2.0f; cpu29.vf[8][2] = 3.0f; cpu29.vf[8][3] = 4.0f;
+    cpu29.vq = 10.0f;
+    cpu29.call(0xEF00);
+    assert(cpu29.vf[10][0] == -9.0f && cpu29.vf[10][1] == -8.0f &&
+           cpu29.vf[10][2] == -7.0f && cpu29.vf[10][3] == -6.0f);
+
+    // 30) VMADDq.xyzw vf10, vf8, Q  (fn=0x21, _vuMADDq: fd = ACC + vfs * Q).
+    //     Word = 0x49E042A1. ACC={100,...}, fs={1,2,3,4}, Q=10 ->
+    //     {110,120,130,140}. A VMSUBq mistake gives {90,80,70,60}.
+    poke(mem, 0xF100, {0x49E042A1u, 0x03E00008u, 0u});
+    EeInterpreter cpu30(mem);
+    cpu30.vacc[0] = 100.0f; cpu30.vacc[1] = 100.0f; cpu30.vacc[2] = 100.0f; cpu30.vacc[3] = 100.0f;
+    cpu30.vf[8][0] = 1.0f; cpu30.vf[8][1] = 2.0f; cpu30.vf[8][2] = 3.0f; cpu30.vf[8][3] = 4.0f;
+    cpu30.vq = 10.0f;
+    cpu30.call(0xF100);
+    assert(cpu30.vf[10][0] == 110.0f && cpu30.vf[10][1] == 120.0f &&
+           cpu30.vf[10][2] == 130.0f && cpu30.vf[10][3] == 140.0f);
+
+    // 31) VMSUBq.xyzw vf10, vf8, Q  (fn=0x25, _vuMSUBq: fd = ACC - vfs * Q).
+    //     Word = 0x49E042A5. Same operands as 30 -> {90,80,70,60}.
+    poke(mem, 0xF200, {0x49E042A5u, 0x03E00008u, 0u});
+    EeInterpreter cpu31(mem);
+    cpu31.vacc[0] = 100.0f; cpu31.vacc[1] = 100.0f; cpu31.vacc[2] = 100.0f; cpu31.vacc[3] = 100.0f;
+    cpu31.vf[8][0] = 1.0f; cpu31.vf[8][1] = 2.0f; cpu31.vf[8][2] = 3.0f; cpu31.vf[8][3] = 4.0f;
+    cpu31.vq = 10.0f;
+    cpu31.call(0xF200);
+    assert(cpu31.vf[10][0] == 90.0f && cpu31.vf[10][1] == 80.0f &&
+           cpu31.vf[10][2] == 70.0f && cpu31.vf[10][3] == 60.0f);
+
+    // 32) VFTOI4.xyzw vf10, vf8  (SPECIAL2 idx=21 -- Phase 2 Visor: real word
+    //     0x4BE5217D at pc=002736AC converts the transformed screen coords to
+    //     12.4 fixed point. VUops.cpp floatToInt<4>: dest.bits =
+    //     int32(trunc(src * 16)), saturating to 0x7FFFFFFF/0x80000000 when the
+    //     scaled magnitude reaches 2^31; result is INTEGER BITS in the vf reg,
+    //     dest = vft, src = vfs. Test word: 0x4A000000|dest 0xF<<21|ft=10<<16|
+    //     fs=8<<11|0x17D = 0x4BEA417D.
+    //     src = {2.53125, -1.28125, 1e10, -1e10}:
+    //       2.53125*16 = 40.5 -> trunc 40 (a round-mistake gives 41),
+    //       -1.28125*16 = -20.5 -> trunc toward zero -20 (a floor-mistake -21),
+    //       +/-1e10*16 overflows -> 0x7FFFFFFF / 0x80000000.
+    poke(mem, 0xF300, {0x4BEA417Du, 0x03E00008u, 0u});
+    EeInterpreter cpu32(mem);
+    cpu32.vf[8][0] = 2.53125f; cpu32.vf[8][1] = -1.28125f;
+    cpu32.vf[8][2] = 1e10f; cpu32.vf[8][3] = -1e10f;
+    cpu32.call(0xF300);
+    assert(std::bit_cast<int32_t>(cpu32.vf[10][0]) == 40);
+    assert(std::bit_cast<int32_t>(cpu32.vf[10][1]) == -20);
+    assert(std::bit_cast<uint32_t>(cpu32.vf[10][2]) == 0x7FFFFFFFu);
+    assert(std::bit_cast<uint32_t>(cpu32.vf[10][3]) == 0x80000000u);
+
+    // 33) VFTOI0.xyzw vf10, vf8  (idx=20, no scale): word = 0x4BEA417C.
+    //     src = {2.9, -2.9, 100.0, 5.5} -> {2, -2, 100, 5}. An FTOI4-mistake
+    //     (x16) would give {46, -46, 1600, 88}.
+    poke(mem, 0xF400, {0x4BEA417Cu, 0x03E00008u, 0u});
+    EeInterpreter cpu33(mem);
+    cpu33.vf[8][0] = 2.9f; cpu33.vf[8][1] = -2.9f; cpu33.vf[8][2] = 100.0f; cpu33.vf[8][3] = 5.5f;
+    cpu33.call(0xF400);
+    assert(std::bit_cast<int32_t>(cpu33.vf[10][0]) == 2 &&
+           std::bit_cast<int32_t>(cpu33.vf[10][1]) == -2 &&
+           std::bit_cast<int32_t>(cpu33.vf[10][2]) == 100 &&
+           std::bit_cast<int32_t>(cpu33.vf[10][3]) == 5);
+
+    // 34) VFTOI15.x vf10, vf8  (idx=23, x32768 -- pins the 15-bit constant):
+    //     word = dest 0x8<<21 variant of the same encoding: 0x4B0A417F.
+    //     src.x = 1.0 -> 32768.
+    poke(mem, 0xF500, {0x4B0A417Fu, 0x03E00008u, 0u});
+    EeInterpreter cpu34(mem);
+    cpu34.vf[8][0] = 1.0f;
+    cpu34.call(0xF500);
+    assert(std::bit_cast<int32_t>(cpu34.vf[10][0]) == 32768);
+
+    // 35) VITOF4.xyzw vf10, vf8  (idx=17, intToFloat<4>: dest = float(int bits)
+    //     / 16): word = 0x4BEA413D. src int bits {40, -20, 16, 32} ->
+    //     {2.5, -1.25, 1.0, 2.0}. An ITOF0-mistake gives {40, -20, 16, 32}.
+    poke(mem, 0xF600, {0x4BEA413Du, 0x03E00008u, 0u});
+    EeInterpreter cpu35(mem);
+    cpu35.vf[8][0] = std::bit_cast<float>(int32_t{40});
+    cpu35.vf[8][1] = std::bit_cast<float>(int32_t{-20});
+    cpu35.vf[8][2] = std::bit_cast<float>(int32_t{16});
+    cpu35.vf[8][3] = std::bit_cast<float>(int32_t{32});
+    cpu35.call(0xF600);
+    assert(cpu35.vf[10][0] == 2.5f && cpu35.vf[10][1] == -1.25f &&
+           cpu35.vf[10][2] == 1.0f && cpu35.vf[10][3] == 2.0f);
+
+    // 36) VITOF0.x vf10, vf8 (idx=16): word = 0x4B0A413C. int bits -7 -> -7.0.
+    //     VITOF12.x (idx=18): word = 0x4B0A413E. int bits 4096 -> 1.0 (pins
+    //     the 12-bit constant).
+    poke(mem, 0xF700, {0x4B0A413Cu, 0x03E00008u, 0u});
+    EeInterpreter cpu36(mem);
+    cpu36.vf[8][0] = std::bit_cast<float>(int32_t{-7});
+    cpu36.call(0xF700);
+    assert(cpu36.vf[10][0] == -7.0f);
+    poke(mem, 0xF800, {0x4B0A413Eu, 0x03E00008u, 0u});
+    EeInterpreter cpu36b(mem);
+    cpu36b.vf[8][0] = std::bit_cast<float>(int32_t{4096});
+    cpu36b.call(0xF800);
+    assert(cpu36b.vf[10][0] == 1.0f);
+
     std::printf("ee_interpreter: all assertions passed\n");
     return 0;
 }
