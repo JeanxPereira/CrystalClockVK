@@ -180,6 +180,7 @@ target_include_directories(gs PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 # ee — mini PS2 EE interpreter (memory, translation, MMIO, store log). No Vulkan.
 add_library(ee STATIC
     src/ee/EeMemory.cpp
+    src/ee/EeInterpreter.cpp
 )
 target_include_directories(ee PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_compile_features(ee PUBLIC cxx_std_23)
@@ -261,6 +262,12 @@ add_executable(ee_memory_tests tests/EeMemoryTest.cpp)
 target_link_libraries(ee_memory_tests PRIVATE ee)
 set_target_properties(ee_memory_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
 add_test(NAME ee_memory COMMAND ee_memory_tests WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+# ee_interpreter: R5900 integer subset dispatch, delay slots, fail-fast on unknown opcodes.
+add_executable(ee_interpreter_tests tests/EeInterpreterTest.cpp)
+target_link_libraries(ee_interpreter_tests PRIVATE ee)
+set_target_properties(ee_interpreter_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
+add_test(NAME ee_interpreter COMMAND ee_interpreter_tests WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
 # ──────────────────────────────────────────────────────────────────────────────
 # clock — pure procedural clock logic (geometry + projection math). NO Vulkan.
