@@ -1052,3 +1052,22 @@ draw_crystal_rod renders the crystal-prism objects (cubes/rods share the draw; r
 cube region, visual (not pixel-rigorous) match. Validates the staging DECODE produces
 correct geometry for this frame. To see the full crystal-clock DIAL, a RAM capture of
 the actual VISOR mode (not the menu) is needed.
+
+## Phase 2 — THE DIAL FOUND: clock_viewer IS the Visor (2026-07-06) [DUMP-MEASURED]
+
+clock_viewer (slot 5) savestate embeds a Screenshot.png (extracted to
+re/ram/clock_viewer/Screenshot.png) = the full CRYSTAL CLOCK DIAL: 12 radial
+crystal rods around a central sphere + light spots, "Visor" mode, 2026/07/06
+2:55:29. This is the real target (12-rod dial, matches docs).
+- We now have the Visor RAM (re/ram/clock_viewer/eeMemory.bin) AND its
+  same-frame screenshot — everything needed to validate the dial.
+- BUT running --drive-rods on it with the MENU context (ctx=0x296AB0, the
+  menu's) gives 4 tiny clustered objects at (13-25, 105-117) — STALE/wrong
+  data. The Visor scene uses its OWN render driver/context (the menu ctx holds
+  leftover data on this screen). draw_crystal_rod + 0x375250 array are likely
+  shared, but the Visor's per-frame context (count, color, the active rod
+  slots 0-11 = dial vs 12-15 = menu cubes) must be re-derived for this screen.
+- NEXT: discover the Visor's render driver + context (same method as the menu:
+  byte-search the image for the jal to the visor's per-frame render, read its
+  ctx/rod-count/offset), decode the 12 dial rods, overlay on the Visor
+  screenshot. Method proven on the menu; ground-truth screenshot now in hand.
