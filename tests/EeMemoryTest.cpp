@@ -44,6 +44,21 @@ int main() {
     // top 6 bits 110110) — sp0-live-reads.md
     const uint32_t w = img.read32(0x002738A0u);
     assert((w >> 26) == 0x36u);
+
+    bool boundaryMmioDamageHit = false;
+    mem.onMmio = [&](const ps2ee::MmioAccess& a) {
+        if (a.addr == EeMemory::kRamSize - 1 && a.isWrite && a.size == 4) {
+            boundaryMmioDamageHit = true;
+        }
+    };
+    mem.storeLogEnabled = true;
+    const size_t storeLogSizeBefore = mem.storeLog.size();
+    mem.write32(0x00000000u + EeMemory::kRamSize - 1, 0x11223344u);
+    assert(boundaryMmioDamageHit);
+    assert(mem.storeLog.size() == storeLogSizeBefore);
+
+    assert(mem.read32(0x00000000u + EeMemory::kRamSize - 2) == 0);
+
     std::printf("ee_memory: all assertions passed\n");
     return 0;
 }
