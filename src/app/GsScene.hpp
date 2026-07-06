@@ -29,6 +29,16 @@ public:
     const std::vector<gsvk::GsDrawRecipe>& recipes() const { return m_recipes; }
     const GsSceneStats& stats() const { return m_stats; }
 
+    // Animation injection (feat/clock-crystal-animated): rotate the crystal
+    // dial group -- the localized tri-strip (rod) + line-strip (swirl) draws --
+    // around the dial center by `radians`, leaving the fullscreen tunnel
+    // background and the text bars untouched. Reuses the GS style verbatim; only
+    // the geometry moves. Call AFTER load(), BEFORE GsRenderer::init(). A
+    // draw is "dial group" when its screen bbox is localized (not fullscreen).
+    // Returns the number of draws rotated. `spinCenter`/`localizedMaxPx` expose
+    // the heuristic for visual tuning.
+    int spinDial(float radians, float localizedMaxPx = 220.0f);
+
 private:
     GsCommandStream m_stream;
     std::vector<gsvk::GsDrawRecipe> m_recipes;

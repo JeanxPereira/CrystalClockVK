@@ -115,11 +115,13 @@ int main(int argc, char* argv[]) {
         std::string dumpRgbaPath;
         bool dumpFullVram = false;
         int stopAtPrim = -1;
+        float spinDeg = 0.0f;  // feat/clock-crystal-animated: rotate the dial group
         for (int a = 1; a < argc; a++) {
             std::string arg = argv[a];
             if (arg == "--dump-rgba" && a + 1 < argc) dumpRgbaPath = argv[++a];
             else if (arg == "--dump-vram" && a + 1 < argc) { dumpRgbaPath = argv[++a]; dumpFullVram = true; }
             else if (arg == "--stop-at" && a + 1 < argc) stopAtPrim = std::atoi(argv[++a]);
+            else if (arg == "--spin" && a + 1 < argc) spinDeg = static_cast<float>(std::atof(argv[++a]));
             else if (gsArg.empty()) gsArg = arg;
         }
 
@@ -130,11 +132,13 @@ int main(int argc, char* argv[]) {
         const std::string dumpPath = !gsArg.empty()
             ? gsArg
             : "C:/Users/dell04/Documents/PCSX2/snaps/clock_viewer.gs";
-        if (scene.load(dumpPath))
+        if (scene.load(dumpPath)) {
+            if (spinDeg != 0.0f)
+                scene.spinDial(spinDeg * 3.14159265f / 180.0f);
             gsRenderer.init(vulkan, resources, scene,
-                            swapchain.imageFormat(), VK_FORMAT_D32_SFLOAT),
+                            swapchain.imageFormat(), VK_FORMAT_D32_SFLOAT);
             gsRenderer.setStopAtPrim(stopAtPrim);
-        else
+        } else
             std::cerr << "No GS dump loaded (" << dumpPath << "). Pass a .gs path as arg 1.\n";
 
         std::array<FrameData, FrameOverlap> frames;
