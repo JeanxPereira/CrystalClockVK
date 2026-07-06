@@ -665,3 +665,108 @@ between per-rod passes in `0x00233928`'s body, mirroring `0x232618`'s own
 oracle match needs either a dedicated decoder for this custom per-rod record
 layout, or driving those translation helpers too. Full detail:
 `.superpowers/sdd/phase2-task2-report.md`.
+
+## Phase 2 task 1 — staging vs wire: the packetize route, decision [DUMP-MEASURED]
+
+Goal: decide whether `draw_crystal_rod`'s staging record is directly decodable
+or needs a real packetize call, and if the latter, name the exact fn+args+
+destination. Method: Capstone MIPS64LE disasm straight off
+`re/ram/clock/eeMemory.bin` (phys = vaddr & 0x1FFFFFFF, same convention as
+every prior session), of the four between-pass helpers the render contract
+names: `0x00230518`, `0x00235350`, `0x00230fe8`, `0x002324e8`.
+
+**Verdict: not directly decodable — a real packetize call exists, and it is
+`0x0022F7F8`, reached via `0x00235350` as a thin `a0=0x00375230` wrapper.**
+`0x00230fe8` and `0x002324e8` are unrelated (dispatch/state-machine code and
+sibling UI-rect emitters touching a *different* fixed buffer at
+`0x00296df0`/`0x00296df0+0x71c0..0x71e0` — confirmed by disasm, neither reads
+or writes `0x00375230`). `0x00230518` also targets the `0x00296df0` buffer
+(builds register-only A+D packets — matches Task 6's decoded `TEST_1`/
+`ALPHA_1` packet exactly: the switch/jump-table at `0x2c51b0` selects among
+GS register addresses `0x48/0x44/0x42/0x68`) — a real packetizer, but for a
+*different* packet family (blend/test-state setup), not the rod staging.
+
+**`0x00235350`, disassembled in full**:
+```
+00235350: lui  a0, 0x37
+00235354: j    0x22f7f8
+00235358: addiu a0, a0, 0x5230   ; delay slot -> a0 = 0x00375230, unconditionally
+```
+It is a **pure tail-jump stub, zero other args** — calling it is exactly
+`0x0022F7F8(a0=0x00375230)`.
+
+**`0x0022F7F8`, disassembled in full — this is the packetize/finalize fn.**
+Confirmed behavior, instruction-by-instruction:
+- `t0 = *(structPtr+0x14)` — a **batch-start pointer**, a field NOT previously
+  documented in the render contract (contract doc only had `+0x00`=cursor,
+  `+0x04`=SPR base, `+0x08..+0x1c` noted "zeroed/unused" in the captured
+  frame — that "unused" reading is now understood: it's unused **only until
+  something snapshots it**, see below).
+- `v0 = *(structPtr+0x00)` (current cursor), `a2 = *(t0)` (the **existing
+  word already sitting at the batch-start address** — i.e. the very `0x54`
+  placeholder header `draw_crystal_rod` wrote, per Task 2's finding).
+- `v1 = (v0 - t0) >> 3, -2` — a byte-length-since-batch-start divided into
+  8-byte units, i.e. **exactly the NLOOP/qword-count math a GIFtag finalize
+  step needs**.
+- Composes a new value from `a2`'s masked mode bits + the computed count,
+  then **writes it back to the SAME address `t0`** (`sd a2,(t0)` /
+  `sw v1,(t0)` region) — `0x0022F7F8` **patches the placeholder header
+  IN PLACE at the batch-start address**, rather than copying/relocating
+  the data to a separate wire buffer.
+- Continues: zero-fills a trailing region (padding to a fixed slot size),
+  then `jal 0x272fa0` / tail `j 0x272c10` — the same DMA-kick-family calls
+  seen from `0x00232618`'s own path (Task 4: real `D2_MADR`/`D2_QWC`/
+  `D2_CHCR` writes), confirming this finalize step also performs the actual
+  GIF-DMA submit, not just header math.
+
+**The wall for Task 2, precisely characterized**: `+0x14` (the batch-start
+snapshot `0x0022F7F8` depends on) is **not** set by `0x0022F720` (confirmed —
+disassembled `0x0022F720` in full this session: it writes `+0x00`, `+0x04`,
+`+0x08`, `+0x0c`, never `+0x14`). It is set by the **emitter itself**,
+immediately after calling `0x0022F720` — confirmed concretely by
+disassembling the sibling per-rod draw variant `0x00232F80` (render
+contract's pass #6), whose own body is:
+```
+00232fa4: jal 0x22f720            ; a0 = 0x00375230 (re-init cursor)
+...
+00232fb0: lw  v1, 0x5230($s1)     ; v1 = the FRESH cursor 0x22f720 just wrote
+00232fcc: sw  v1, 0x14($s0)       ; *** snapshot: structPtr+0x14 = v1 ***
+...                                 ; then writes its own header + vertex data
+00233050: jal 0x22f7f8            ; a0 = 0x00375230 -> finalize/kick
+```
+**`draw_crystal_rod` (`0x00232E38`) never performs this snapshot.** The
+current `eerun --drive-rods` harness calls `0x22f720` once up front and never
+writes `+0x14`, so it stays at its captured-frame value of `0` (confirmed:
+`re/ram/clock/eeMemory.bin`, phys `0x00375244`, reads `0x00000000`). Calling
+`0x00235350`/`0x0022F7F8` on top of the current harness as-is would
+dereference address `0` as "the existing header word" — wrong, not a valid
+finalize.
+
+**DECISION for Task 2** (fn + args + destination, per the brief's required
+form):
+1. After `call(0x0022F720, a0=0x00375230)`, **snapshot**
+   `poke32(0x00375230+0x14, peek32(0x00375230+0x00))` — mirrors what
+   `0x00232F80` does inline; this is the missing piece, not a new unknown.
+2. Run the existing rod loop (`draw_crystal_rod` × N non-culled rods,
+   unchanged from Task 2's harness).
+3. `call(0x00235350)` (no args — it hardcodes `a0=0x00375230`), equivalently
+   `call(0x0022F7F8, a0=0x00375230)` directly.
+4. **Wire-packet destination: in place**, at the snapshotted batch-start
+   address inside the emulated SPR window (same buffer `draw_crystal_rod`
+   already writes into — no separate/relocated wire buffer was found in this
+   call chain). `0x0022F7F8` patches that address's header word using the
+   real cursor-delta byte count, then proceeds into the same DMA-kick call
+   family (`0x272fa0`/`0x272c10`) `0x00232618`'s path uses.
+
+**[OPEN] for Task 2 to close empirically, not asserted here**: the *exact*
+resulting byte layout after the patch (whether it becomes a standards-shape
+16-byte GIFtag `decodeGifData` can parse as-is, or a layout still needing a
+small adapter) is not fully pinned by static disasm alone — `0x0022F7F8`'s
+zero-fill/tag-word logic past the point read this session plausibly writes
+more structure than was traced. Task 2 should implement steps 1-3 above,
+`--dump-spr`/`--decode` the result, and report the real `vdiff --subset`
+count honestly, same as every prior session here — this is a confirmed,
+disasm-backed ROUTE, not a confirmed final byte match.
+
+Full raw disassembly transcripts (all four helpers, `0x0022F720`,
+`0x0022F7F8`, `0x00232F80`): `.superpowers/sdd/task-1-report.md`.
