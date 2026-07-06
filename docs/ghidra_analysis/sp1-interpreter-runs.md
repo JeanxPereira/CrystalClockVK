@@ -1230,3 +1230,26 @@ it (Gate A verified sceVu0MulMatrix/ApplyMatrix BEFORE the Q/FTOI ops existed) o
 matrix sources (*(ctx+0x60/0x64), global 0x00297360, f12=-1.0 semantics). KILLER TOOL
 available: single-step `0x2335E8` live in pcsx2 (DebugServer reads full 128-bit VU0F
 regs) and diff register-by-register against the interpreter at the same PCs.
+
+## Phase 2 — mult fix: ALL 16 rods now written (2026-07-06, latest) [DUMP-MEASURED]
+
+Live single-step of 0x2335E8 (position writer) confirmed the loop derives each rod
+pointer via the R5900 3-operand `mult rd,rs,rt` (word 0x02A41018 @ 0x2336E4:
+`mult v0, s5, a0`). The interpreter implemented only the plain-MIPS 2-operand form
+(LO/HI, rd ignored) → v0 kept a stale value → every rod pointer but the first was wrong
+→ only rod 0 was written (garbage). **Fix (commit after this):** `mult`/(and by the same
+token any `mult rd,...`) writes LO into rd when rd!=0. Test 40 pins it (mult v1,a0,a1 →
+v1 = product, discriminates against the rd-ignored form). Also hardened the test harness:
+`_set_abort_behavior`/`_CrtSetReportMode` route a failing assert to stderr+exit instead
+of the MSVC "abort() has been called" MODAL — an open modal held the exe file lock and
+blocked the next rebuild, which read as a cascade of unrelated build failures.
+
+**Result:** driving 0x233F60 now rewrites ALL 16 rod slots (world +0x00 varies per rod,
++0x140 normal varies) — the loop iterates correctly. **STILL WRONG (honest):** projected
++0x20/+0x24 come out huge (5e5 / 2.5e7 vs the live 1740-1894 / 2041-2053) and +0x04
+is a constant 320.0 across all rods. So mult unblocked the ITERATION; a projection/
+matrix bug remains. NEXT (precise): single-step 0x2335E8 live reading full 128-bit VU0F
+(GSPRIV cat 4) and diff register-by-register against the interpreter at the shared PCs —
+the constant 320.0 and the 1e5-scale blowup point at either a matrix row load (lqc2 at
+0x2738A0) reading the wrong source, or the projection divide (0x2337DC `div.s f20,f21,f20`
+with f21=1.0) fed a near-zero denominator. This is a fresh debug cycle, not a finish.
