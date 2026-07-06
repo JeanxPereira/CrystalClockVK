@@ -1033,3 +1033,22 @@ table, and open questions: `.superpowers/sdd/phase2-tighten-report.md`.
 **Status: rod screen-space placement is OPEN/CONCERNS, not validated.**
 Geometry-decode mechanics (byte layout, RGBA) still stand; absolute placement
 does not.
+
+## Phase 2 — validated vs the SAME-FRAME screenshot (2026-07-06) [DUMP-MEASURED]
+
+Key correction: `re/ram/clock/eeMemory.bin` is NOT the pure clock visor — its own
+`Screenshot.png` shows the **System Configuration MENU** ("Configuração do Sistema /
+Ajuste do Relógio", timestamp 2026/07/05 20:11:09) with 4 floating crystal CUBES +
+background radial rods. So the correct same-frame reference is that screenshot, NOT
+clock_sw.gs (a different screen captured 3 days earlier). This also explains the 1/12
+vs clock_sw: wrong screen AND wrong frame.
+
+Overlaid the 3 decoded objects' vertices (real GS offset 27648/30976, Y×480/224) onto
+Screenshot.png via tools/overlay_check.mjs → re/oracle/rods_on_screenshot.png. RESULT:
+the markers land on and TRACE the bottom-center crystal cube's outline — a genuine
+geometric correspondence against the correct same-frame reference (no fit, same frame).
+draw_crystal_rod renders the crystal-prism objects (cubes/rods share the draw; recall
+0x375250 = 12 dial rods + 4 menu cubes). HONEST SCOPE: partial — 3 of 6 objects, one
+cube region, visual (not pixel-rigorous) match. Validates the staging DECODE produces
+correct geometry for this frame. To see the full crystal-clock DIAL, a RAM capture of
+the actual VISOR mode (not the menu) is needed.
