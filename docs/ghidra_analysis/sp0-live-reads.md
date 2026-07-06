@@ -111,7 +111,11 @@ is re-derived in SP1.
   DebugServer, state saved, resumed — no reset with BPs armed).
 - Sanity: FOV globals 0x2C8370/74 read 0.470/0.5405 in ALL THREE images
   (boot/menu/clock) — dumps aligned and intact.
-- Savestate slot map: 6=boot towers, 7=main menu, 8=clock screen, 9=pre-clock.
+- **Clock viewer mode** (clock fullscreen, no menu UI): savestate slot 5 →
+  `re/ram/clock_viewer/eeMemory.bin` (32MB, gitignored) + vu0Memory.bin. Same FOV
+  globals check passes. Distinct from slot 8 (clock reached from within the menu).
+- Savestate slot map: 5=clock viewer (no menu), 6=boot towers, 7=main menu,
+  8=clock screen, 9=pre-clock.
 
 ## Light spots — updater does NOT run on the clock screen [LIVE-VERIFIED]
 
