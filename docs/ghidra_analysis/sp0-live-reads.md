@@ -66,6 +66,24 @@ gp (live) = 0x002CFEF0 → `uGpffff8480` = 0x002C8370, `uGpffff8484` = 0x002C837
 (FUN_002730a8); semantic (tan half-angle vs focal) to be settled when the projection
 is re-derived in SP1.
 
+## Packet/DMA machinery — REAL leads found [LIVE-VERIFIED disasm, roles HYPOTHESIS]
+
+- `0x00232618` (live-verified per-frame rod render entry) is SMALL: builds a rect in
+  12.4 fixed point (the `<<4` shifts) into uncached buffer `0x20297220` (+0x20..0x2c),
+  `jal 0x00230518`, then tail-jumps `j 0x0022FD00` with a0 = the buffer.
+- `0x0022FD00` = the packet-flow spine: `F720(sp)` → `FB28(sp,buf)` → `F7F8(sp)` →
+  `F720(sp)` → `FBE8(sp,buf)` → `F7F8(sp)`. [HYPOTHESIS] begin → append → submit, ×2.
+  The old "FUN_0022F720 is browser icon-selection logic" decompile is almost certainly
+  another WRONG-BOUNDARY artifact — here it initializes a packet context on the stack.
+- Helpers at `0x0022fd58+`: write a GIF-tag-shaped 0x4C word, `lq/sq` copy 16-byte
+  templates from `0x00296dd0/0x00296de0`, and maintain a linked list via `(a0)`/`+0x14`
+  — a **DMA-chain builder**. This family (0x22F720/0x22FB28/0x22FBE8/0x22F7F8 +
+  0x22fd58 helpers) is where the vertex→GS-packet emit lives. SP1 decompiles it from
+  live RAM/native disasm, NOT from the stale Ghidra DB.
+- `0x0026753c` ("fails to decompile / halt_unimplemented") is [FALSIFIED]: it is a
+  plain 128-bit `memcpy(dst, src, n)` (lq/sq loop). `FUN_00230518`'s chain therefore
+  ends in a staging-buffer copy (dst 0x01860200), not a GS kick.
+
 ## Rod arrays — NOT captured yet
 
 0x00375250 read all-zero: the crystal-clock screen was not active at capture time.
