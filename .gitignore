@@ -27,3 +27,6 @@ tools/gsdump/clock_prims.json
 docs/clock_patent/pages-to-jpg/
 
 re/
+
+# Gate cache (regenerable ref/ours .rgba frames)
+tools/gate/.cache/

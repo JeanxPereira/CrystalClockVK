@@ -8,6 +8,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync, statSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { createHash } from "node:crypto";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const GATE_DIR = path.join(ROOT, "tools", "gate");
@@ -31,6 +32,10 @@ function pngSize(buf) {
 }
 
 function runApp(gsPath, outRgbaPath) {
+  // Remove any stale output before invoking the app so a crashed render can
+  // never be masked by a leftover file from a previous (good) run.
+  rmSync(outRgbaPath, { force: true });
+
   // GsRenderer logs DISPFB (and everything else diagnostic) to stderr; stdout
   // carries only the scene-load summary. Capture both and search either.
   const result = spawnSync(APP_EXE, [gsPath, "--dump-rgba", outRgbaPath], {
@@ -38,10 +43,21 @@ function runApp(gsPath, outRgbaPath) {
     encoding: "utf8",
   });
   if (result.error) throw result.error;
+  if (result.status !== 0) {
+    throw new Error(`app exited with status ${result.status} for ${gsPath}`);
+  }
+  if (!existsSync(outRgbaPath) || statSync(outRgbaPath).size === 0) {
+    throw new Error(`app produced no (or empty) output for ${gsPath}`);
+  }
   const combined = `${result.stdout || ""}\n${result.stderr || ""}`;
   const m = combined.match(/DISPFB fbp=(\d+)/);
   if (!m) throw new Error(`could not find DISPFB fbp= in app output for ${gsPath}`);
   return parseInt(m[1], 10);
+}
+
+function fileHashPrefix(filePath) {
+  const buf = readFileSync(filePath);
+  return createHash("sha256").update(buf).digest("hex").slice(0, 16);
 }
 
 // Extract the native-resolution GSRunner reference frame for a dump (cached
@@ -116,17 +132,22 @@ function main() {
       continue;
     }
 
-    const size = statSync(cfg.gs).size;
-    const cacheKey = `${name}_${size}`;
-    const oursPath = path.join(CACHE_DIR, `${name}_ours.rgba`);
+    try {
+      const hashPrefix = fileHashPrefix(cfg.gs);
+      const cacheKey = `${name}_${hashPrefix}`;
+      const oursPath = path.join(CACHE_DIR, `${name}_ours.rgba`);
 
-    const fbp = runApp(cfg.gs, oursPath);
-    const refPath = extractRef(name, cfg.gs, fbp, cacheKey);
-    const pct = pdiffPct(oursPath, refPath);
+      const fbp = runApp(cfg.gs, oursPath);
+      const refPath = extractRef(name, cfg.gs, fbp, cacheKey);
+      const pct = pdiffPct(oursPath, refPath);
 
-    const pass = pct <= cfg.maxPct + toleranceAbs;
-    rows.push({ name, pct, maxPct: cfg.maxPct, pass, note: "" });
-    if (!pass) failures.push(name);
+      const pass = pct <= cfg.maxPct + toleranceAbs;
+      rows.push({ name, pct, maxPct: cfg.maxPct, pass, note: "" });
+      if (!pass) failures.push(name);
+    } catch (err) {
+      rows.push({ name, pct: NaN, maxPct: cfg.maxPct, pass: false, note: err.message });
+      failures.push(name);
+    }
   }
 
   const header = `${"dump".padEnd(15)} ${"pct".padStart(7)} ${"maxPct".padStart(8)} ${"tol".padStart(6)}  result`;
