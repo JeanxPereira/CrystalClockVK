@@ -136,7 +136,7 @@ int main(int argc, char** argv) {
 
     if (argc < 3) {
         std::printf("usage: eerun <image.bin> <hex-addr> [a0 a1 a2 a3] "
-                    "[--dump-stores out.bin] [--trace]\n"
+                    "[--dump-stores out.bin] [--trace] [--ready-at addr=val]...\n"
                     "       eerun --decode <stores.bin> --json <out.json> [--base <image.bin>]\n");
         return 2;
     }
@@ -149,6 +149,22 @@ int main(int argc, char** argv) {
     for (int i = 3; i < argc; i++) {
         if (!std::strcmp(argv[i], "--dump-stores")) dumpPath = argv[++i];
         else if (!std::strcmp(argv[i], "--trace")) trace = true;
+        else if (!std::strcmp(argv[i], "--ready-at") && i + 1 < argc) {
+            // Phase 2 spike 2: stub a single polled memory field so a
+            // hardware/interrupt-driven wait loop this bare interpreter
+            // cannot otherwise satisfy reads as "ready". "addr=val", both
+            // hex, no leading "0x" required (matches the other CLI args'
+            // convention below).
+            const std::string kv = argv[++i];
+            const size_t eq = kv.find('=');
+            if (eq == std::string::npos) {
+                std::printf("bad --ready-at '%s' (expected addr=val)\n", kv.c_str());
+                return 2;
+            }
+            const uint32_t addr = std::strtoul(kv.substr(0, eq).c_str(), nullptr, 16);
+            const uint32_t val = std::strtoul(kv.substr(eq + 1).c_str(), nullptr, 16);
+            mem.setReadOverride(addr, val);
+        }
         else if (ai < 4) args[ai++] = std::strtoull(argv[i], nullptr, 16);
     }
     mem.storeLogEnabled = true;

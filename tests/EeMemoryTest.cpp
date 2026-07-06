@@ -89,6 +89,28 @@ int main() {
         assert(spr.storeLog.size() == storeLogBeforeStraddle);
     }
 
+    // Read overrides: opt-in stub for hardware/interrupt-driven polling
+    // fields (Phase 2 spike 2, sp1-interpreter-runs.md). Default (no
+    // override set) must be a no-op; setting one must force reads of exactly
+    // that address while leaving neighboring addresses and the write path
+    // untouched; clearing must restore normal behavior.
+    {
+        EeMemory ov;
+        ov.write32(0x00200000u, 0x11111111u);
+        ov.write32(0x00200004u, 0x22222222u);
+        assert(ov.read32(0x00200000u) == 0x11111111u);  // no override yet: real memory
+
+        ov.setReadOverride(0x00200000u, 0u);
+        assert(ov.read32(0x00200000u) == 0u);            // overridden address forced
+        assert(ov.read32(0x00200004u) == 0x22222222u);    // neighbor unaffected
+        ov.write32(0x00200000u, 0x99999999u);             // writes still land normally
+        assert(ov.read32(0x00200000u) == 0u);             // ...but reads stay forced
+
+        ov.clearReadOverrides();
+        assert(ov.read32(0x00200000u) == 0x99999999u);    // override gone, real value seen
+        assert(ov.read32(0x00200004u) == 0x22222222u);
+    }
+
     // real image (skip if absent) -- must come after all image-independent
     // coverage above so that coverage always runs, even without the image.
     EeMemory img;

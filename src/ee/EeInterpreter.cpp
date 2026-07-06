@@ -343,6 +343,76 @@ void EeInterpreter::executeOne(uint32_t word, uint32_t atPc) {
         m_mem.write128(a, words);
         return;
     }
+    case 0x1C: {  // MMI (EE multimedia extension): 128-bit rd = f(rs, rt).
+        // sub-group selected by fn (word&0x3F), specific op within the
+        // group selected by sa (word>>6 & 0x1F) -- table layout per
+        // pcsx2/R5900OpcodeTables.cpp's tbl_MMI0..3 (reference for the
+        // opcode encoding only, semantics cross-checked against
+        // pcsx2/MMI.cpp's interpreter reference implementation). Only the
+        // specific ops this project's clock code has actually hit are
+        // implemented; anything else throws rather than guessing.
+        if (fn == 0x08 && sa == 0x09) {  // MMI0 idx9: PSUBB (16 signed byte lanes)
+            if (rd == 0) return;
+            for (int i = 0; i < 8; i++) {
+                const uint8_t a = uint8_t(gpr[rs].lo >> (i * 8));
+                const uint8_t b = uint8_t(gpr[rt].lo >> (i * 8));
+                gpr[rd].lo &= ~(uint64_t(0xFFu) << (i * 8));
+                gpr[rd].lo |= uint64_t(uint8_t(a - b)) << (i * 8);
+            }
+            for (int i = 0; i < 8; i++) {
+                const uint8_t a = uint8_t(gpr[rs].hi >> (i * 8));
+                const uint8_t b = uint8_t(gpr[rt].hi >> (i * 8));
+                gpr[rd].hi &= ~(uint64_t(0xFFu) << (i * 8));
+                gpr[rd].hi |= uint64_t(uint8_t(a - b)) << (i * 8);
+            }
+            return;
+        }
+        if (fn == 0x09 && sa == 0x0E) {  // MMI2 idx14: PCPYLD (rd.hi=rs.lo, rd.lo=rt.lo)
+            if (rd == 0) return;
+            gpr[rd].hi = gpr[rs].lo;
+            gpr[rd].lo = gpr[rt].lo;
+            return;
+        }
+        if (fn == 0x09 && sa == 0x12) {  // MMI2 idx18: PAND (128-bit and)
+            if (rd == 0) return;
+            gpr[rd].lo = gpr[rs].lo & gpr[rt].lo;
+            gpr[rd].hi = gpr[rs].hi & gpr[rt].hi;
+            return;
+        }
+        if (fn == 0x09 && sa == 0x13) {  // MMI2 idx19: PXOR (128-bit xor)
+            if (rd == 0) return;
+            gpr[rd].lo = gpr[rs].lo ^ gpr[rt].lo;
+            gpr[rd].hi = gpr[rs].hi ^ gpr[rt].hi;
+            return;
+        }
+        if (fn == 0x29 && sa == 0x13) {  // MMI3 idx19: PNOR (128-bit nor)
+            if (rd == 0) return;
+            gpr[rd].lo = ~(gpr[rs].lo | gpr[rt].lo);
+            gpr[rd].hi = ~(gpr[rs].hi | gpr[rt].hi);
+            return;
+        }
+        if (fn == 0x29 && sa == 0x0E) {  // MMI3 idx14: PCPYUD (rd.lo=rs.hi, rd.hi=rt.hi)
+            if (rd == 0) return;
+            gpr[rd].lo = gpr[rs].hi;
+            gpr[rd].hi = gpr[rt].hi;
+            return;
+        }
+        if (fn == 0x29 && sa == 0x1B) {  // MMI3 idx27: PCPYH (replicate rt's low
+            // halfword of each 64-bit half across all 4 halfword lanes of that half)
+            if (rd == 0) return;
+            const uint16_t loH = uint16_t(gpr[rt].lo);
+            const uint16_t hiH = uint16_t(gpr[rt].hi);
+            uint64_t lo = 0, hiv = 0;
+            for (int i = 0; i < 4; i++) {
+                lo |= uint64_t(loH) << (i * 16);
+                hiv |= uint64_t(hiH) << (i * 16);
+            }
+            gpr[rd].lo = lo;
+            gpr[rd].hi = hiv;
+            return;
+        }
+        throw EeError{atPc, word, "unimplemented MMI op"};
+    }
     case 0x20:  // lb
         gpr[rt].lo = uint64_t(int64_t(int8_t(uint8_t(m_mem.read32(addr & ~3u) >> ((addr & 3u) * 8)))));
         gpr[rt].hi = 0;

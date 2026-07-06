@@ -14,6 +14,7 @@ bool EeMemory::loadImage(const std::string& path) {
 }
 
 uint32_t EeMemory::read32(uint32_t vaddr) const {
+    if (auto it = m_readOverrides.find(vaddr); it != m_readOverrides.end()) return it->second;
     if (isSpr(vaddr)) {
         const uint32_t off = vaddr - kSprBase;
         if (uint64_t(off) + 4 > kSprSize) { if (onMmio) onMmio({translate(vaddr), 0, 4, false}); return 0; }

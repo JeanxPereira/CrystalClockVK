@@ -223,6 +223,84 @@ int main() {
     assert(cpu13.gpr[3].lo == 0xABCDu);  // v1 picked up cop0[12] via the roundtrip
     assert(cpu13.cop0[12] == 0xABCDu);
 
+    // 14-19) MMI (EE multimedia extension, op=0x1C) 128-bit ops -- Phase 2
+    // spike 2's new wall past the Deci2 sync-wait stub (pc=0x0026C66C in the
+    // live capture, a memset-style routine using these to fill a buffer).
+    // All use rs=$t2(10), rt=$t1(9), rd=$t0(8); operands chosen so every
+    // byte/halfword lane is distinct, which would catch a lane-order or
+    // hi/lo-swap bug that all-same-byte operands would hide.
+    auto setRsRt = [](EeInterpreter& c) {
+        c.gpr[10].lo = 0x0807060504030201ull; c.gpr[10].hi = 0x1817161514131211ull;  // rs=t2
+        c.gpr[9].lo = 0x0101010101010101ull; c.gpr[9].hi = 0x0202020202020202ull;    // rt=t1
+    };
+
+    // 14) PSUBB t0, t2, t1 (MMI0 idx9: 16 signed byte lanes, rd=rs-rt)
+    poke(mem, 0xE000, {0x71494248u, 0x03E00008u, 0u});
+    EeInterpreter cpu14(mem);
+    setRsRt(cpu14);
+    cpu14.call(0xE000);
+    assert(cpu14.gpr[8].lo == 0x0706050403020100ull);
+    assert(cpu14.gpr[8].hi == 0x161514131211100Full);
+
+    // 15) PCPYLD t0, t2, t1 (MMI2 idx14: rd.hi=rs.lo, rd.lo=rt.lo)
+    poke(mem, 0xE100, {0x71494389u, 0x03E00008u, 0u});
+    EeInterpreter cpu15(mem);
+    setRsRt(cpu15);
+    cpu15.call(0xE100);
+    assert(cpu15.gpr[8].lo == 0x0101010101010101ull);
+    assert(cpu15.gpr[8].hi == 0x0807060504030201ull);
+
+    // 15b) PAND t0, t2, t1 (MMI2 idx18: 128-bit and)
+    poke(mem, 0xE150, {0x71494489u, 0x03E00008u, 0u});
+    EeInterpreter cpu15b(mem);
+    setRsRt(cpu15b);
+    cpu15b.call(0xE150);
+    assert(cpu15b.gpr[8].lo == 0x0001000100010001ull);
+    assert(cpu15b.gpr[8].hi == 0x0002020000020200ull);
+
+    // 16) PXOR t0, t2, t1 (MMI2 idx19: 128-bit xor)
+    poke(mem, 0xE200, {0x714944C9u, 0x03E00008u, 0u});
+    EeInterpreter cpu16(mem);
+    setRsRt(cpu16);
+    cpu16.call(0xE200);
+    assert(cpu16.gpr[8].lo == 0x0906070405020300ull);
+    assert(cpu16.gpr[8].hi == 0x1A15141716111013ull);
+
+    // 17) PNOR t0, t2, t1 (MMI3 idx19: 128-bit nor)
+    poke(mem, 0xE300, {0x714944E9u, 0x03E00008u, 0u});
+    EeInterpreter cpu17(mem);
+    setRsRt(cpu17);
+    cpu17.call(0xE300);
+    assert(cpu17.gpr[8].lo == 0xF6F8F8FAFAFCFCFEull);
+    assert(cpu17.gpr[8].hi == 0xE5E8E9E8E9ECEDECull);
+
+    // 18) PCPYUD t0, t2, t1 (MMI3 idx14: rd.lo=rs.hi, rd.hi=rt.hi)
+    poke(mem, 0xE400, {0x714943A9u, 0x03E00008u, 0u});
+    EeInterpreter cpu18(mem);
+    setRsRt(cpu18);
+    cpu18.call(0xE400);
+    assert(cpu18.gpr[8].lo == 0x1817161514131211ull);
+    assert(cpu18.gpr[8].hi == 0x0202020202020202ull);
+
+    // 19) PCPYH t0, t1 (MMI3 idx27: replicate rt's low halfword of each
+    //     64-bit half across all 4 halfword lanes of that half; rs unused)
+    poke(mem, 0xE500, {0x700946E9u, 0x03E00008u, 0u});
+    EeInterpreter cpu19(mem);
+    setRsRt(cpu19);
+    cpu19.call(0xE500);
+    assert(cpu19.gpr[8].lo == 0x0101010101010101ull);
+    assert(cpu19.gpr[8].hi == 0x0202020202020202ull);
+
+    // 20) unimplemented MMI op must still throw fast, not silently no-op
+    //     (MMI0 idx0 = PADDW, not implemented): funct=0x08, sa=0x00.
+    poke(mem, 0xE600, {0x71494008u});
+    EeInterpreter cpu20(mem);
+    bool mmiThrew = false;
+    try { cpu20.call(0xE600); } catch (const EeError& e) {
+        mmiThrew = (e.pc == 0xE600 && e.word == 0x71494008u);
+    }
+    assert(mmiThrew);
+
     std::printf("ee_interpreter: all assertions passed\n");
     return 0;
 }

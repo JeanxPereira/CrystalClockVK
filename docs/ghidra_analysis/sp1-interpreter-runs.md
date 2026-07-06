@@ -436,3 +436,23 @@ brief is **not yet answerable**; the wall is upstream of that call site.
    point may be the real per-frame driver — worth a quick Ghidra
    cross-reference check on who calls `0x00233928` and under what
    condition, before sinking more time into this exact path).
+
+## Phase 2 spike 2 — sync-stub mechanism built, not yet aimed (2026-07-06)
+
+[DUMP-MEASURED] Without a stub, 0x233928 spins forever in the Deci2 loop
+(eerun exit=124 / 90s timeout, 0 calls to 0x232618). Confirms the wall.
+
+[TOOL BUILT] Added `EeMemory::setReadOverride(vaddr,val)` + eerun `--ready-at
+addr=val` so a specific RAM address can be forced to read a chosen value —
+the legitimate way to short-circuit the interrupt-driven sync wait (we control
+timing; this is NOT full-system emulation, same class as no-op'ing the DMA
+kick). Also added MMI ops (PSUBB/PCPYLD/PAND/PXOR/PNOR, exact fn+sa encoding,
+fail-fast otherwise) that 0x233928 hits; all unit-tested (suite 17/17).
+
+[OPEN — next Phase 2 task] The mechanism is not yet AIMED: the concrete address
+of the polled field *(s1+0x1690+0xc) needs s1's origin, which was not traced.
+Loop waits for that field == 0. NEXT: trace where s1 is loaded before
+0x271980 (read live regs / disasm the prologue), compute the address, run
+`eerun ... 233928 --ready-at <addr>=0 --trace`, and REPORT honestly whether
+0x233928 then drives 0x232618 per-quad (and the real vdiff --subset count) or
+hits the next wall. Do this under the Phase 2 plan, not more ad-hoc spikes.

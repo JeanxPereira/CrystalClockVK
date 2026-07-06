@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -64,9 +65,22 @@ public:
     std::vector<StoreRecord> storeLog;               // every RAM store, in order
     bool storeLogEnabled = false;
 
+    // Minimal, opt-in intervention for hardware-driven polling loops this bare
+    // EE interpreter has no model for (no interrupt controller, no IOP/Deci2
+    // link). Keyed by EE *virtual* address, exactly as the load instruction
+    // presents it -- checked before translate()/SPR routing so it works
+    // uniformly regardless of which window the poll happens to use. Writes
+    // are completely unaffected: only reads of the overridden address are
+    // forced, so real game code can still store its "busy" flag normally --
+    // this just fakes the interrupt handler's clear, nothing else. Empty map
+    // (the default) is exactly zero behavior change from a plain EeMemory.
+    void setReadOverride(uint32_t vaddr, uint32_t value) { m_readOverrides[vaddr] = value; }
+    void clearReadOverrides() { m_readOverrides.clear(); }
+
 private:
     std::vector<uint8_t> m_ram;
     std::vector<uint8_t> m_spr;
+    std::map<uint32_t, uint32_t> m_readOverrides;
 };
 
 }  // namespace ps2ee
