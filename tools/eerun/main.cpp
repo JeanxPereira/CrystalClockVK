@@ -141,6 +141,13 @@ int runDriveRods(int argc, char** argv) {
     double ofxOverride = kOfxRaw;
     double ofyOverride = kOfyRaw;
     bool runTransformPass = false;
+    // $gp for gp-relative global loads. The transform core 0x002329F8 reads
+    // its intensity/fade constants via $gp (lwc1 fN, -0x7dXX($gp)) and a bare
+    // call() leaves $gp = 0, which silently reads garbage from low RAM (the
+    // earlier 0x22f720 cursor-init fallback was the same root cause).
+    // 0x002CFEF0 is the live-verified OSDSYS value (w2-rod-generation.md,
+    // read from pcsx2 DebugServer; the stale 0x002AF070 there is FALSIFIED).
+    uint32_t gpValue = 0x002CFEF0;
     for (int i = 3; i < argc; i++) {
         if (!std::strcmp(argv[i], "--json") && i + 1 < argc) jsonOut = argv[++i];
         else if (!std::strcmp(argv[i], "--staging-json") && i + 1 < argc) stagingJsonOut = argv[++i];
@@ -152,6 +159,8 @@ int runDriveRods(int argc, char** argv) {
             ofyOverride = std::strtod(argv[++i], nullptr);
         else if (!std::strcmp(argv[i], "--transform"))
             runTransformPass = true;
+        else if (!std::strcmp(argv[i], "--gp") && i + 1 < argc)
+            gpValue = std::strtoul(argv[++i], nullptr, 16);
     }
     if (imagePath.empty() || jsonOut.empty()) {
         std::printf("usage: eerun <image.bin> --drive-rods --json <out.json> "
@@ -163,6 +172,8 @@ int runDriveRods(int argc, char** argv) {
     if (!mem.loadImage(imagePath)) { std::printf("bad image\n"); return 2; }
     EeInterpreter cpu(mem);
     if (const char* ov = std::getenv("EERUN_MAX_INSTR")) cpu.maxInstructions = std::strtoull(ov, nullptr, 10);
+    cpu.gpr[28].lo = gpValue;  // $gp survives call() (callee-saved by MIPS ABI)
+    std::printf("drive-rods: gp=%08X\n", gpValue);
 
     const uint32_t kCtx = ctxOverride;             // per-frame context struct
     const uint32_t kCtxColor = kCtx + 0xA0;        // a1 for draw_crystal_rod (RGBA)
@@ -329,6 +340,87 @@ int runDriveRods(int argc, char** argv) {
     return 0;
 }
 
+// Phase 2 -- Visor dial render, "execute the whole driver" probe. The
+// hand-rolled per-rod pass driving above ([--transform]) proved the rod
+// array's position fields are PRE-transform and only the driver's own body
+// rewrites them per frame (its prologue calls 0x002335E8, a sceVu0MulMatrix/
+// ApplyMatrix position pass over the rod array, before any per-rod loop).
+// 0x00233F60 interpreted cleanly end-to-end in a bare generic run (no Deci2,
+// no opcode gaps), so this mode makes the call ABI-faithful instead: the real
+// dispatch stub 0x0022BCA8 does
+//     f13 = float(int32 @ obj+0x110); f12 = float @ obj+0xF4;
+//     a0 = obj+0x10 (ctx); a1 = obj+0x100; j 0x233F60
+// with obj = the scene-object node (0x003715C0 in the clock_viewer capture,
+// live-verified via the 0x00371200 list walk). Prints the rod-array screen
+// fields before/after so the "does the driver break the one-position
+// collapse?" question is answered directly from executed original code.
+int runDriveVisor(int argc, char** argv) {
+    std::string imagePath = argv[1];
+    uint32_t objAddr = 0x003715C0;
+    uint32_t gpValue = 0x002CFEF0;  // live-verified (w2-rod-generation.md)
+    // Default entry = the render driver via the stub ABI. --entry 22B928
+    // instead calls the object's WHOLE per-frame handler (update 0x2338D8 +
+    // mode dispatch + render), a0 = obj -- one level up the original chain.
+    uint32_t entry = 0x00233F60;
+    for (int i = 3; i < argc; i++) {
+        if (!std::strcmp(argv[i], "--obj") && i + 1 < argc)
+            objAddr = std::strtoul(argv[++i], nullptr, 16);
+        else if (!std::strcmp(argv[i], "--gp") && i + 1 < argc)
+            gpValue = std::strtoul(argv[++i], nullptr, 16);
+        else if (!std::strcmp(argv[i], "--entry") && i + 1 < argc)
+            entry = std::strtoul(argv[++i], nullptr, 16);
+    }
+    EeMemory mem;
+    if (!mem.loadImage(imagePath)) { std::printf("bad image\n"); return 2; }
+    EeInterpreter cpu(mem);
+    if (const char* ov = std::getenv("EERUN_MAX_INSTR")) cpu.maxInstructions = std::strtoull(ov, nullptr, 10);
+    cpu.gpr[28].lo = gpValue;
+
+    const uint32_t ctx = objAddr + 0x10;
+    const uint32_t a1 = objAddr + 0x100;
+    uint32_t f12Bits = mem.read32(objAddr + 0xF4);
+    const int32_t f13Int = static_cast<int32_t>(mem.read32(objAddr + 0x110));
+    float f12;
+    std::memcpy(&f12, &f12Bits, 4);
+    const float f13 = static_cast<float>(f13Int);
+    std::printf("drive-visor: obj=%08X ctx=%08X a1=%08X f12=%f f13=%f gp=%08X\n",
+                objAddr, ctx, a1, f12, f13, gpValue);
+
+    constexpr uint32_t kRodBase = 0x00375250;
+    constexpr uint32_t kRodStride = 0x160;
+    const uint32_t rodCount = mem.read32(ctx + 4);
+    auto dumpRods = [&](const char* tag) {
+        std::printf("drive-visor: rod fields %s (slot: +0x10 +0x14 | +0x40 | skip+0x150)\n", tag);
+        for (uint32_t i = 0; i < rodCount && i < 16; i++) {
+            const uint32_t rp = kRodBase + i * kRodStride;
+            uint32_t xb = mem.read32(rp + 0x10), yb = mem.read32(rp + 0x14),
+                     sb = mem.read32(rp + 0x40), skip = mem.read32(rp + 0x150);
+            float x, y, s;
+            std::memcpy(&x, &xb, 4); std::memcpy(&y, &yb, 4); std::memcpy(&s, &sb, 4);
+            std::printf("  rod %2u: %12.4f %12.4f | %10.6f | %u\n", i, x, y, s, skip);
+        }
+    };
+    dumpRods("BEFORE");
+
+    cpu.fpr[12] = f12;
+    cpu.fpr[13] = f13;
+    try {
+        if (entry == 0x00233F60)
+            cpu.call(entry, ctx, a1);
+        else
+            cpu.call(entry, objAddr);  // whole-handler form: a0 = obj
+    } catch (const EeError& e) {
+        std::printf("drive-visor: EeError pc=%08X word=%08X: %s\n", e.pc, e.word, e.what.c_str());
+        return 1;
+    }
+    std::printf("drive-visor: driver completed, %llu instructions\n",
+                static_cast<unsigned long long>(cpu.instructionsRetired));
+    dumpRods("AFTER");
+    const uint32_t cursor = mem.read32(0x00375230);
+    std::printf("drive-visor: packet cursor now %08X\n", cursor);
+    return 0;
+}
+
 int runDecode(int argc, char** argv) {
     std::string storesPath, jsonOut, basePath;
     for (int i = 2; i < argc; i++) {
@@ -430,6 +522,9 @@ int main(int argc, char** argv) {
 
     if (argc >= 3 && !std::strcmp(argv[2], "--drive-rods"))
         return runDriveRods(argc, argv);
+
+    if (argc >= 3 && !std::strcmp(argv[2], "--drive-visor"))
+        return runDriveVisor(argc, argv);
 
     if (argc < 3) {
         std::printf("usage: eerun <image.bin> <hex-addr> [a0 a1 a2 a3] "

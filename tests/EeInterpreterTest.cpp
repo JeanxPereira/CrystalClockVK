@@ -518,6 +518,57 @@ int main() {
     cpu36b.call(0xF800);
     assert(cpu36b.vf[10][0] == 1.0f);
 
+    // 37) BLEZL (op 0x16, branch-likely: the delay slot executes ONLY when
+    //     the branch is taken -- Phase 2 Visor: the whole-handler probe
+    //     0x22B928 hits word 0x58400072 at pc=00235994). Layout:
+    //       F900: blezl v0, +2   (target F90C)
+    //       F904: addiu v1,v1,1  (delay slot)
+    //       F908: addiu v1,v1,10 (fallthrough only)
+    //       F90C: jr ra ; nop
+    //     v0<=0 (taken): slot runs then jump -> v1 = 1.
+    //     v0>0 (not taken): slot SKIPPED -> v1 = 10. A plain-blez mistake
+    //     executes the slot both ways (11 on fallthrough).
+    poke(mem, 0xF900, {0x58400002u, 0x24630001u, 0x2463000Au, 0x03E00008u, 0u});
+    EeInterpreter cpu37(mem);
+    cpu37.gpr[2].lo = uint64_t(-1); cpu37.gpr[2].hi = ~0ull;  // v0 = -1: taken
+    cpu37.call(0xF900);
+    assert(cpu37.gpr[3].lo == 1);
+    EeInterpreter cpu37b(mem);
+    cpu37b.gpr[2].lo = 1;  // v0 = 1: not taken
+    cpu37b.call(0xF900);
+    assert(cpu37b.gpr[3].lo == 10);
+
+    // 38) BGTZL (op 0x17): same layout, inverted condition. Word 0x5C400002.
+    poke(mem, 0xFA00, {0x5C400002u, 0x24630001u, 0x2463000Au, 0x03E00008u, 0u});
+    EeInterpreter cpu38(mem);
+    cpu38.gpr[2].lo = 5;  // taken
+    cpu38.call(0xFA00);
+    assert(cpu38.gpr[3].lo == 1);
+    EeInterpreter cpu38b(mem);
+    cpu38b.gpr[2].lo = 0;  // not taken (strictly greater)
+    cpu38b.call(0xFA00);
+    assert(cpu38b.gpr[3].lo == 10);
+
+    // 39) BLTZL / BGEZL (REGIMM rt=2/3): words 0x04420002 / 0x04430002.
+    poke(mem, 0xFB00, {0x04420002u, 0x24630001u, 0x2463000Au, 0x03E00008u, 0u});
+    EeInterpreter cpu39(mem);
+    cpu39.gpr[2].lo = uint64_t(-3); cpu39.gpr[2].hi = ~0ull;  // bltzl taken
+    cpu39.call(0xFB00);
+    assert(cpu39.gpr[3].lo == 1);
+    EeInterpreter cpu39b(mem);
+    cpu39b.gpr[2].lo = 0;  // bltzl not taken (0 is not < 0)
+    cpu39b.call(0xFB00);
+    assert(cpu39b.gpr[3].lo == 10);
+    poke(mem, 0xFC00, {0x04430002u, 0x24630001u, 0x2463000Au, 0x03E00008u, 0u});
+    EeInterpreter cpu39c(mem);
+    cpu39c.gpr[2].lo = 0;  // bgezl taken (0 >= 0)
+    cpu39c.call(0xFC00);
+    assert(cpu39c.gpr[3].lo == 1);
+    EeInterpreter cpu39d(mem);
+    cpu39d.gpr[2].lo = uint64_t(-1); cpu39d.gpr[2].hi = ~0ull;  // not taken
+    cpu39d.call(0xFC00);
+    assert(cpu39d.gpr[3].lo == 10);
+
     std::printf("ee_interpreter: all assertions passed\n");
     return 0;
 }

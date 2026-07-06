@@ -83,16 +83,18 @@ void EeInterpreter::step() {
         likely = (op == 0x14 || op == 0x15);
         taken = res;
         target = curPc + 4 + brOffset;
-    } else if (op == 6 || op == 7) {  // blez/bgtz
+    } else if (op == 6 || op == 7 || op == 0x16 || op == 0x17) {  // blez/bgtz/blezl/bgtzl
         const int64_t v = s64(gpr[rs].lo);
-        const bool res = (op == 6) ? (v <= 0) : (v > 0);
+        const bool res = (op == 6 || op == 0x16) ? (v <= 0) : (v > 0);
         isBranch = true;
+        likely = (op == 0x16 || op == 0x17);
         taken = res;
         target = curPc + 4 + brOffset;
-    } else if (op == 1 && (rt == 0 || rt == 1)) {  // bltz/bgez
+    } else if (op == 1 && rt <= 3) {  // bltz/bgez/bltzl/bgezl
         const int64_t v = s64(gpr[rs].lo);
-        const bool res = (rt == 0) ? (v < 0) : (v >= 0);
+        const bool res = (rt == 0 || rt == 2) ? (v < 0) : (v >= 0);
         isBranch = true;
+        likely = (rt == 2 || rt == 3);
         taken = res;
         target = curPc + 4 + brOffset;
     } else if (op == 0x11 && rs == 8 && (rt == 0 || rt == 1)) {  // bc1f/bc1t
