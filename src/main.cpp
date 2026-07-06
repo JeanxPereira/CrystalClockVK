@@ -11,6 +11,8 @@
 #include "app/TimeSync.hpp"
 #include "app/GsScene.hpp"
 #include "app/GsRenderer.hpp"
+#include "clock/RodField.hpp"
+#include "clock/ClockRenderer.hpp"
 #include <glm/gtc/matrix_transform.hpp>
 #include <chrono>
 #include <memory>
@@ -116,12 +118,14 @@ int main(int argc, char* argv[]) {
         bool dumpFullVram = false;
         int stopAtPrim = -1;
         float spinDeg = 0.0f;  // feat/clock-crystal-animated: rotate the dial group
+        bool clock3d = false;  // live 3D spinning prism dial (real geometry, not dump)
         for (int a = 1; a < argc; a++) {
             std::string arg = argv[a];
             if (arg == "--dump-rgba" && a + 1 < argc) dumpRgbaPath = argv[++a];
             else if (arg == "--dump-vram" && a + 1 < argc) { dumpRgbaPath = argv[++a]; dumpFullVram = true; }
             else if (arg == "--stop-at" && a + 1 < argc) stopAtPrim = std::atoi(argv[++a]);
             else if (arg == "--spin" && a + 1 < argc) spinDeg = static_cast<float>(std::atof(argv[++a]));
+            else if (arg == "--clock3d") clock3d = true;
             else if (gsArg.empty()) gsArg = arg;
         }
 
@@ -159,6 +163,18 @@ int main(int argc, char* argv[]) {
             VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
 
         transitionDepthImage(vulkan, frames[0], depthImage);
+
+        // Live 3D spinning prism dial (feat/clock-crystal-animated): real 3D
+        // box-prism rods rotated in 3D each frame, depth-tested. No dump.
+        std::unique_ptr<ClockRenderer> clockRenderer;
+        if (clock3d) {
+            clockRenderer = std::make_unique<ClockRenderer>(
+                vulkan, resources, swapchain.imageFormat(), swapchain.extent(),
+                VK_FORMAT_D32_SFLOAT);
+            ps2clock::RodField dial = ps2clock::RodField::Generate();
+            clockRenderer->setDialMesh(dial.buildPrismMesh());
+            clockRenderer->setClearColor(0.04f, 0.03f, 0.09f);  // deep violet, like the tunnel
+        }
 
         uint32_t frameNumber = 0;
         bool resizeRequested = false;
@@ -237,7 +253,21 @@ int main(int argc, char* argv[]) {
             orchestrator.updateUBO(params);
 
             recorder.beginDebugLabel("Frame", 0.2f, 0.4f, 1.0f);
-            if (gsRenderer.ready()) {
+            if (clock3d && clockRenderer) {
+                // Real 3D: box-prism rods rotated in 3D (tilt to reveal depth +
+                // dial spin over time), depth-tested. MVP = proj * view * model.
+                const float t = params.totalTime;
+                glm::mat4 proj = glm::perspective(glm::radians(45.0f), params.aspect, 0.1f, 100.0f);
+                proj[1][1] *= -1.0f;  // Vulkan clip is Y-down
+                glm::mat4 view = glm::lookAt(glm::vec3(0, 0, 18), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
+                glm::mat4 model = glm::rotate(glm::mat4(1.0f), glm::radians(28.0f), glm::vec3(1, 0, 0))
+                                * glm::rotate(glm::mat4(1.0f), t * 0.6f, glm::vec3(0, 0, 1));
+                glm::mat4 mvp = proj * view * model;
+
+                recorder.transitionImage(mainColorImage.image,
+                    VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+                clockRenderer->record(recorder, mainColorImage.imageView, mvp, depthImage.imageView);
+            } else if (gsRenderer.ready()) {
                 // GS multi-target replay renders into the framebuffers and blits the
                 // display buffer into mainColorImage; UI overlays it (LOAD) afterward.
                 recorder.transitionImage(mainColorImage.image,
@@ -337,6 +367,22 @@ int main(int argc, char* argv[]) {
             }
 
             frameNumber++;
+
+            // clock3d frame capture: read back mainColorImage (COLOR_ATTACHMENT
+            // after the dial pass) so the live 3D render can be eyeballed offline.
+            if (!dumpRgbaPath.empty() && clock3d) {
+                vkDeviceWaitIdle(vulkan.device());
+                const std::vector<uint8_t> px = resources.downloadImage(
+                    mainColorImage, {0, 0}, swapchain.extent(),
+                    VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+                std::ofstream out(dumpRgbaPath, std::ios::binary);
+                out.write(reinterpret_cast<const char*>(px.data()),
+                          static_cast<std::streamsize>(px.size()));
+                std::cerr << "dumped clock3d " << swapchain.extent().width << "x"
+                          << swapchain.extent().height << " -> " << dumpRgbaPath
+                          << " (" << px.size() << " bytes)\n";
+                break;
+            }
 
             // Pixel-diff gate: after one rendered frame, dump FBP0 and quit.
             if (!dumpRgbaPath.empty() && gsRenderer.ready()) {

@@ -6,8 +6,9 @@
 #include <stdexcept>
 
 ClockRenderer::ClockRenderer(const VulkanContext& ctx, ResourceManager& resources,
-                             VkFormat colorFormat, VkExtent2D extent)
-    : m_ctx(ctx), m_resources(resources), m_extent(extent), m_colorFormat(colorFormat) {
+                             VkFormat colorFormat, VkExtent2D extent, VkFormat depthFormat)
+    : m_ctx(ctx), m_resources(resources), m_extent(extent), m_colorFormat(colorFormat),
+      m_depthFormat(depthFormat) {
     VkPushConstantRange pc{};
     pc.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
     pc.offset = 0;
@@ -37,18 +38,20 @@ ClockRenderer::ClockRenderer(const VulkanContext& ctx, ResourceManager& resource
     blendState.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
                                 VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
 
+    const bool useDepth = (m_depthFormat != VK_FORMAT_UNDEFINED);
     PipelineBuilder builder;
-    m_pipeline = builder
+    builder
         .setShaders(vert, frag)
         .setVertexInput({bind}, attrs)
         .setTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
         .setCullMode(VK_CULL_MODE_NONE)
         .setPolygonMode(VK_POLYGON_MODE_FILL)
-        .setDepthTest(false, false)
+        .setDepthTest(useDepth, useDepth)
         .setBlendState(blendState)
         .setColorFormat(colorFormat)
-        .setPipelineLayout(m_layout)
-        .build(m_ctx.device());
+        .setPipelineLayout(m_layout);
+    if (useDepth) builder.setDepthFormat(m_depthFormat);
+    m_pipeline = builder.build(m_ctx.device());
 
     vkDestroyShaderModule(m_ctx.device(), vert, nullptr);
     vkDestroyShaderModule(m_ctx.device(), frag, nullptr);
@@ -84,12 +87,16 @@ void ClockRenderer::setDialMesh(const ps2clock::FlatMesh& mesh) {
     m_resources.uploadToBuffer(m_ibo, mesh.indices.data(), iSize);
 }
 
-void ClockRenderer::record(PassRecorder& recorder, VkImageView colorView, const ps2clock::Mat4& mvp) {
+void ClockRenderer::record(PassRecorder& recorder, VkImageView colorView, const ps2clock::Mat4& mvp,
+                           VkImageView depthView) {
     VkClearValue clear{};
     clear.color = {{m_clear[0], m_clear[1], m_clear[2], 1.0f}};
 
     recorder.beginDebugLabel("ClockRenderer::rods");
-    recorder.beginRendering(colorView, m_extent, &clear);
+    if (depthView != VK_NULL_HANDLE)
+        recorder.beginRendering(colorView, depthView, m_extent, &clear);
+    else
+        recorder.beginRendering(colorView, m_extent, &clear);
     recorder.setViewportScissor(m_extent);
     recorder.bindPipeline(m_pipeline);
     recorder.pushConstants(m_layout, VK_SHADER_STAGE_VERTEX_BIT, &mvp, sizeof(ps2clock::Mat4));

@@ -12,7 +12,8 @@
 class ClockRenderer {
 public:
     ClockRenderer(const VulkanContext& ctx, ResourceManager& resources,
-                  VkFormat colorFormat, VkExtent2D extent);
+                  VkFormat colorFormat, VkExtent2D extent,
+                  VkFormat depthFormat = VK_FORMAT_UNDEFINED);
     ~ClockRenderer();
 
     ClockRenderer(const ClockRenderer&) = delete;
@@ -28,8 +29,11 @@ public:
     // Background clear colour for record() (default black).
     void setClearColor(float r, float g, float b) { m_clear[0]=r; m_clear[1]=g; m_clear[2]=b; }
 
-    // Record the flat vertex-color draw into the given color target.
-    void record(PassRecorder& recorder, VkImageView colorView, const ps2clock::Mat4& mvp);
+    // Record the flat vertex-color draw into the given color target. Pass a
+    // depthView (matching the depthFormat given to the ctor) for correct 3D
+    // occlusion when the dial is rotated; VK_NULL_HANDLE = no depth (2D).
+    void record(PassRecorder& recorder, VkImageView colorView, const ps2clock::Mat4& mvp,
+                VkImageView depthView = VK_NULL_HANDLE);
 
 private:
     const VulkanContext& m_ctx;
@@ -39,6 +43,7 @@ private:
     VkPipelineLayout m_layout{VK_NULL_HANDLE};
     VkPipeline m_pipeline{VK_NULL_HANDLE};       // flat (2D dial)
     VkFormat m_colorFormat{};
+    VkFormat m_depthFormat{VK_FORMAT_UNDEFINED};
 
     AllocatedBuffer m_vbo{};
     AllocatedBuffer m_ibo{};

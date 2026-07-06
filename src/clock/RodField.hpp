@@ -42,6 +42,12 @@ public:
     // geometry for tray-icon dialface rendering.
     FlatMesh buildFlatMesh() const;
 
+    // Solid 3D box-prism per rod (radial bar with real ±Z depth = params.rodDepth):
+    // 8 corners, 12 triangles, per-FACE shading (front bright, sides dimmer) so the
+    // prism reads as a solid crystal bar when the dial is rotated in 3D -- not a flat
+    // quad that shears like paper under a 2D spin. Crystal-blue tint.
+    FlatMesh buildPrismMesh() const;
+
     // Flat mesh driven by the clock state: the lit (hour) rod is highlighted in
     // the AM/PM colour (AM blue, PM red), filled `state.fill` of the way out
     // from the inner end; the other 11 rods are dim. The lit rod's dial index
