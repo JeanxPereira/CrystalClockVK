@@ -73,6 +73,16 @@ int runDriveRods(int argc, char** argv) {
     constexpr uint32_t kPktCtx = 0x00375230;       // GS-packet cursor/base struct
     constexpr uint32_t kInitFn = 0x0022F720;       // packet-cursor (re)init
     constexpr uint32_t kDrawFn = 0x00232E38;       // draw_crystal_rod (leaf emitter)
+    // Task 1 (phase2 discovery, task-1-report.md): the batch-start snapshot
+    // draw_crystal_rod's own call site never performs, but the finalize step
+    // (0x0022F7F8, reached via the 0x00235350 tail-jump stub) requires --
+    // it reads *(structPtr+0x14) as "batch start" to compute the qword count
+    // for the placeholder GIFtag header word it patches in place. Sibling
+    // emitter 0x00232F80 performs this snapshot immediately after its own
+    // 0x22F720 init call; draw_crystal_rod's call chain never does, and the
+    // live capture confirms +0x14 is genuinely zero pre-snapshot.
+    constexpr uint32_t kPktBatchStartOff = 0x14;
+    constexpr uint32_t kFinalizeFn = 0x00235350;   // tail-jump stub -> 0x0022F7F8(a0=kPktCtx)
 
     // One-time init: point the packet cursor at fresh SPR, per the contract.
     cpu.call(kInitFn, kPktCtx);
@@ -94,6 +104,14 @@ int runDriveRods(int argc, char** argv) {
                 usedFallback ? "FELL BACK (poked fixed values)" : "via 0x22f720 (sane)",
                 cursorStart, sprBase);
 
+    // NEW precondition (Task 2, per Task 1's decision): snapshot the
+    // batch-start pointer that 0x0022F7F8's finalize reads from +0x14.
+    // draw_crystal_rod never sets this; the sibling emitter 0x00232F80 does,
+    // right after its own init call -- mirrored here at the same point.
+    mem.write32(kPktCtx + kPktBatchStartOff, mem.read32(kPktCtx));
+    std::printf("drive-rods: batch-start snapshot +0x14 = %08X\n",
+                mem.read32(kPktCtx + kPktBatchStartOff));
+
     const uint32_t rodCount = mem.read32(kCtx + 4);
     std::printf("drive-rods: ctx=%08X rodCount(ctx+4)=%u\n", kCtx, rodCount);
 
@@ -114,10 +132,34 @@ int runDriveRods(int argc, char** argv) {
         cpu.fpr[13] = jy;
         cpu.call(kDrawFn, rodPtr, kCtxColor);
     }
+    const uint32_t cursorAfterRods = mem.read32(kPktCtx);
+    const uint32_t bytesFromRods = (cursorAfterRods >= cursorStart) ? (cursorAfterRods - cursorStart) : 0;
+    std::printf("drive-rods: rods processed=%u culled=%u, SPR cursor %08X -> %08X (%u bytes emitted)\n",
+                rodsProcessed, rodsCulled, cursorStart, cursorAfterRods, bytesFromRods);
+
+    // NEW finalize (Task 2, per Task 1's decision): 0x00235350 is a pure
+    // tail-jump stub to 0x0022F7F8(a0=kPktCtx). This patches the placeholder
+    // GIFtag header word IN PLACE at the batch-start address (t0 = *(kPktCtx
+    // +0x14), snapshotted above) using (cursor - batchStart)>>3 as the qword
+    // count, then tail-calls the same DMA-kick family 0x00232618's path
+    // uses. After this the SPR buffer holds a real 16-byte GIFtag wire
+    // packet instead of draw_crystal_rod's raw 8-byte staging header.
+    cpu.maxInstructions = 5'000'000;  // TEMP diagnostic budget
+    if (const char* ov = std::getenv("EERUN_MAX_INSTR")) cpu.maxInstructions = std::strtoull(ov, nullptr, 10);
+    cpu.traceCalls = true;
+    try {
+        cpu.call(kFinalizeFn);
+    } catch (const EeError& e) {
+        std::printf("FINALIZE EeError pc=%08X word=%08X: %s\n", e.pc, e.word, e.what.c_str());
+        std::map<uint32_t, int> calls;
+        for (uint32_t t : cpu.trace) calls[t]++;
+        for (auto& [t, n] : calls) std::printf("  call %08X x%d\n", t, n);
+        return 1;
+    }
     const uint32_t cursorEnd = mem.read32(kPktCtx);
     const uint32_t bytesEmitted = (cursorEnd >= cursorStart) ? (cursorEnd - cursorStart) : 0;
-    std::printf("drive-rods: rods processed=%u culled=%u, SPR cursor %08X -> %08X (%u bytes emitted)\n",
-                rodsProcessed, rodsCulled, cursorStart, cursorEnd, bytesEmitted);
+    std::printf("drive-rods: after finalize(0x235350): SPR cursor -> %08X (%u bytes total)\n",
+                cursorEnd, bytesEmitted);
 
     GsCommandStream stream;
     if (bytesEmitted > 0 && EeMemory::isSpr(cursorStart)) {

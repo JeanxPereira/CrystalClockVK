@@ -770,3 +770,56 @@ disasm-backed ROUTE, not a confirmed final byte match.
 
 Full raw disassembly transcripts (all four helpers, `0x0022F720`,
 `0x0022F7F8`, `0x00232F80`): `.superpowers/sdd/task-1-report.md`.
+
+## Phase 2 task 2 — finalize implemented, but it reaches the SAME Deci2 wall [DUMP-MEASURED]
+
+Implemented Task 1's decision in `tools/eerun/main.cpp`: snapshot
+`*(0x00375230+0x14) = *(0x00375230+0x00)` right after the `0x22f720` init (mirrors
+`0x00232F80`'s inline snapshot), run the unchanged 3-rod loop, then
+`call(0x00235350)` (the `a0=0x00375230` tail-jump stub to `0x0022F7F8`). Also added
+an `EERUN_MAX_INSTR` env override (temp diagnostic knob, no CLI flag yet) to binary-
+search where a budget-exceeded run's PC actually sits.
+
+**Result: the finalize call does NOT complete even at a 100,000,000-instruction
+budget.** It throws `budget exceeded` with the `--trace` call tally showing:
+
+```
+call 00258D10 x1150850   <- Deci2Call syscall trampoline (same as before)
+call 0026F478 x1150849   <- Deci2Call wrapper (same address, same as the 233928 spike)
+```
+
+This is **the exact same Deci2 debug-print flood** documented in "Phase 2 caller
+spike: driving 0x00233928" above (there: `0x26F4A0`/`0x268B00`/`0x26C61C` millions
+of times; here: `0x258D10`/`0x26F478` over a million calls each and still climbing
+— confirmed unbounded within this budget, not merely slow, by the identical growth
+shape). Binary-searching the budget (1000 / 100k / 1M / 1.2M / 7.6M / 50M / 100M
+instructions) shows the PC advancing steadily through a tight retry/counter loop
+around `0x0026E7FC-0x0026F478` as the budget grows — i.e. this is real forward
+progress into the Deci2 subsystem, not a frozen/buggy PC (verified: round-number
+budgets that are multiples of the loop's iteration length coincidentally landed on
+the same PC, which is why the first few probes looked "stuck"; non-round budgets
+`1234567`/`7654321` showed the PC moving, resolving that false lead).
+
+**This corrects the render-contract doc's claim** ("Validating result — the wall
+is unreachable from the render path... zero calls into the Deci2/debug family")
+[FALSIFIED for the finalize call specifically]. That grep covered
+`0x232da0/0x232e38/0x233328/0x2333b8/0x232f80/0x230518/0x235350/0x230fe8/0x22f720/
+0x2335e8` but **not** `0x0022F7F8`'s own downstream tail-calls (`0x272fa0`/
+`0x272c10`, the real GIF-DMA-kick family) — those, traced live this session, walk
+into `0x0026E700` (the DMA-channel-busy poll, previously proven safe/bounded under
+`0x232618`) and from there into a **different** call path than `0x232618` ever took,
+which eventually reaches `0x0026F478`. `0x232618`'s own DMA kick (Task 4, this doc)
+never hit this — the difference is state this driver hasn't seeded (most likely:
+whatever field the `0x2718B8`-family busy/done flag reads, unseeded/zero here where
+`0x232618`'s real caller had it in a different state).
+
+**Not yet done this session** (honest stop, not a forced pass): finding the exact
+read site of the busy/done flag inside *this* call chain and stubbing only that
+read (mirroring Phase 2 task 1's "stub at the read site, not the address" fix,
+which is documented but was never applied because that spike moved to the
+direct-driver strategy instead). That is the next concrete step — same class of
+fix already proven to work once, just needs re-aiming at this call chain's flag
+address.
+
+Files: `tools/eerun/main.cpp` (`+0x14` snapshot, `kFinalizeFn` call, temp
+`EERUN_MAX_INSTR` env override — not yet a real CLI flag).
