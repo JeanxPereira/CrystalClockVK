@@ -538,3 +538,92 @@ debug-station-only scaffolding (same open question already flagged for
 `0x00233928` itself) — if so the entry guard's true idle value may not be 0
 at all, meaning the stub value itself needs revisiting, not just its scope.
 Full detail: `.superpowers/sdd/phase2-task1-report.md`.
+
+## Phase 2 — per-rod render contract (2026-07-06) [DUMP-MEASURED]
+
+Decision: stop fighting the Deci2 wall inside `0x00233928` — **become the
+render driver**, calling its render helpers ourselves over the rod array.
+This section maps the contract needed to do that. Full detail (tables,
+struct dumps, field-by-field disasm) lives in
+`.superpowers/sdd/phase2-render-contract.md`; summary here.
+
+**The per-rod loop lives entirely inside `0x00233928`'s own body** (not in
+some deeper callee) — disassembled `0x233928..0x233dd0` directly off
+`re/ram/clock/eeMemory.bin`. Seven back-to-back loops, identical shape:
+
+```
+lw   v0, 0x150(s3)         ; s3 = current rod ptr, starts at rod array base
+bnel v0, zero, skip          ; skip this rod if its +0x150 flag != 0
+... set a0=rodPtr, a1=ctx or ctx+0xa0, f12/f13=ctx floats or 0.0 ...
+jal  <render fn>
+skip:
+lw   a2, 4(s4)               ; a2 = rod COUNT, reloaded from ctx+4 (RUNTIME value)
+slt  v0, s2, a2; bnez v0, loop_top
+addiu s3, s3, 0x160           ; STRIDE = 0x160 (352 bytes) — NOT 0x50, confirmed x7
+```
+
+- **Stride = 0x160**, **bound = `*(ctx+4)`** (a runtime field, = 6 in the
+  captured frame — not the "12 rods" guessed in the brief).
+- **Per-rod skip flag** at `rodPtr+0x150`: nonzero = culled. Cross-checked
+  live: rod0 (`0x375250`) flag=0 (visible), rod1 (`0x3753b0 = +0x160`)
+  flag=1 (culled).
+- Seven passes call, in order: `0x232da0` (matrix-apply prep, non-leaf, VU0-
+  macro family, no GS write observed), `0x232e38` = **`draw_crystal_rod`,
+  the real GS-packet emitter** (colored pass, then a zero-offset variant),
+  `0x233328`/`0x2333b8` (per-rod aux, same VU0-matrix family), `0x232f80`
+  (another draw variant), then `0x232da0` again. `0x232618` (previously
+  known single-rect leaf) is called **once, directly, not in a loop** — it
+  renders a fixed UI element, not a rod.
+
+**`0x232e38` (`draw_crystal_rod`) is a LEAF — zero `jal` calls.** Reads
+`*(0x00375230)` as the GS-packet write cursor, writes an 8-byte GIFtag-
+shaped header (`0x54`/`0x100`), then loops 4x over `rodPtr + i*0x50`
+(i=0..3 — matches the "4 vertex records of 0x50 bytes" already flagged in
+`sp0-live-reads.md`, now pinned to its exact consumer): reads screen X/Y as
+**already-computed floats** at `+0x10/+0x14` (the CPU-side transform already
+ran before this captured frame — the projection matrices at
+`0x29bd10/0x29bd50/0x29bd90` are NOT touched by this function and do not
+need re-seeding for a harness that replays a captured frame), a per-vertex
+scale at `+0x40`, and packed UV ints at `+0x30/0x34/0x38`. Also reads an
+RGBA color from the caller's `a1` struct (`ctx+0xa0`, live value `08 08 08
+80`) and a jitter offset from `f12/f13` (`ctx+0xb0/0xb4`, live value `0.01`).
+
+**State to seed, all [DUMP-MEASURED] this session**:
+- `ctx = 0x00296AB0` — found by byte-searching the whole 32MB image for the
+  `jal 0x00233928` instruction word (`0x0C08CE4A`, 2 hits). Site 1
+  (`0x0022CA50`) passes `a0 = s7+0x6ab0` with `s7=lui 0x29` disassembled at
+  `0x0022C95C` → fixed global `0x00296AB0`. Cross-checked self-consistent:
+  `ctx[0x6c]=1.0` (render-gate open), `ctx[4]=6` (sane rod count),
+  `ctx[0xa0..ac]=08 08 08 80` (plausible RGBA), `ctx[0xb0/0xb4]=0.01`
+  (plausible jitter). Site 2 (`0x0022CB18`) passes `a0=s2`, untraced —
+  [OPEN], not needed since site 1 is confirmed sane.
+- Packet-context struct `0x00375230` (separate from `ctx`!) — live fields
+  `+0x00=0x70000060` (write cursor), `+0x04=0x70000000` (SPR bank base).
+  Points into the EE Scratchpad RAM window `EeMemory` already emulates
+  (Task 7). `0x22f720(ctxAddr)` initializes it (reads a bank-selector global,
+  ORs with `0x70000000`) — call it once before the rod loop, or fall back to
+  directly poking the two fields if that global proves troublesome.
+- Rod array `0x00375250` / stride `0x160` / skip flag `+0x150` — needs no
+  seeding, already correct in the captured frame.
+
+**Validating result — the wall is unreachable from the render path.**
+Grepped every `jal` target inside `0x232da0`, `0x232e38`, `0x233328`,
+`0x2333b8`, `0x232f80`, `0x230518`, `0x235350`, `0x230fe8`, `0x22f720`, and
+`0x2335e8` (the per-call setup fn `0x233928` invokes once at its top): **zero**
+calls into the Deci2/debug family (`0x2718B8`/`0x271980`/`0x258D10`/
+`0x26F4xx`/`0x26C6xx`). Calling these helpers directly, bypassing
+`0x00233928` and `0x2335e8` entirely, sidesteps Phase 2 task 1's blocker —
+**no sync-stub needed** for this path.
+
+**Recommended harness** (new `eerun`-family driver, reusing
+`EeInterpreter`/`EeMemory` as-is): load `eeMemory.bin`; `call(0x22f720,
+a0=0x00375230)` once; loop `i=0..*(0x296AB0+4)-1`, skip if
+`*(rodPtr+0x150)!=0`, else `call(0x232da0, rodPtr, 0x296AB0, 0)` then
+`call(0x232e38, rodPtr, 0x296B50, f12=ctx[0xb0], f13=ctx[0xb4])` — start
+with just this pair before adding the other five passes; `--dump-stores`,
+`--decode` the SPR range `[0x70000000..finalCursor]` (already SPR-aware
+since Task 7), `vdiff --subset` against `re/oracle/clock_sw_prims.json`,
+report the real match count honestly and iterate pass-by-pass.
+
+Full field tables, the second (untraced) `0x00233928` call site, and open
+items: `.superpowers/sdd/phase2-render-contract.md`.
