@@ -627,3 +627,41 @@ report the real match count honestly and iterate pass-by-pass.
 
 Full field tables, the second (untraced) `0x00233928` call site, and open
 items: `.superpowers/sdd/phase2-render-contract.md`.
+
+## Phase 2 task 2 — direct rod driver: real data emitted, no hardware-packet match yet [DUMP-MEASURED]
+
+Built `eerun --drive-rods` (`tools/eerun/main.cpp`): `call(0x22f720,
+a0=0x00375230)` once (returned a sane in-SPR cursor `0x70000010`, no fallback
+poke needed), then for each non-culled rod (`*(rodPtr+0x150)==0`, bound
+`*(ctx+4)`, stride `0x160`, `ctx=0x00296AB0`) sets `cpu.fpr[12]/fpr[13]` to
+the live jitter floats (`ctx+0xb0/0xb4`, both `0.01`) and calls
+`0x00232e38(a0=rodPtr, a1=ctx+0xa0)`. Zero new opcodes or `EeInterpreter`
+changes needed — Task 6/7's SPR emulation plus the `0x00233928` spike's
+FPU/COP1 ops already cover this call path. Suite stays 17/17.
+
+**Result**: `rods processed=3 culled=3` (of `rodCount=6`), **336 real bytes**
+written to SPR, no crash. `eerun --drive-rods --json cand_rods.json` then
+`vdiff --subset clock_sw_prims.json cand_rods.json` → **`0/0 candidate draws
+matched`** — `GsDumpParser::decodeGifData` reports 0 draws/0 kicks from the
+336 bytes.
+
+**Honest read, not a decoder bug**: spot-checking the raw bytes
+(`EERUN_DUMP_SPR=1` env var added for this) shows `draw_crystal_rod` writes
+**real, correct data** — a per-vertex word decodes as float `≈0.0201`
+(matches the contract's independently-measured scale `~0.0199`), immediately
+followed by 4 bytes `08 08 08 80` = **RGBA(8,8,8,128)**, exactly the contract's
+static-disasm-measured color. This exact pattern repeats identically at all
+3 rods' offsets. But the buffer is **not a hardware GIFtag stream**: the
+contract's disasm shows only an 8-byte header (`sw a2,(v0)`/`sw a3,4(v0)`,
+cursor advanced by 8) before per-vertex data, whereas a real GIFtag is 16
+bytes; reading these bytes as a GIFtag decodes `nloop=0x54=84, nreg=16`
+(implying 21,504 bytes of payload should follow — only 320 real bytes exist).
+**Conclusion**: `draw_crystal_rod` is a real, correctly-executing emitter
+producing a **pre-GIFtag internal staging record**, not the final
+DMA-ready wire packet — translation to a real hardware GIFtag+PACKED stream
+happens elsewhere (plausibly one of `0x230518`/`0x235350`/`0x230fe8`, called
+between per-rod passes in `0x00233928`'s body, mirroring `0x232618`'s own
+`F720→FB28→F7F8` begin/append/submit shape). Getting an actual vertex-level
+oracle match needs either a dedicated decoder for this custom per-rod record
+layout, or driving those translation helpers too. Full detail:
+`.superpowers/sdd/phase2-task2-report.md`.

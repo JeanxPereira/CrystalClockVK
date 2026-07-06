@@ -46,6 +46,102 @@ constexpr const char* kGprNames[32] = {
     "t8",   "t9", "k0", "k1", "gp", "sp", "s8", "ra",
 };
 
+// Phase 2 task 2: drive the per-rod renderer directly, bypassing 0x00233928's
+// Deci2-blocked body entirely (per phase2-render-contract.md). Seeds/state are
+// all [DUMP-MEASURED] from re/ram/clock/eeMemory.bin -- see the contract doc
+// for the disassembly this is transcribed from.
+int runDriveRods(int argc, char** argv) {
+    // argv[1] = image path (argv[0] is the exe, argv[2] is "--drive-rods").
+    std::string imagePath = argv[1];
+    std::string jsonOut;
+    for (int i = 3; i < argc; i++) {
+        if (!std::strcmp(argv[i], "--json") && i + 1 < argc) jsonOut = argv[++i];
+    }
+    if (imagePath.empty() || jsonOut.empty()) {
+        std::printf("usage: eerun <image.bin> --drive-rods --json <out.json>\n");
+        return 2;
+    }
+
+    EeMemory mem;
+    if (!mem.loadImage(imagePath)) { std::printf("bad image\n"); return 2; }
+    EeInterpreter cpu(mem);
+
+    constexpr uint32_t kCtx = 0x00296AB0;         // per-frame context struct
+    constexpr uint32_t kCtxColor = kCtx + 0xA0;    // a1 for draw_crystal_rod (RGBA)
+    constexpr uint32_t kRodBase = 0x00375250;      // rod array
+    constexpr uint32_t kRodStride = 0x160;
+    constexpr uint32_t kPktCtx = 0x00375230;       // GS-packet cursor/base struct
+    constexpr uint32_t kInitFn = 0x0022F720;       // packet-cursor (re)init
+    constexpr uint32_t kDrawFn = 0x00232E38;       // draw_crystal_rod (leaf emitter)
+
+    // One-time init: point the packet cursor at fresh SPR, per the contract.
+    cpu.call(kInitFn, kPktCtx);
+    uint32_t cursorStart = mem.read32(kPktCtx);
+    uint32_t sprBase = mem.read32(kPktCtx + 4);
+    bool usedFallback = false;
+    if (!EeMemory::isSpr(cursorStart) || !EeMemory::isSpr(sprBase)) {
+        // 0x22f720 misbehaved (most likely: $gp is unmodeled by this bare
+        // interpreter, so its gp-relative bank-selector load reads garbage).
+        // Contract doc's explicit sanctioned fallback: poke the two fields to
+        // the values already live/correct in the captured frame.
+        usedFallback = true;
+        cursorStart = 0x70000060;
+        sprBase = 0x70000000;
+        mem.write32(kPktCtx, cursorStart);
+        mem.write32(kPktCtx + 4, sprBase);
+    }
+    std::printf("drive-rods: packet cursor init %s -> cursor=%08X base=%08X\n",
+                usedFallback ? "FELL BACK (poked fixed values)" : "via 0x22f720 (sane)",
+                cursorStart, sprBase);
+
+    const uint32_t rodCount = mem.read32(kCtx + 4);
+    std::printf("drive-rods: ctx=%08X rodCount(ctx+4)=%u\n", kCtx, rodCount);
+
+    uint32_t jxBits = mem.read32(kCtx + 0xB0);
+    uint32_t jyBits = mem.read32(kCtx + 0xB4);
+    float jx, jy;
+    std::memcpy(&jx, &jxBits, 4);
+    std::memcpy(&jy, &jyBits, 4);
+    std::printf("drive-rods: jitter f12=%f f13=%f\n", jx, jy);
+
+    uint32_t rodsProcessed = 0, rodsCulled = 0;
+    for (uint32_t i = 0; i < rodCount; i++) {
+        const uint32_t rodPtr = kRodBase + i * kRodStride;
+        const uint32_t skipFlag = mem.read32(rodPtr + 0x150);
+        if (skipFlag != 0) { rodsCulled++; continue; }
+        rodsProcessed++;
+        cpu.fpr[12] = jx;
+        cpu.fpr[13] = jy;
+        cpu.call(kDrawFn, rodPtr, kCtxColor);
+    }
+    const uint32_t cursorEnd = mem.read32(kPktCtx);
+    const uint32_t bytesEmitted = (cursorEnd >= cursorStart) ? (cursorEnd - cursorStart) : 0;
+    std::printf("drive-rods: rods processed=%u culled=%u, SPR cursor %08X -> %08X (%u bytes emitted)\n",
+                rodsProcessed, rodsCulled, cursorStart, cursorEnd, bytesEmitted);
+
+    GsCommandStream stream;
+    if (bytesEmitted > 0 && EeMemory::isSpr(cursorStart)) {
+        const uint32_t off = cursorStart - EeMemory::kSprBase;
+        const uint32_t len = std::min(bytesEmitted, EeMemory::kSprSize - off);
+        if (std::getenv("EERUN_DUMP_SPR")) {
+            const uint8_t* p = mem.sprData() + off;
+            std::printf("drive-rods: raw SPR bytes [%08X..%08X]:\n", cursorStart, cursorStart + len);
+            for (uint32_t k = 0; k < len; k++) {
+                std::printf("%02X ", p[k]);
+                if ((k + 1) % 16 == 0) std::printf("\n");
+            }
+            std::printf("\n");
+        }
+        GsDumpParser::decodeGifData(stream, mem.sprData() + off, len);
+    }
+    std::printf("drive-rods: decoded %u draws, %u kicks, %u giftags\n",
+                stream.counts.draws, stream.counts.kicks, stream.counts.giftags);
+
+    GsDumpParser::writeJson(stream, jsonOut);
+    std::printf("drive-rods: wrote %zu prims -> %s\n", stream.prims.size(), jsonOut.c_str());
+    return 0;
+}
+
 int runDecode(int argc, char** argv) {
     std::string storesPath, jsonOut, basePath;
     for (int i = 2; i < argc; i++) {
@@ -141,6 +237,9 @@ int runDecode(int argc, char** argv) {
 int main(int argc, char** argv) {
     if (argc >= 2 && !std::strcmp(argv[1], "--decode"))
         return runDecode(argc, argv);
+
+    if (argc >= 3 && !std::strcmp(argv[2], "--drive-rods"))
+        return runDriveRods(argc, argv);
 
     if (argc < 3) {
         std::printf("usage: eerun <image.bin> <hex-addr> [a0 a1 a2 a3] "
