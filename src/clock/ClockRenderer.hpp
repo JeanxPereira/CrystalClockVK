@@ -26,14 +26,6 @@ public:
     // clock-state colours). Replaces any mesh set by setRodField.
     void setDialMesh(const ps2clock::FlatMesh& mesh);
 
-    // Upload a 3D prism mesh (RodField::buildDialPrism); record() then draws it
-    // with the crystal-facet shader + depth test instead of the flat pipeline.
-    void setPrismMesh(const ps2clock::PrismMesh& mesh);
-
-    // Upload the light-spot billboards (ClockOrb::buildSpotMesh); drawn additively
-    // over the rods in prism mode.
-    void setSpotMesh(const ps2clock::SpotMesh& mesh);
-
     // Background clear colour for record() (default black).
     void setClearColor(float r, float g, float b) { m_clear[0]=r; m_clear[1]=g; m_clear[2]=b; }
 
@@ -47,18 +39,10 @@ private:
 
     VkPipelineLayout m_layout{VK_NULL_HANDLE};
     VkPipeline m_pipeline{VK_NULL_HANDLE};       // flat (2D dial)
-    VkPipeline m_prismPipeline{VK_NULL_HANDLE};  // 3D crystal prism
-    VkPipeline m_bgPipeline{VK_NULL_HANDLE};     // fullscreen tunnel background
-    VkPipeline m_spotPipeline{VK_NULL_HANDLE};   // additive light-spot glow
     VkFormat m_colorFormat{};
 
     AllocatedBuffer m_vbo{};
     AllocatedBuffer m_ibo{};
     uint32_t m_indexCount{0};
-    AllocatedBuffer m_spotVbo{};
-    AllocatedBuffer m_spotIbo{};
-    uint32_t m_spotIndexCount{0};
-    bool m_prism{false};                         // which pipeline record() uses
-    AllocatedImage m_depth{};
     float m_clear[3]{0.0f, 0.0f, 0.0f};
 };

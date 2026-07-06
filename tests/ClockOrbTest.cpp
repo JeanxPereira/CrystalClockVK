@@ -35,21 +35,6 @@ int main() {
     check(near(sp[0].x, s0[1].x, 1e-4f) && near(sp[0].y, s0[1].y, 1e-4f),
           "phase = one step rotates spot 0 onto spot 1's place");
 
-    // Mesh: 8 spots x (1 + trail) billboards x 4 verts / 6 indices.
-    const int trail = 4;
-    SpotMesh m = ClockOrb::buildSpotMesh(ClockState::fromTime(12, 0, 0), 0.0f, trail);
-    const int billboards = 8 * (1 + trail);
-    check(m.vertices.size() == size_t(billboards) * 4, "4 verts per billboard");
-    check(m.indices.size() == size_t(billboards) * 6, "6 indices per billboard");
-
-    // Each billboard's 4 corners carry the [-1,1] glow uv (a full quad).
-    bool uvOk = true;
-    for (int i = 0; i < 4; ++i) {
-        const glm::vec2& uv = m.vertices[i].uv;
-        if (!(near(std::fabs(uv.x), 1.0f) && near(std::fabs(uv.y), 1.0f))) uvOk = false;
-    }
-    check(uvOk, "billboard corners carry [-1,1] glow uv");
-
     if (g_fails) { std::printf("FAILED (%d)\n", g_fails); return 1; }
     std::printf("OK\n");
     return 0;

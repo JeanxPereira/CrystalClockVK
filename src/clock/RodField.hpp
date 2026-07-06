@@ -30,12 +30,6 @@ struct Rod {
 struct RodVertex { Vec3 pos; Vec4 color; };
 struct FlatMesh  { std::vector<RodVertex> vertices; std::vector<uint32_t> indices; };
 
-// 3D prism vertex: position + per-face unit normal (flat crystal facets) + RGBA
-// + uv (u = 0..1 along the rod length inner->outer, v = 0..1 across the width;
-// the crystal shader uses them for the specular streak and the min/sec fill).
-struct PrismVertex { Vec3 pos; Vec3 normal; Vec4 color; glm::vec2 uv; };
-struct PrismMesh   { std::vector<PrismVertex> vertices; std::vector<uint32_t> indices; };
-
 class RodField {
 public:
     // Generate the dial: `count` bars radiating from the origin, 360/count apart,
@@ -53,17 +47,6 @@ public:
     // from the inner end; the other 11 rods are dim. The lit rod's dial index
     // is matched against each rod's `hour` field (0..11).
     FlatMesh buildDialMesh(const ClockState& state) const;
-
-    // 3D prism mesh: each rod a rectangular crystal bar (box) with per-face
-    // normals — the geometry the crystal shader lights. Radial axis = the rod
-    // direction; width across the dial plane (in-plane perpendicular); depth
-    // along Z (perpendicular to the dial). White body (colouring by state is
-    // applied at the shader/draw level later).
-    PrismMesh buildPrismMesh() const;
-
-    // 3D prism mesh coloured by the clock state (lit hour rod in the AM/PM
-    // tint, the rest dim) — the crystal-shader input for the live clock.
-    PrismMesh buildDialPrism(const ClockState& state) const;
 
     std::vector<Rod> rods;
     DialParams params;

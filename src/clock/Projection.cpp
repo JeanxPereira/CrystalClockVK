@@ -1,3 +1,4 @@
+// PROVISIONAL: 1-rod regression fit, NOT evidence-grade — replaced in SP1
 #include "clock/Projection.hpp"
 
 #include <cmath>

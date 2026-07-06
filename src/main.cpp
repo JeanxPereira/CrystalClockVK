@@ -11,10 +11,6 @@
 #include "app/TimeSync.hpp"
 #include "app/GsScene.hpp"
 #include "app/GsRenderer.hpp"
-#include "clock/ClockState.hpp"
-#include "clock/RodField.hpp"
-#include "clock/ClockOrb.hpp"
-#include "clock/ClockRenderer.hpp"
 #include <glm/gtc/matrix_transform.hpp>
 #include <chrono>
 #include <memory>
@@ -118,14 +114,12 @@ int main(int argc, char* argv[]) {
         std::string gsArg;
         std::string dumpRgbaPath;
         bool dumpFullVram = false;
-        bool clockMode = false;
         int stopAtPrim = -1;
         for (int a = 1; a < argc; a++) {
             std::string arg = argv[a];
             if (arg == "--dump-rgba" && a + 1 < argc) dumpRgbaPath = argv[++a];
             else if (arg == "--dump-vram" && a + 1 < argc) { dumpRgbaPath = argv[++a]; dumpFullVram = true; }
             else if (arg == "--stop-at" && a + 1 < argc) stopAtPrim = std::atoi(argv[++a]);
-            else if (arg == "--clock") clockMode = true;  // live procedural crystal clock
             else if (gsArg.empty()) gsArg = arg;
         }
 
@@ -133,32 +127,15 @@ int main(int argc, char* argv[]) {
         // captured clock dump when no path is passed (so double-click works).
         GsScene scene;
         GsRenderer gsRenderer;
-        if (!clockMode) {
-            const std::string dumpPath = !gsArg.empty()
-                ? gsArg
-                : "C:/Users/dell04/Documents/PCSX2/snaps/clock_viewer.gs";
-            if (scene.load(dumpPath))
-                gsRenderer.init(vulkan, resources, scene,
-                                swapchain.imageFormat(), VK_FORMAT_D32_SFLOAT),
-                gsRenderer.setStopAtPrim(stopAtPrim);
-            else
-                std::cerr << "No GS dump loaded (" << dumpPath << "). Pass a .gs path as arg 1.\n";
-        }
-
-        // --clock: the live procedural crystal clock (no dump). Renders into a
-        // fixed 640x224 target each frame, blitted to fill the window; the group
-        // spin animates via the MVP, geometry rebuilds when the second changes.
-        const VkExtent2D clockExtent{640, 224};
-        AllocatedImage clockTarget{};
-        std::unique_ptr<ClockRenderer> clockRenderer;
-        ps2clock::RodField clockField = ps2clock::RodField::Generate();
-        int clockLastSecond = -1;
-        if (clockMode) {
-            clockTarget = resources.createImage(clockExtent, swapchain.imageFormat(),
-                VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
-            clockRenderer = std::make_unique<ClockRenderer>(
-                vulkan, resources, swapchain.imageFormat(), clockExtent);
-        }
+        const std::string dumpPath = !gsArg.empty()
+            ? gsArg
+            : "C:/Users/dell04/Documents/PCSX2/snaps/clock_viewer.gs";
+        if (scene.load(dumpPath))
+            gsRenderer.init(vulkan, resources, scene,
+                            swapchain.imageFormat(), VK_FORMAT_D32_SFLOAT),
+            gsRenderer.setStopAtPrim(stopAtPrim);
+        else
+            std::cerr << "No GS dump loaded (" << dumpPath << "). Pass a .gs path as arg 1.\n";
 
         std::array<FrameData, FrameOverlap> frames;
         for (auto& frame : frames) {
@@ -256,53 +233,7 @@ int main(int argc, char* argv[]) {
             orchestrator.updateUBO(params);
 
             recorder.beginDebugLabel("Frame", 0.2f, 0.4f, 1.0f);
-            if (clockMode) {
-                // Rebuild geometry only when the second ticks (lit rod / fill /
-                // spot orbit) — cheap + safe (idle wait once/sec, not per frame).
-                const ps2clock::ClockState cs = ps2clock::ClockState::fromTime(
-                    timeInfo.hour, timeInfo.minute, timeInfo.second);
-                if (timeInfo.second != clockLastSecond) {
-                    vkDeviceWaitIdle(vulkan.device());
-                    clockRenderer->setPrismMesh(clockField.buildDialPrism(cs));
-                    const float sp = params.totalTime * 0.4f;  // spot orbit phase
-                    clockRenderer->setSpotMesh(ps2clock::ClockOrb::buildSpotMesh(cs, sp));
-                    clockRenderer->setClearColor(0.06f, 0.04f, 0.10f);
-                    clockLastSecond = timeInfo.second;
-                }
-                // Face-on tilt + group spin (−0.1 rad/s) via the MVP.
-                const float halfH = 8.0f;
-                const float halfW = halfH * (float(clockExtent.width) / float(clockExtent.height));
-                const float tilt = 0.28f, ct = std::cos(tilt), st = std::sin(tilt);
-                ps2clock::Mat4 base(1.0f);
-                base[0][0] = 1.0f / halfW;
-                base[1][1] = -ct / halfH; base[2][1] = -st / halfH;
-                base[1][2] =  st * 0.02f; base[2][2] =  ct * 0.02f;
-                base[3][2] = 0.5f;
-                const ps2clock::Mat4 spin =
-                    glm::rotate(ps2clock::Mat4(1.0f), ps2clock::ClockState::spinPhase(params.totalTime),
-                                ps2clock::Vec3(0.0f, 0.0f, 1.0f));
-                const ps2clock::Mat4 clockMvp = base * spin;
-
-                // Render the clock into its 640x224 target, then blit to fill.
-                recorder.transitionImage(clockTarget.image,
-                    VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-                clockRenderer->record(recorder, clockTarget.imageView, clockMvp);
-                recorder.transitionImage(clockTarget.image,
-                    VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
-                recorder.transitionImage(mainColorImage.image,
-                    VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-                VkImageBlit blit{};
-                blit.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
-                blit.srcOffsets[1] = {int32_t(clockExtent.width), int32_t(clockExtent.height), 1};
-                blit.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
-                blit.dstOffsets[1] = {int32_t(swapchain.extent().width), int32_t(swapchain.extent().height), 1};
-                vkCmdBlitImage(frame.commandBuffer,
-                    clockTarget.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                    mainColorImage.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                    1, &blit, VK_FILTER_LINEAR);
-                recorder.transitionImage(mainColorImage.image,
-                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-            } else if (gsRenderer.ready()) {
+            if (gsRenderer.ready()) {
                 // GS multi-target replay renders into the framebuffers and blits the
                 // display buffer into mainColorImage; UI overlays it (LOAD) afterward.
                 recorder.transitionImage(mainColorImage.image,
@@ -424,8 +355,6 @@ int main(int argc, char* argv[]) {
         vkDeviceWaitIdle(vulkan.device());
 
         gsRenderer.destroy(vulkan, resources);
-        clockRenderer.reset();
-        if (clockTarget.image) resources.destroyImage(clockTarget);
         orchestrator.destroy(vulkan.device(), resources);
         resources.destroyImage(depthImage);
         resources.destroyImage(mainColorImage);
