@@ -389,15 +389,23 @@ int runDriveVisor(int argc, char** argv) {
     constexpr uint32_t kRodBase = 0x00375250;
     constexpr uint32_t kRodStride = 0x160;
     const uint32_t rodCount = mem.read32(ctx + 4);
+    // Live memory_diff over 2s of Visor animation (2026-07-06) shows the
+    // per-frame writer touches +0x00/04/08 (world), +0x20..+0x40 (projected,
+    // written by sceVu0ApplyMatrix stores from 0x2335E8 -- write-watchpoint
+    // backtrace: 0x27390C <- 0x2335E8@0x2337C8 <- 0x233F60@0x233FF0 <-
+    // 0x22BCC8 walker) and +0x140 (normal). +0x10/+0x14 are STATIC params,
+    // not positions -- the earlier probe watched the wrong fields.
     auto dumpRods = [&](const char* tag) {
-        std::printf("drive-visor: rod fields %s (slot: +0x10 +0x14 | +0x40 | skip+0x150)\n", tag);
+        std::printf("drive-visor: rod fields %s (slot: world+0x00,+0x04 | proj+0x20,+0x24 | nrm+0x140 | skip)\n", tag);
         for (uint32_t i = 0; i < rodCount && i < 16; i++) {
             const uint32_t rp = kRodBase + i * kRodStride;
-            uint32_t xb = mem.read32(rp + 0x10), yb = mem.read32(rp + 0x14),
-                     sb = mem.read32(rp + 0x40), skip = mem.read32(rp + 0x150);
-            float x, y, s;
-            std::memcpy(&x, &xb, 4); std::memcpy(&y, &yb, 4); std::memcpy(&s, &sb, 4);
-            std::printf("  rod %2u: %12.4f %12.4f | %10.6f | %u\n", i, x, y, s, skip);
+            auto rf = [&](uint32_t off) {
+                uint32_t b = mem.read32(rp + off);
+                float f; std::memcpy(&f, &b, 4); return f;
+            };
+            std::printf("  rod %2u: %10.4f %10.4f | %10.3f %10.3f | %8.4f | %u\n", i,
+                        rf(0x00), rf(0x04), rf(0x20), rf(0x24), rf(0x140),
+                        mem.read32(rp + 0x150));
         }
     };
     dumpRods("BEFORE");
