@@ -1124,3 +1124,67 @@ partial result.
 Full dial geometry validation = OPEN**, blocked on that one VU0 opcode;
 next step is either a sanctioned VU ISA reference or live single-stepping
 `pcsx2` to infer its semantics empirically (same method that nailed VMUL).
+
+## Phase 2 — VU0 idx=57 blocker FELL; whole Visor driver EXECUTES; position-writer still unlocated (2026-07-06) [DUMP-MEASURED]
+
+**The "idx=57 wall" is gone.** PCSX2 `R5900OpcodeTables.cpp tbl_COP2_SPECIAL2[57]` =
+**VSQRT** (`VUops.cpp _vuSQRT: Q = sqrt(|vft.ftf|)`). Implemented (commit b20564a), each
+with a discriminating hand-assembled test (suite 17/17 throughout):
+- **Q pipeline** (SPECIAL2 idx 56-59): VDIV / VSQRT / VRSQRT / VWAITQ, incl. the
+  hardware divide-by-zero saturation to `±0x7F7FFFFF` by sign xor. New `EeInterpreter::vq`.
+- **Q-broadcast group** (SPECIAL1 fn 0x1C/0x20/0x21/0x24/0x25): VMULq/VADDq/VMADDq/
+  VSUBq/VMSUBq (the transform moves VSQRT's result out via `VADDq.x vf5, vf0, Q`,
+  word 0x4B000160 @ pc 00273838).
+- **Fixed-point conversions** (SPECIAL2 idx 16-23): VITOF0/4/12/15 + VFTOI0/4/12/15
+  (`floatToInt<n>`: trunc-toward-zero, saturate at 2^31, result = raw int32 BITS in the
+  vf lane; the transform's 12.4 output uses VFTOI4, word 0x4BE5217D @ pc 002736AC).
+- **Branch-likely family** (BLEZL/BGTZL/BLTZL/BGEZL; BEQL/BNEL already existed): the
+  whole-handler probe hits BLEZL (word 0x58400072 @ pc 00235994). Not-taken skips the
+  delay slot — tests pin that against a plain-branch misroute.
+
+**Host segfault root-caused and fixed** (commit ab9bc95): `GsDumpParser::decodeGifData`
+trusted NLOOP/NREG from the data — the staging blob (not a wire GIF packet) misread as a
+huge PACKED tag and the payload walk ran ~33MB past the 16KB SPR buffer. PACKED and
+REGLIST loops now stop at `size`; regression tests added (a 16-byte payload claiming
+nloop=0x7fff must yield ≤1 kick).
+
+**$gp seeded** (`--gp`, default 0x002CFEF0 [LIVE-VERIFIED, w2-rod-generation.md]): the
+transform core `0x002329F8` reads intensity/fade constants gp-relative
+(`lwc1 fN, -0x7dXX($gp)`); bare calls read garbage from low RAM. With real gp,
+`0x22F720` also picks the true SPR bank (0x70002000) — the old poked-cursor fallback
+was the same root cause.
+
+**What 0x232DA0 actually is** (disassembled off the RAM image, capstone): NOT the rod
+position pass. Body: `0x273820` = **sceVu0Normalize(dest, src=rod+0x00)** (VMUL square →
+VADDy/z.x sum → VSQRT → VDIV 1/len → VMULq — self-contained, no resident VF state);
+`0x273858` = **sceVu0InnerProduct** (with rod normal +0x140); `f12 = 1.0 - |dot|`
+(facing→intensity); then `0x2329F8` (reads the caller frame via $v0 — unusual ABI)
+EMITS its own staging records (type tags 0x114/0x194, 96 bytes: 16B header + 16B + 4×16B
+color/XYZ rows) into the packet cursor, interleaved with draw_crystal_rod's 0x54 records
+(112B: 16B header + 4×24B). With `--transform` the SPR is therefore a MIXED record
+stream — `decodeStagingDirect`'s fixed 24B walk misparses it (that was the "garbled
+decode", not bad math). The 0x114/0x194 records carry the SAME collapsed XY as the 0x54
+ones: the transform emits glow/prep quads at positions it READS, it does not spread rods.
+
+**Whole-driver execution WORKS** (`--drive-visor`, commit a1c54ce): `0x00233F60`
+interpreted END-TO-END, no Deci2, no opcode gaps. Faithful ABI transcribed from the real
+dispatch stub `0x0022BCA8`: `a0 = obj+0x10 (ctx)`, `a1 = obj+0x100`,
+`f12 = float @ obj+0xF4`, `f13 = float(int32 @ obj+0x110)`, obj = 0x003715C0. In this
+capture `f12 = -1.0` → the driver takes its short path (29112 instructions, cursor
++0x320) and does NOT rewrite rod fields. One level up, the whole per-frame handler
+`0x0022B928(obj)` (update `0x002338D8` + mode dispatch via `0x00231188` + render) also
+completes (5424 instructions) but early-outs on mode-global gates and changes nothing.
+
+**Open (the honest blocker now):** WHO rewrites the rod records per frame (the dial
+spread/rotation). Facts: rod-slot fields +0x10/+0x14 hold tiny steady values (0.2 /
+0.0020 / 2.6 patterns) in the frozen capture — [HYPOTHESIS] they are not screen
+positions at all (ROD struct doc says "screen +0x20"); draw_crystal_rod's 24B records
+read per-vertex data at rod+0x10+k*0x50 whose 12.4 XY all land in the one collapsed
+cluster. The driver prologue calls `0x002335E8` (sceVu0MulMatrix @0x2738a0 +
+sceVu0ApplyMatrix @0x2738e8 against a matrix global 0x00297360 and ctx matrix ptrs
++0x60/+0x64) — a transform pass over the rod array, but it only ran in the f12>0 branch
+we didn't take. NEXT candidates, in order: (1) decode why `0x0022B928`'s mode gates
+early-out (globals `0x001F05EC`, `0x00231188`'s return) and satisfy them so the full
+update+render tick runs; (2) run `0x002335E8` directly with the stub-faithful ctx and
+watch which rod/ctx fields it writes; (3) live-verify f12/f13 semantics in pcsx2 (is
+f12 a transition alpha, -1 = steady?).
