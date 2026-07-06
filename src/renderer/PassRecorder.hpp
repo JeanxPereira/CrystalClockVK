@@ -9,7 +9,8 @@ public:
     explicit PassRecorder(VkCommandBuffer cmd) : m_cmd(cmd) {}
 
     // Image layout transitions (Sync2)
-    void transitionImage(VkImage image, VkImageLayout oldLayout, VkImageLayout newLayout);
+    void transitionImage(VkImage image, VkImageLayout oldLayout, VkImageLayout newLayout,
+                         VkImageAspectFlags aspectMask = VK_IMAGE_ASPECT_COLOR_BIT);
 
     // Dynamic rendering scope
     void beginRendering(VkImageView colorAttachment, VkExtent2D extent, VkClearValue* clearValue = nullptr, VkImageLayout layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);

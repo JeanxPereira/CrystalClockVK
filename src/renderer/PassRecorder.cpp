@@ -1,6 +1,7 @@
 #include "PassRecorder.hpp"
 
-void PassRecorder::transitionImage(VkImage image, VkImageLayout oldLayout, VkImageLayout newLayout) {
+void PassRecorder::transitionImage(VkImage image, VkImageLayout oldLayout, VkImageLayout newLayout,
+                                   VkImageAspectFlags aspectMask) {
     VkImageMemoryBarrier2 barrier{};
     barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
     barrier.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
@@ -10,9 +11,7 @@ void PassRecorder::transitionImage(VkImage image, VkImageLayout oldLayout, VkIma
     barrier.oldLayout = oldLayout;
     barrier.newLayout = newLayout;
     barrier.image = image;
-    const bool depth = newLayout == VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL ||
-                       oldLayout == VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
-    barrier.subresourceRange.aspectMask = depth ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+    barrier.subresourceRange.aspectMask = aspectMask;
     barrier.subresourceRange.baseMipLevel = 0;
     barrier.subresourceRange.levelCount = 1;
     barrier.subresourceRange.baseArrayLayer = 0;
@@ -88,7 +87,7 @@ void PassRecorder::beginRenderingMS(VkImageView colorMS, VkImageView resolve, Vk
     if (resolve) {
         colorInfo.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT;
         colorInfo.resolveImageView = resolve;
-        colorInfo.resolveImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        colorInfo.resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     }
 
     VkRenderingAttachmentInfo depthInfo{};

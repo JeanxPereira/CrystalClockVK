@@ -198,6 +198,21 @@ std::vector<uint8_t> ResourceManager::downloadImage(const AllocatedImage& src, V
         region.imageExtent = {extent.width, extent.height, 1};
         vkCmdCopyImageToBuffer(cmd, src.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                                readback.buffer, 1, &region);
+
+        if (srcLayout != VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL &&
+            srcLayout != VK_IMAGE_LAYOUT_UNDEFINED) {
+            VkImageMemoryBarrier2 back = toSrc;
+            back.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+            back.srcAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT;
+            back.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+            back.dstAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT | VK_ACCESS_2_MEMORY_READ_BIT;
+            back.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+            back.newLayout = srcLayout;
+            VkDependencyInfo depBack{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+            depBack.imageMemoryBarrierCount = 1;
+            depBack.pImageMemoryBarriers = &back;
+            vkCmdPipelineBarrier2(cmd, &depBack);
+        }
     });
 
     std::vector<uint8_t> out(size);
