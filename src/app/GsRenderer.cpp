@@ -86,7 +86,7 @@ void GsRenderer::init(const VulkanContext& ctx, ResourceManager& res, const GsSc
         const uint64_t pmode = rd64(0x00);
         const uint64_t dfb = (pmode & 1) ? rd64(0x70) : rd64(0x90);
         const uint32_t dispFbp = uint32_t(dfb & 0x1ff);
-        m_displayRow = int(fbRow(dispFbp));
+        m_displayRow = std::min<int>(int(fbRow(dispFbp)), int(kVramH) - int(kFbH));
         std::fprintf(stderr, "GsRenderer: DISPFB fbp=%u row=%d (PMODE EN1=%d EN2=%d)\n",
                      dispFbp, m_displayRow, int(pmode & 1), int((pmode >> 1) & 1));
     }
@@ -96,7 +96,7 @@ void GsRenderer::init(const VulkanContext& ctx, ResourceManager& res, const GsSc
     // also multiples of 32, so the bare tbp0%32 test is too broad.
     std::vector<uint32_t> fbps;
     for (const auto& p : prims)
-        if ((p.prim.type == 4 || p.prim.type == 6)) {
+        if ((p.prim.type == 2 || p.prim.type == 4 || p.prim.type == 6)) {
             bool found = false;
             for (uint32_t f : fbps) found |= (f == p.frame.fbp);
             if (!found) fbps.push_back(p.frame.fbp);
@@ -504,7 +504,8 @@ void GsRenderer::record(PassRecorder& rec, VkImage dst, VkExtent2D dstExtent) {
         vkCmdSetScissor(cmd, 0, 1, &sc);
     };
 
-    rec.transitionImage(m_vramDepth.image, m_depthLayout, VK_IMAGE_LAYOUT_GENERAL);
+    rec.transitionImage(m_vramDepth.image, m_depthLayout, VK_IMAGE_LAYOUT_GENERAL,
+                        VK_IMAGE_ASPECT_DEPTH_BIT);
     m_depthLayout = VK_IMAGE_LAYOUT_GENERAL;
     bool firstPass = true;
     int prevRow = -1;
@@ -517,8 +518,8 @@ void GsRenderer::record(PassRecorder& rec, VkImage dst, VkExtent2D dstExtent) {
 
         rec.transitionImage(m_vramRead.image, m_readLayout, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
         m_readLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        rec.transitionImage(m_vramWrite.image, m_writeLayout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-        m_writeLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        rec.transitionImage(m_vramWrite.image, m_writeLayout, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+        m_writeLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
         // The GS has ONE Z-buffer (ZBP 140) shared by every framebuffer: rods
         // rendered into FBP 280 occlude lines drawn into FBP 0. Our targets are
@@ -527,16 +528,19 @@ void GsRenderer::record(PassRecorder& rec, VkImage dst, VkExtent2D dstExtent) {
         // plane evolving in draw order). Clear it once at frame start.
         const int bandH = std::min<int>(int(kFbH), int(kVramH) - row);
         if (!firstPass && prevRow >= 0 && prevRow != row) {
-            rec.transitionImage(m_vramDepth.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL);
+            rec.transitionImage(m_vramDepth.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
+                                VK_IMAGE_ASPECT_DEPTH_BIT);
+            const int copyH = std::min<int>(bandH, int(kVramH) - prevRow);
             VkImageCopy zc{};
             zc.srcSubresource = {VK_IMAGE_ASPECT_DEPTH_BIT, 0, 0, 1};
             zc.dstSubresource = {VK_IMAGE_ASPECT_DEPTH_BIT, 0, 0, 1};
             zc.srcOffset = {0, prevRow, 0};
             zc.dstOffset = {0, row, 0};
-            zc.extent = {kVramW, uint32_t(bandH), 1};
+            zc.extent = {kVramW, uint32_t(copyH), 1};
             vkCmdCopyImage(cmd, m_vramDepth.image, VK_IMAGE_LAYOUT_GENERAL,
                            m_vramDepth.image, VK_IMAGE_LAYOUT_GENERAL, 1, &zc);
-            rec.transitionImage(m_vramDepth.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL);
+            rec.transitionImage(m_vramDepth.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
+                                VK_IMAGE_ASPECT_DEPTH_BIT);
         }
         rec.beginRenderingMS(m_vramMS.imageView, m_vramWrite.imageView, m_vramDepth.imageView,
                              {{0, row < 0 ? 0 : row}, {kVramW, uint32_t(bandH)}},
