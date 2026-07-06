@@ -1188,3 +1188,45 @@ early-out (globals `0x001F05EC`, `0x00231188`'s return) and satisfy them so the 
 update+render tick runs; (2) run `0x002335E8` directly with the stub-faithful ctx and
 watch which rod/ctx fields it writes; (3) live-verify f12/f13 semantics in pcsx2 (is
 f12 a transition alpha, -1 = steady?).
+
+## Phase 2 — POSITION WRITER FOUND via live watchpoint (2026-07-06, later) [LIVE-VERIFIED]
+
+Method: PCSX2 DebugServer on the Visor (savestate slot 5). GOTCHA cleared first: 3 stale
+temp exec-BPs at 0x0026EE9C/EEA0/EEA4 (+1 GIF-DMA watchpoint) left armed by a prior
+session made every `continue` re-trap instantly — the emulator LOOKED alive but advanced
+~22k cycles per "2 seconds" (≈75µs emulated), so every memory_diff read "no changes".
+`clear_all_breakpoints` fixed it. **Always list+clear breakpoints before live diffing.**
+
+**memory_diff over ~2s of live Visor animation, rod array 0x00375250 (16×0x160):**
+2206 bytes changed, ALL 16 rods, clean per-sub-record pattern (4 records at
++0x00/+0x50/+0xA0/+0xF0 per rod — the 4-deep trail):
+- `+0x00/+0x04/(+0x08)` — world position floats, rewritten every frame;
+- `+0x20..+0x40` — projected/screen block (incl. scale +0x40), rewritten every frame;
+- `+0x140/+0x144/+0x148` — the rod NORMAL, rotating (the dial spin lives here too);
+- `+0x150` — skip flag, occasional.
+**`+0x10/+0x14` are NOT in the changed set** — they are static parameters (0.2 / 0.0020
+/ 2.6 patterns), NOT positions. The earlier --drive-visor probe watched exactly those
+two fields and wrongly concluded "driver rewrites nothing". [FALSIFIED, corrected.]
+
+**Write-watchpoint on 0x00375270 (rod0 +0x20), full backtrace at the hit:**
+```
+#0 0x0027390C  sceVu0ApplyMatrix store (sqc2)
+#1 0x002335E8 @ pc 0x002337C8   <- THE POSITION WRITER (matrix pass over the rod array)
+#2 0x00233F60 @ pc 0x00233FF0   <- Visor driver, right after its FIRST jal 0x2335E8 (0x233FE8)
+#3 0x0022BCC8 (scene-list walker) #4 0x0022BEB8 #5 0x00221558 #6 0x00221060 #7 0x00221408
+```
+So: per frame, the walker → driver → `0x2335E8` → sceVu0MulMatrix/ApplyMatrix rewrite
+world+projected+normal for all 16 rods. No separate "update tick" needed — it IS in the
+driver path we already execute.
+
+**Interpreter status against this ground truth:** re-probed `--drive-visor` printing the
+REAL fields. The frozen capture already holds live projected coords (+0x20 ≈ 1740-1894,
++0x24 ≈ 2041-2053 — the same magnitude family as the W1 rod0 oracle 1914/2118). The
+interpreted driver run rewrites **rod 0 only, with garbage** (320.0 / 675764 / 2.1e7)
+and then stops touching the array, while completing normally (29112 instr). Scoped
+next-session bug: `0x2335E8`'s inner loop in the interpreter either exits after one
+iteration or computes on corrupted inputs — prime suspects are the NEW VU0 ops feeding
+it (Gate A verified sceVu0MulMatrix/ApplyMatrix BEFORE the Q/FTOI ops existed) or its
+matrix sources (*(ctx+0x60/0x64), global 0x00297360, f12=-1.0 semantics). KILLER TOOL
+available: single-step `0x2335E8` live in pcsx2 (DebugServer reads full 128-bit VU0F
+regs) and diff register-by-register against the interpreter at the same PCs.
