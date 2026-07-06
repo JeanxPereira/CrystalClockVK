@@ -17,7 +17,7 @@
 is the whole per-frame draw. `clockState[0]` = rotation phase; `[1]` = rod count;
 `[0x1b]` = transition trigger; `[0x28..]` = pass-2 matrix ctx; `[0x2c]/[0x2d]` =
 pass-3 per-group angle offsets. Rod arrays: **0x375250 (group A) + 0x377e50 (group
-B)**, stride **0x160**, field **+0x150** = front/back-face pass selector. [DECOMP-SOURCED]/[HYPOTHESIS] (direct Ghidra decompile per this section's header; not independently cross-checked in this file against a live trace)
+B)**, stride **0x160**, field **+0x150** = front/back-face pass selector. [FALSIFIED, layout richer → live: groups of 4×0x50-byte vertex records (world xyz + uv + screen XY float AND 12.4 int + pass flag) + normal record — the tessellated quads themselves; see sp0-live-reads.md] [DECOMP-SOURCED]/[HYPOTHESIS] (direct Ghidra decompile per this section's header; not independently cross-checked in this file against a live trace)
 
 Base rod angle: `fVar18 = clockState[0] * in_f1`. Steady-state (else branch) draws
 these passes IN ORDER. **⚠️ The "GS-state call" labels below were WRONG in my first
@@ -108,8 +108,8 @@ not an hddosd.elf mixup.
   → iVar1,iVar2), compute `iVar3=iVar1*iVar2*4` (a byte size = w*h*4, i.e. an
   RGBA framebuffer/texture byte count), zero 4 struct fields, write `0x1860200`
   into `*unaff_s3_lo`, then call **`FUN_0026753c(0x1860200, s4+0x14, iVar3)`**.
-  `FUN_0026753c` itself **fails to decompile** ("Control flow encountered
-  unimplemented instructions" → `halt_unimplemented()`), so its real behavior is
+  `FUN_0026753c` itself ~~**fails to decompile** ("Control flow encountered
+  unimplemented instructions" → `halt_unimplemented()`)~~, [FALSIFIED → live disasm: plain 128-bit memcpy(dst,src,n)] so its real behavior is
   UNVERIFIED — the call shape (fixed tag constant, src pointer, byte count)
   is consistent with a generic DMA-queue/GIF-tag submit helper, but that is a
   hypothesis, not a verified fact. `get_xrefs_to(0x00230518)` returns **26
@@ -209,7 +209,7 @@ _addiu sp,sp,0x90      ; delay slot, stack dealloc before the jump
 ```
 with `a0/a1/a2` set up just before to `0x29bd90/0x29bd50/0x29bd10` — exactly
 the args the render-spine doc already recorded. So the call graph edge is real.
-But **decompiling 0x002738a0 fails** ("Control flow encountered bad instruction
+But ~~**decompiling 0x002738a0 fails** ("Control flow encountered bad instruction
 data" → `halt_baddata()`), and raw `disassemble_bytes` across 0x2738a0-0x273930
 decodes as ~30 consecutive `cop0`/`cop1` "instructions" whose operand fields
 increase **smoothly and monotonically** word-to-word (`0x2a8aefd, 0x2ca9f55,
@@ -230,7 +230,7 @@ region and needs `reanalyze`/manual undefine-and-redisassemble before this
 function can be read at all.** UNVERIFIED — this remains the single biggest
 blocker to the port; static decompilation cannot resolve it further. A live
 PCSX2 trace (single-step through the tail-jump with a breakpoint at
-0x002738a0, per `docs/FOUNDATION-STATUS.md`'s tooling) is the only way forward.
+0x002738a0, per `docs/FOUNDATION-STATUS.md`'s tooling) is the only way forward.~~ [FALSIFIED → 2026-07-05 live: 0x002738a0 = sceVu0MulMatrix, 0x002738e8 = sceVu0ApplyMatrix (COP2 macro code Ghidra can't decompile); they compose/apply matrices only — NOT a vertex emitter. See sp0-live-reads.md]. Where the doc calls FUN_002738a0 "transform+emit", the real vertex→GS-packet emitter is the 0x0022FD00 family (0x22F720/0x22FB28/0x22FBE8/0x22F7F8, DMA-chain builders at 0x22fd58+), per sp0-live-reads.md.
 
 ### Geometry setup
 
@@ -283,9 +283,9 @@ PCSX2 trace (single-step through the tail-jump with a breakpoint at
   concept. Angle is advanced by `fGpffff81a0/81a4/81a8` per index and wrapped
   into `[fGpffff81d8, fGpffff81e0]` via the `81b0..81e4` constant family.
   RESOLVED (formula fully readable). `get_xrefs_to` shows exactly **one caller,
-  `0x00211490`**, which is *not* inside `ui_render_3d_objects` — this update
+  `0x00211490`**, which is *not* inside `ui_render_3d_objects` — ~~this update
   runs once per frame from a separate top-level tick function, independent of
-  the clock's render passes.
+  the clock's render passes~~ [FALSIFIED for the crystal-clock screen → 2026-07-05 live: exec BP never fires there, 0x34c830 static {0,0,1160.0}; updater belongs to another screen/mode].
 - **`FUN_002354c8@0x002354c8`** and the **tail of `FUN_00235350`** (see Packet/
   DMA above) contain the **same algorithm** as `FUN_0020eda0`, byte-for-byte
   structurally identical, but reading/writing through stack-passed pointers
