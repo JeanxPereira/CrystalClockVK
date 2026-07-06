@@ -114,8 +114,11 @@ is re-derived in SP1.
 - **Clock viewer mode** (clock fullscreen, no menu UI): savestate slot 5 →
   `re/ram/clock_viewer/eeMemory.bin` (32MB, gitignored) + vu0Memory.bin. Same FOV
   globals check passes. Distinct from slot 8 (clock reached from within the menu).
-- Savestate slot map: 5=clock viewer (no menu), 6=boot towers, 7=main menu,
-  8=clock screen, 9=pre-clock.
+- **Version menu** (Version/system-info screen): savestate slot 4 →
+  `re/ram/version_menu/eeMemory.bin` (32MB, gitignored) + vu0Memory.bin. Same FOV
+  globals check passes.
+- Savestate slot map: 4=version menu, 5=clock viewer (no menu), 6=boot towers,
+  7=main menu, 8=clock screen, 9=pre-clock.
 
 ## Light spots — updater does NOT run on the clock screen [LIVE-VERIFIED]
 
