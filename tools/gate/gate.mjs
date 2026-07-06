@@ -61,8 +61,8 @@ function fileHashPrefix(filePath) {
 }
 
 // Extract the native-resolution GSRunner reference frame for a dump (cached
-// forever per dump filename+size — GSRunner's replay is deterministic and
-// never changes for a given dump).
+// forever per dump filename+content-hash — GSRunner's replay is deterministic
+// and never changes for a given dump).
 function extractRef(name, gsPath, fbp, cacheKey) {
   const refPath = path.join(CACHE_DIR, `${cacheKey}_ref.rgba`);
   if (existsSync(refPath)) return refPath;
