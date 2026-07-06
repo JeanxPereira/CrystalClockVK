@@ -301,6 +301,20 @@ int main() {
     }
     assert(mmiThrew);
 
+    // 21) cfc2 $a2, $29  (COP2 transfer form: rs=2/rt=6($a2)/rd(id)=29/sa=0/
+    //     fn=0). Real hardware word from re/ram/clock/eeMemory.bin at
+    //     pc=0026E7E4: 010010 00010 00110 11101 00000 000000 = 0x4846E800.
+    //     Must yield 0 (no async VU0/VU1 busy state modeled) -- seed $a2 with
+    //     a nonzero sentinel first so a no-op mistake (leaving it unchanged,
+    //     which is exactly what the old dest=rs&0xF/vfd=sa=0 misroute did --
+    //     it always resets vf[0], never touches a GPR) fails this.
+    poke(mem, 0xE700, {0x4846E800u, 0x03E00008u, 0u});
+    EeInterpreter cpu21(mem);
+    cpu21.gpr[6].lo = 0xDEADBEEFu;
+    cpu21.call(0xE700);
+    assert(cpu21.gpr[6].lo == 0);
+    assert(cpu21.gpr[6].hi == 0);
+
     std::printf("ee_interpreter: all assertions passed\n");
     return 0;
 }

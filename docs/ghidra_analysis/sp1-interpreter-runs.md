@@ -823,3 +823,97 @@ address.
 
 Files: `tools/eerun/main.cpp` (`+0x14` snapshot, `kFinalizeFn` call, temp
 `EERUN_MAX_INSTR` env override — not yet a real CLI flag).
+
+## Phase 2 task 2 — cfc2 fix, finalize completes, byte layout still undecodable [DUMP-MEASURED]
+
+The section above's "SAME Deci2 wall" diagnosis was **[FALSIFIED]**, same session,
+by finishing the discovery loop instead of stopping at the budget-exceeded
+symptom. Root cause: a genuine missing opcode, not a hardware-wait wall.
+
+**The bug.** `cfc2 $a2, $29` — word `0x4846E800` at `pc=0x0026E7E4`, inside the
+finalize call's downstream DMA-kick chain (`0x0022F7F8` → `0x272fa0`/`0x272c10`
+→ `0x0026E700`, a generic "wait for DMA channels + VU0/VU1 idle" helper) — reads
+VU0 control register 29 (VPU-STAT) into `$a2`, then a poll loop masks it against
+`0x100` (VBS1, the VU1-busy bit) to decide whether to keep spinning. The
+existing `EeInterpreter.cpp` COP2 handler (case `0x12`) had no discrimination
+between this scalar-transfer form and the VU0 macro-arithmetic form — both use
+the exact same rs/rt/rd/sa bit positions in this game's real instruction
+stream, with rs always in 0-15 for BOTH forms here (no reserved high bit
+separates them, contrary to the standard MIPS COP0/COP1 CO-bit convention). The
+word was silently misrouted into the macro path (treated as a `VADDx.z` with
+`vfs=vf29, vfd=vf0`), which never writes `$a2` — the register kept whatever
+leftover value it held, and the VU1-busy poll spun on garbage instead of seeing
+0 (not busy, correctly, since this codebase never runs VU1 microcode).
+
+This exact word had already been seen in an EARLIER session (see "Ops added
+this session" item 2 above, `pc=0026E7E4 word=4846E800`) and was *also*
+misclassified there as a macro op — the bug predates this task.
+
+**The fix** (`src/ee/EeInterpreter.cpp`, case `0x12`): special-case
+`sa==0 && fn==0 && rs==0x02` as `cfc2 rt, id` (`id` in `rd`), returning 0 for
+`gpr[rt]` — matching real hardware, since no VU1 microcode ever runs in this
+codebase and VU0 macro arithmetic executes synchronously inline (no async
+"busy" state to model). The discriminator is deliberately narrow: a genuine
+macro op targeting `vfd=0` (`sa==0`) would write to VF0, which is
+hardwired-read-only `(0,0,0,1)` on real hardware, so compiled code never emits
+that combination meaningfully — `sa==0 && fn==0` is safe to treat as dead-macro
+territory and reroute to the transfer form. Only `cfc2` is handled; other
+transfer forms (`mfc2`/`mtc2`/`ctc2`/`bc2`) are not yet hit and remain
+unimplemented (would throw via the existing macro-path fallthrough if their
+`rs` value collided with a real macro word — none have, so far).
+
+New test 21 in `tests/EeInterpreterTest.cpp`: hand-assembled `0x4846E800`,
+seeds `$a2` with a nonzero sentinel, asserts it becomes exactly 0 after
+`call()` — a no-op mistake (the pre-fix behavior) fails this. Suite 17/17.
+
+**Result after the fix:** `eerun --drive-rods` now runs to completion with the
+default instruction budget (no override needed) — no budget-exceeded, no
+Deci2 anything:
+
+```
+drive-rods: rods processed=3 culled=3, SPR cursor 70000010 -> 70000160 (336 bytes emitted)
+drive-rods: after finalize(0x235350): SPR cursor -> 70000170 (352 bytes total)
+drive-rods: decoded 0 draws, 0 kicks, 1 giftags
+drive-rods: wrote 0 prims -> re/oracle/cand_rods.json
+```
+
+**Byte-level diagnosis of the still-honest 0-draws result.** Diffing the raw
+SPR bytes immediately before vs. after the finalize call (`EERUN_DUMP_SPR_PRE`/
+`EERUN_DUMP_SPR` env vars, both added to `tools/eerun/main.cpp`) shows finalize
+changes exactly ONE byte across the whole 336-byte rod region: byte 0 goes
+`0x54` → `0x56` (a +2 delta) — matching the disasm's "new header word = old +
+computed count" patch at the batch-start address. It also appends one new
+16-byte quadword at the very end (offset 336-351): `00 00 00 70 00 00 00 00
+00 00 00 00 00 00 00 00` (low 32 bits = `0x70000000` = `EeMemory::kSprBase`
+itself — looks like an address/pointer constant, not GS register data).
+
+Feeding the whole 352-byte blob to `GsDumpParser::decodeGifData` (which
+assumes a standard hardware GIFtag: low64 = NLOOP/EOP/PRE/PRIM/FLG/NREG,
+high64 = REGS) reads the very first bytes as the tag: `NLOOP=0x56=86`,
+`NREG=0→16` (PACKED, since the NREG nibble is literally 0 and 0 means 16 per
+spec), `FLG=0` (PACKED). That implies `86*16=1376` quadwords (22016 bytes) of
+payload — vastly more than the 336 bytes actually present. `decodeGifData`'s
+inner PACKED loop has no bounds check against `size` (only the OUTER
+`while (p+16<=size)` loop does), so it walks straight past the buffer,
+consuming the "tag" in one shot and never reaching the trailing quadword as a
+tag of its own; a handful of the 16-"register" slots per loop happen to land
+on `desc=1` (RGBAQ) by coincidence (matching the real `08 08 08 80` color
+bytes), most land on `desc=0` (spurious PRIM resets) — no `desc∈{4,5}` (XYZ2
+vertex kick) is ever hit, so `out.prims` stays empty: 0 draws, 0 kicks, exactly
+matching the observed counts.
+
+**[OPEN], stated honestly:** NLOOP=86 (or 84 pre-patch) does not correspond to
+any real per-rod chunk size (112 bytes = 7 quadwords per rod × 3 rods = 336
+bytes total). Either (a) this internal staging buffer's header fields are NOT
+at the standard NLOOP/PRE/PRIM/FLG/NREG bit positions `decodeGifData` assumes
+— i.e. this is not literally a hardware-shaped GIFtag even after `finalize`,
+or (b) a further real-hardware-side step (past what this interpreter's
+`0x272fa0`/`0x272c10` tail-calls actually execute, since DMA hardware itself
+isn't modeled) is needed before the bytes are genuinely GIFtag-shaped. This
+was NOT resolved this session — reported honestly rather than fudged.
+`vdiff --subset re/oracle/clock_sw_prims.json re/oracle/cand_rods.json` =
+**0/0 candidate draws matched** (0 candidates decoded).
+
+Files: `src/ee/EeInterpreter.cpp` (cfc2 special case), `tests/EeInterpreterTest.cpp`
+(test 21), `tools/eerun/main.cpp` (`EERUN_DUMP_SPR_PRE` env var added for the
+pre/post-finalize byte diff).

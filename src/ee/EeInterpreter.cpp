@@ -557,6 +557,30 @@ void EeInterpreter::executeOne(uint32_t word, uint32_t atPc) {
         return;
     }
     case 0x12: {  // COP2 macro (VU0 upper FMAC ops)
+        // Scalar transfer form (cfc2/mfc2/mtc2/ctc2/bc2, rs in {0,1,2,4,5,6,8})
+        // shares its raw rs/rd bit positions with the macro-arithmetic dest
+        // mask + vfs fields below (both are 0-15, no reserved high bit
+        // distinguishes them in this game's actual instruction stream --
+        // confirmed empirically: real VADDx/VSUBx/etc words here always have
+        // rs in 0-15 too, same range as a transfer op's rs). The reliable
+        // tell is sa (would-be vfd): a genuine macro op targeting vfd=0
+        // writes to VF0, which is hardwired to (0,0,0,1) and read-only on
+        // real hardware, so compiled code never emits fn=0/sa=0 as a
+        // meaningful macro instruction. Phase 2 task 2: this exact word
+        // (pc=0026E7E4, `cfc2 $a2, $29`, rs=2/rt=6/rd=29/sa=0/fn=0) was
+        // previously misrouted into the macro path (see the now-stale
+        // sp1-interpreter-runs.md item 2 comment), silently no-op'ing on
+        // gpr[rt] instead of returning VPU-STAT -- which kept a VU1-busy
+        // poll loop spinning on garbage. cfc2 is the only transfer form
+        // observed so far; only it is special-cased here.
+        if (sa == 0 && fn == 0 && rs == 0x02) {  // cfc2 rt, id (id in rd)
+            // No async VU0/VU1 microcode ever runs in this codebase (clock/
+            // opening use zero VU1 microcode; VU0 macro-mode arithmetic
+            // executes synchronously inline with the EE stream) -- every
+            // control register therefore reads as idle/zero.
+            gpr[rt].lo = 0; gpr[rt].hi = 0;
+            return;
+        }
         const uint32_t vft = rt;
         const uint32_t vfs = rd;
         const uint32_t vfd = sa;

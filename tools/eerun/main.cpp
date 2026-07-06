@@ -136,6 +136,16 @@ int runDriveRods(int argc, char** argv) {
     const uint32_t bytesFromRods = (cursorAfterRods >= cursorStart) ? (cursorAfterRods - cursorStart) : 0;
     std::printf("drive-rods: rods processed=%u culled=%u, SPR cursor %08X -> %08X (%u bytes emitted)\n",
                 rodsProcessed, rodsCulled, cursorStart, cursorAfterRods, bytesFromRods);
+    if (std::getenv("EERUN_DUMP_SPR_PRE")) {
+        const uint32_t off = cursorStart - EeMemory::kSprBase;
+        const uint8_t* p = mem.sprData() + off;
+        std::printf("drive-rods: PRE-finalize raw SPR bytes [%08X..%08X]:\n", cursorStart, cursorAfterRods);
+        for (uint32_t k = 0; k < bytesFromRods; k++) {
+            std::printf("%02X ", p[k]);
+            if ((k + 1) % 16 == 0) std::printf("\n");
+        }
+        std::printf("\n");
+    }
 
     // NEW finalize (Task 2, per Task 1's decision): 0x00235350 is a pure
     // tail-jump stub to 0x0022F7F8(a0=kPktCtx). This patches the placeholder
@@ -144,9 +154,8 @@ int runDriveRods(int argc, char** argv) {
     // count, then tail-calls the same DMA-kick family 0x00232618's path
     // uses. After this the SPR buffer holds a real 16-byte GIFtag wire
     // packet instead of draw_crystal_rod's raw 8-byte staging header.
-    cpu.maxInstructions = 5'000'000;  // TEMP diagnostic budget
     if (const char* ov = std::getenv("EERUN_MAX_INSTR")) cpu.maxInstructions = std::strtoull(ov, nullptr, 10);
-    cpu.traceCalls = true;
+    if (std::getenv("EERUN_TRACE_FINALIZE")) cpu.traceCalls = true;
     try {
         cpu.call(kFinalizeFn);
     } catch (const EeError& e) {
