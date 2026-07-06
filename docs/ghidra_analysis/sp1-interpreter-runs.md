@@ -1071,3 +1071,56 @@ crystal rods around a central sphere + light spots, "Visor" mode, 2026/07/06
   byte-search the image for the jal to the visor's per-frame render, read its
   ctx/rod-count/offset), decode the 12 dial rods, overlay on the Visor
   screenshot. Method proven on the menu; ground-truth screenshot now in hand.
+
+## Phase 2 — Visor dial render: driver + context found via LIVE pcsx2, geometry partial [LIVE-VERIFIED + DUMP-MEASURED]
+
+Full detail, disassembly transcripts, and the complete honest verdict:
+`.superpowers/sdd/phase2-visor-report.md`. Summary:
+
+**The Visor is driven by a genuinely different top-level function,
+`0x00233F60` (own prologue, confirmed via the preceding `jr ra` at
+`0x00233F58`) — NOT `0x00233928` (the menu's).** Found by launching the
+project's patched PCSX2 (`pcsx2-mcp` DebugServer), loading the
+`clock_viewer` savestate (slot 5), and breakpointing `draw_crystal_rod`
+(`0x00232E38`) directly — it hit within a couple seconds, and the live
+backtrace + register dump gave the real caller chain with zero static
+guessing. `0x00233F60` is reached indirectly: a scene-object linked list at
+fixed global `0x00371200`, walked by a dispatch loop at `0x0022BCC8` that
+calls a thin stub `0x0022BCA8` for each non-type-1 object; that stub sets
+`a0 = object + 0x10` (**the Visor's real ctx = object + 0x10**) and
+tail-jumps into `0x00233F60`. Live-confirmed: `ctx = 0x003715D0` (object at
+`0x003715C0`), self-consistent in both the live emulator and the static
+`re/ram/clock_viewer/eeMemory.bin` capture: `ctx+4 = 16` (rod count,
+matching the old "12 dial + 4 menu cubes" theory, not the menu's 6),
+`ctx+0xa0..ac = 08 08 08 80` (same RGBA convention as the menu), gate
+`ctx+0x6c = 1.0`. Rod array (`0x00375250`, stride `0x160`, skip flag
+`+0x150`) and the packet-cursor struct (`0x00375230`) are the SAME shared
+globals the menu uses — 8 of 16 rod slots visible in the captured frame.
+
+Generalized `eerun --drive-rods` with `--ctx`/`--ofx`/`--ofy`/`--transform`.
+Running with `--ctx 3715D0` (no transform) decodes real staging bytes for
+all 8 visible rods (confirmed RGBA, confirmed byte layout — the same
+mechanism the menu validated), but the raw rod-array position fields read
+tiny (-0.35..2.6), not screen-pixel scale — because, unlike the menu's
+pre-baked static preview, **the Visor's driver calls a transform pass
+(`0x00232DA0`) per rod before `draw_crystal_rod`, and this data genuinely
+needs it to run.** Overlaid on `re/ram/clock_viewer/Screenshot.png`
+(`tools/overlay_check_viewer.mjs`, reusing the menu's real XYOFFSET as a
+disclosed assumption — no `.gs` dump exists for this capture): all 8
+decoded rods collapse onto ONE cluster that visually lands on the
+screenshot's left (9 o'clock) rod — a real but narrow, non-fitted
+correspondence, not the full 12-rod dial.
+
+Attempted `--transform`: hit and fixed a real missing opcode (COP2 macro
+"full-vector" group, fn 0x28-0x2F, incl. VMUL — new test 22, suite 17/17),
+then hit a genuine wall one opcode later: a VU0 "special2" macro op
+(`idx=57` per the project's existing decode formula) with no confirmed
+semantics available inside the CLAUDE.md-sanctioned `pcsx2/GS/`-only
+reference scope. Stopped rather than guess VU0 matrix math — implementing
+it wrong would silently corrupt rod placement, worse than an honestly
+partial result.
+
+**Verdict: driver/ctx discovery = DONE (live-verified, high confidence).
+Full dial geometry validation = OPEN**, blocked on that one VU0 opcode;
+next step is either a sanctioned VU ISA reference or live single-stepping
+`pcsx2` to infer its semantics empirically (same method that nailed VMUL).

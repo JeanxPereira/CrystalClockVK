@@ -83,7 +83,13 @@ constexpr double kOfyRaw = 30984.0;  // 1936.5 px
 // above) into one GsPrimitive per rod, PRIM.type=4 (TRI_STRIP), 4 verts each.
 // This is deliberately NOT decodeGifData -- that assumes a real hardware
 // GIFtag, which this staging buffer is not (see sp1-interpreter-runs.md).
-GsCommandStream decodeStagingDirect(const uint8_t* spr, size_t len, uint32_t rodCount) {
+// ofxRaw/ofyRaw default to the MENU's real-register XYOFFSET (kOfxRaw/
+// kOfyRaw) but are caller-overridable -- the Visor driver (Phase 2 "THE
+// DIAL FOUND" follow-up) has no captured .gs dump of its own to read a
+// confirmed XYOFFSET from, so reusing the menu's real value is an explicit,
+// disclosed ASSUMPTION (same rasterizer/pipeline family, not a fitted guess).
+GsCommandStream decodeStagingDirect(const uint8_t* spr, size_t len, uint32_t rodCount,
+                                     double ofxRaw = kOfxRaw, double ofyRaw = kOfyRaw) {
     GsCommandStream stream;
     for (uint32_t r = 0; r < rodCount; r++) {
         const size_t rodOff = r * kRodRecordBytes;
@@ -99,8 +105,8 @@ GsCommandStream decodeStagingDirect(const uint8_t* spr, size_t len, uint32_t rod
             const uint32_t xRaw = xy & 0xFFFF;
             const uint32_t yRaw = (xy >> 16) & 0xFFFF;
             GsVertex vert{};
-            vert.x = static_cast<float>((static_cast<double>(xRaw) - kOfxRaw) / 16.0);
-            vert.y = static_cast<float>((static_cast<double>(yRaw) - kOfyRaw) / 16.0);
+            vert.x = static_cast<float>((static_cast<double>(xRaw) - ofxRaw) / 16.0);
+            vert.y = static_cast<float>((static_cast<double>(yRaw) - ofyRaw) / 16.0);
             vert.r = vp[0x08];
             vert.g = vp[0x09];
             vert.b = vp[0x0a];
@@ -122,27 +128,62 @@ int runDriveRods(int argc, char** argv) {
     std::string imagePath = argv[1];
     std::string jsonOut;
     std::string stagingJsonOut;
+    // Phase 2 -- Visor dial render: the menu's ctx (0x00296AB0, fixed global,
+    // reached via the config-menu preview widget 0x0022C8D0/0x00233928) is
+    // NOT the only context this shared rod-render machinery runs under. The
+    // Visor (full-screen screensaver dial) drives the SAME rod array/
+    // draw_crystal_rod through a DIFFERENT top-level entry (0x00233F60,
+    // reached indirectly via a scene-object linked list at 0x00371200 and a
+    // dispatch stub at 0x0022BCA8 -- ctx = object + 0x10) with its OWN ctx
+    // struct, live-confirmed via pcsx2 DebugServer at 0x003715D0 for the
+    // clock_viewer capture. --ctx lets the caller point at either.
+    uint32_t ctxOverride = 0x00296AB0;
+    double ofxOverride = kOfxRaw;
+    double ofyOverride = kOfyRaw;
+    bool runTransformPass = false;
     for (int i = 3; i < argc; i++) {
         if (!std::strcmp(argv[i], "--json") && i + 1 < argc) jsonOut = argv[++i];
         else if (!std::strcmp(argv[i], "--staging-json") && i + 1 < argc) stagingJsonOut = argv[++i];
+        else if (!std::strcmp(argv[i], "--ctx") && i + 1 < argc)
+            ctxOverride = std::strtoul(argv[++i], nullptr, 16);
+        else if (!std::strcmp(argv[i], "--ofx") && i + 1 < argc)
+            ofxOverride = std::strtod(argv[++i], nullptr);
+        else if (!std::strcmp(argv[i], "--ofy") && i + 1 < argc)
+            ofyOverride = std::strtod(argv[++i], nullptr);
+        else if (!std::strcmp(argv[i], "--transform"))
+            runTransformPass = true;
     }
     if (imagePath.empty() || jsonOut.empty()) {
         std::printf("usage: eerun <image.bin> --drive-rods --json <out.json> "
-                    "[--staging-json <out.json>]\n");
+                    "[--staging-json <out.json>] [--ctx <hex>] [--ofx <raw>] [--ofy <raw>]\n");
         return 2;
     }
 
     EeMemory mem;
     if (!mem.loadImage(imagePath)) { std::printf("bad image\n"); return 2; }
     EeInterpreter cpu(mem);
+    if (const char* ov = std::getenv("EERUN_MAX_INSTR")) cpu.maxInstructions = std::strtoull(ov, nullptr, 10);
 
-    constexpr uint32_t kCtx = 0x00296AB0;         // per-frame context struct
-    constexpr uint32_t kCtxColor = kCtx + 0xA0;    // a1 for draw_crystal_rod (RGBA)
+    const uint32_t kCtx = ctxOverride;             // per-frame context struct
+    const uint32_t kCtxColor = kCtx + 0xA0;        // a1 for draw_crystal_rod (RGBA)
     constexpr uint32_t kRodBase = 0x00375250;      // rod array
     constexpr uint32_t kRodStride = 0x160;
     constexpr uint32_t kPktCtx = 0x00375230;       // GS-packet cursor/base struct
     constexpr uint32_t kInitFn = 0x0022F720;       // packet-cursor (re)init
     constexpr uint32_t kDrawFn = 0x00232E38;       // draw_crystal_rod (leaf emitter)
+    // Phase 2 -- Visor dial render: the render-contract's pass #1
+    // (0x00232DA0, "matrix-apply prep") runs BEFORE draw_crystal_rod in
+    // 0x00233928's own per-rod loop, but the menu capture's screen coords
+    // were already baked (static preview), so the original --drive-rods
+    // harness never needed to call it. The Visor's own driver (0x00233F60)
+    // calls 0x00232DA0 per rod too (confirmed: jal hits at 0x234200 etc.,
+    // inside 0x00233F60's body, live-verified via pcsx2 backtrace/registers)
+    // -- and the Visor's raw rod-array +0x10/+0x14 fields read as tiny
+    // (-0.35..2.6) values, NOT screen pixels, unlike the menu's. --transform
+    // opts into calling it, a0=rodPtr a1=ctx a2=0 (args per the contract
+    // table; a2's exact role unconfirmed, 0 is the harness's best-effort
+    // guess -- not asserted correct, see phase2-visor-report.md).
+    constexpr uint32_t kTransformFn = 0x00232DA0;
     // Task 1 (phase2 discovery, task-1-report.md): the batch-start snapshot
     // draw_crystal_rod's own call site never performs, but the finalize step
     // (0x0022F7F8, reached via the 0x00235350 tail-jump stub) requires --
@@ -198,6 +239,17 @@ int runDriveRods(int argc, char** argv) {
         const uint32_t skipFlag = mem.read32(rodPtr + 0x150);
         if (skipFlag != 0) { rodsCulled++; continue; }
         rodsProcessed++;
+        if (runTransformPass) {
+            try {
+                cpu.call(kTransformFn, rodPtr, kCtx, 0);
+            } catch (const EeError& e) {
+                std::printf("TRANSFORM EeError rod=%u pc=%08X word=%08X: %s\n", i, e.pc, e.word, e.what.c_str());
+                std::map<uint32_t, int> calls;
+                for (uint32_t t : cpu.trace) calls[t]++;
+                for (auto& [t, n] : calls) std::printf("  call %08X x%d\n", t, n);
+                return 1;
+            }
+        }
         cpu.fpr[12] = jx;
         cpu.fpr[13] = jy;
         cpu.call(kDrawFn, rodPtr, kCtxColor);
@@ -225,7 +277,7 @@ int runDriveRods(int argc, char** argv) {
     if (!stagingJsonOut.empty()) {
         const uint32_t off = cursorStart - EeMemory::kSprBase;
         GsCommandStream stagingStream =
-            decodeStagingDirect(mem.sprData() + off, bytesFromRods, rodsProcessed);
+            decodeStagingDirect(mem.sprData() + off, bytesFromRods, rodsProcessed, ofxOverride, ofyOverride);
         GsDumpParser::writeJson(stagingStream, stagingJsonOut);
         std::printf("drive-rods: staging decode -> %zu prims (%u rods) -> %s\n",
                     stagingStream.prims.size(), rodsProcessed, stagingJsonOut.c_str());

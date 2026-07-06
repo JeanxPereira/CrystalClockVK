@@ -315,6 +315,27 @@ int main() {
     assert(cpu21.gpr[6].lo == 0);
     assert(cpu21.gpr[6].hi == 0);
 
+    // 22) VMULxyzw vf10, vf8, vf6  (COP2 macro FULL-VECTOR group, fn=0x2A --
+    //     Phase 2 Visor dial render: real word from re/ram/clock_viewer/
+    //     eeMemory.bin at pc=00273824 (inside 0x00232DA0's VU0-matrix
+    //     callee 0x00273820), dest=0xE/rt=4/rd=4/sa=5/fn=0x2A ==
+    //     0x4BC4216A -- but this test uses distinct dest/fs/ft/fd operands
+    //     (dest=0xF, ft=6, fs=8, fd=10) to also exercise the "no broadcast,
+    //     full vft vector" semantics distinctly from the broadcast-group
+    //     tests above: word = 010010 01111 00110 01000 01010 101010 =
+    //     0x49E642AA. fs=vf8={2,3,4,5}, ft=vf6={10,20,30,40} ->
+    //     fd = fs*ft elementwise = {20,60,120,200}. A VMULbc (broadcast)
+    //     mistake would read ft.x=10 for every lane, giving {20,30,40,50}
+    //     instead -- this asserts the true elementwise result, discriminating
+    //     against that misroute.
+    poke(mem, 0xE800, {0x49E642AAu, 0x03E00008u, 0u});
+    EeInterpreter cpu22(mem);
+    cpu22.vf[8][0] = 2.0f; cpu22.vf[8][1] = 3.0f; cpu22.vf[8][2] = 4.0f; cpu22.vf[8][3] = 5.0f;
+    cpu22.vf[6][0] = 10.0f; cpu22.vf[6][1] = 20.0f; cpu22.vf[6][2] = 30.0f; cpu22.vf[6][3] = 40.0f;
+    cpu22.call(0xE800);
+    assert(cpu22.vf[10][0] == 20.0f && cpu22.vf[10][1] == 60.0f &&
+           cpu22.vf[10][2] == 120.0f && cpu22.vf[10][3] == 200.0f);
+
     std::printf("ee_interpreter: all assertions passed\n");
     return 0;
 }

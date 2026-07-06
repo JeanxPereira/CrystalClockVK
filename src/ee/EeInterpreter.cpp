@@ -647,6 +647,48 @@ void EeInterpreter::executeOne(uint32_t word, uint32_t atPc) {
             vf[0][0] = 0.0f; vf[0][1] = 0.0f; vf[0][2] = 0.0f; vf[0][3] = 1.0f;
             return;
         }
+        if (fn >= 0x28 && fn <= 0x2F && fn != 0x2E) {
+            // Phase 2 -- Visor dial render: the transform-prep helper
+            // 0x00232DA0 (called per-rod before draw_crystal_rod on the
+            // Visor's own driver 0x00233F60, unlike the menu's pre-baked
+            // preview) hits VMUL (fn=0x2A) inside its VU0-macro callee
+            // 0x00273820. This is the FULL-VECTOR sibling of the broadcast
+            // group above -- same field layout (vft=rt, vfs=rd, vfd=sa,
+            // dest=rs&0xF) but operates elementwise on vft directly (no
+            // ".bc" component broadcast; the low 2 bits of the word are part
+            // of the fixed funct encoding here, not a broadcast selector).
+            // VOPMSUB (fn=0x2E, an outer-product op) is deliberately NOT
+            // included -- not observed yet, meaningfully different shape.
+            float result[4];
+            switch (fn) {
+            case 0x28:  // VADD: fd = vfs + vft
+                for (int i = 0; i < 4; i++) result[i] = vf[vfs][i] + vf[vft][i];
+                break;
+            case 0x29:  // VMADD: fd = ACC + vfs * vft
+                for (int i = 0; i < 4; i++) result[i] = vacc[i] + vf[vfs][i] * vf[vft][i];
+                break;
+            case 0x2A:  // VMUL: fd = vfs * vft
+                for (int i = 0; i < 4; i++) result[i] = vf[vfs][i] * vf[vft][i];
+                break;
+            case 0x2B:  // VMAX: fd = max(vfs, vft)
+                for (int i = 0; i < 4; i++) result[i] = std::max(vf[vfs][i], vf[vft][i]);
+                break;
+            case 0x2C:  // VSUB: fd = vfs - vft
+                for (int i = 0; i < 4; i++) result[i] = vf[vfs][i] - vf[vft][i];
+                break;
+            case 0x2D:  // VMSUB: fd = ACC - vfs * vft
+                for (int i = 0; i < 4; i++) result[i] = vacc[i] - vf[vfs][i] * vf[vft][i];
+                break;
+            case 0x2F:  // VMINI: fd = min(vfs, vft)
+                for (int i = 0; i < 4; i++) result[i] = std::min(vf[vfs][i], vf[vft][i]);
+                break;
+            default:
+                throw EeError{atPc, word, "unimplemented COP2 full-vector op"};
+            }
+            applyDest(vf[vfd], result);
+            vf[0][0] = 0.0f; vf[0][1] = 0.0f; vf[0][2] = 0.0f; vf[0][3] = 1.0f;
+            return;
+        }
         throw EeError{atPc, word, "unimplemented COP2 macro op"};
     }
     default:
