@@ -94,12 +94,14 @@ newer docs):
 Rule going forward: a new correction MUST edit the old doc; append-only
 correction layers are what rotted the docs.
 
-### 5.3 CrystalOSD coverage audit (cheap, possibly wall-dissolving)
+### 5.3 CrystalOSD coverage audit — CANCELLED (2026-07-05)
 
-For each blocked function — transform+emit (0x2738a0 target), FUN_002738e8,
-the DMA/GIF kick, light-spot draw, browser state machine, boot generator —
-answer from the decomp source: `DECOMP-COVERED` (port from C; wall gone) or
-`RE-NEEDED` (goes to 5.4). Nobody has ever recorded this answer.
+User verified the decomp is unusable ("todo zuado", same class as the old raylib
+recreation) and its documented path no longer exists. The decomp is REMOVED from
+the ground-truth hierarchy (§3 layer 3 demoted to: use only if a trustworthy
+decomp ever materializes). All `RE-NEEDED` classification collapses to: live RAM
++ native PCSX2 disassembly (validated this same day — the 0x2738a0 wall fell to
+exactly this method). Task 3 of the SP0 plan is cancelled accordingly.
 
 ### 5.4 Live RAM extraction (Ghidra + PCSX2 open now)
 
