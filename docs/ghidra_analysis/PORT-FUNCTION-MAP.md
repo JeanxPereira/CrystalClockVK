@@ -328,15 +328,22 @@ stream (GsPrimitive list with the REAL register templates + textures 11520/11200
 → existing GsRenderer draws it faithfully. Validate: render generated clock at a
 fixed time, pixel-diff vs GSRunner (the same gate, must reach the dump's 5–10%). [DUMP-MEASURED]
 
-## ⚠️ STATIC-RE WALL (2026-07-03) — and why the port still works
+## ⚠️ STATIC-RE WALL (2026-07-03) — [FALSIFIED 2026-07-05: the wall is DOWN]
 
-The TODO session hit a hard limit: **the transform+emit function `FUN_002738a0`
+~~The TODO session hit a hard limit: **the transform+emit function `FUN_002738a0`
 (the vertex → GS-packet crux that BOTH `draw_crystal_rod` and `FUN_00232da0`
 tail-jump into) is a data table misclassified as code in this Ghidra DB** — its
-bytes decode as ~30 monotonic cop0/cop1 ops; the decompiler aborts. [DECOMP-SOURCED] The GIF/VIF1
-DMA kick and the light-spot draw consumer were also not statically locatable
-(computed-pointer dispatch) [HYPOTHESIS] (unresolved gap, consistent with known-falsified item 6's "the real GS kick is UNLOCATED"). So "port every function by decompiling" is BLOCKED
-for exactly the functions that emit pixels.
+bytes decode as ~30 monotonic cop0/cop1 ops; the decompiler aborts.~~
+[FALSIFIED → 2026-07-05 live native disasm: 0x002738a0 = sceVu0MulMatrix,
+0x002738e8 = sceVu0ApplyMatrix — COP2 macro-mode code this Ghidra config can't
+decompile, NOT data, NOT an emitter. The real vertex→GS-packet emitter is the
+0x0022FD00 family (0x22F720/0x22FB28/0x22FBE8/0x22F7F8 + DMA-chain builders at
+0x22fd58+); method = live RAM + PCSX2 native disasm. See sp0-live-reads.md.]
+The GIF/VIF1 DMA kick and the light-spot draw consumer were also not statically
+locatable (computed-pointer dispatch) [HYPOTHESIS] (unresolved gap, consistent
+with known-falsified item 6's "the real GS kick is UNLOCATED"). ~~So "port every
+function by decompiling" is BLOCKED for exactly the functions that emit pixels.~~
+[FALSIFIED → the block was a Ghidra-decompiler limitation, not an RE limit.]
 
 **But the port does not need those internals — it needs their CONTRACT, and both
 ends are observable.** `FUN_002738a0`'s inputs (rod model verts + rotation +
