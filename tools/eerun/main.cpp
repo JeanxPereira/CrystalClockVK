@@ -3,6 +3,7 @@
 #include "GsDumpParser.hpp"
 #include "gs/GsCommandStream.hpp"
 #include <algorithm>
+#include <bit>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -412,11 +413,36 @@ int runDriveVisor(int argc, char** argv) {
 
     cpu.fpr[12] = f12;
     cpu.fpr[13] = f13;
+    // Manual step loop (mirrors cpu.call's ABI setup) so we can dump VU0 VF
+    // state the first time execution enters the position writer 0x2335E8 --
+    // to test whether the projection matrix VFs are preloaded before the
+    // driver (live vf04-vf12 non-zero) vs zero here.
+    cpu.instructionsRetired = 0;
+    cpu.gpr[4].lo = (entry == 0x00233F60) ? ctx : objAddr; cpu.gpr[4].hi = 0;
+    cpu.gpr[5].lo = (entry == 0x00233F60) ? a1 : 0; cpu.gpr[5].hi = 0;
+    cpu.gpr[6] = {}; cpu.gpr[7] = {};
+    cpu.gpr[29].lo = EeInterpreter::kDefaultStack; cpu.gpr[29].hi = 0;
+    cpu.gpr[31].lo = EeInterpreter::kReturnSentinel; cpu.gpr[31].hi = 0;
+    cpu.pc = entry;
+    bool vfDumped = false;
     try {
-        if (entry == 0x00233F60)
-            cpu.call(entry, ctx, a1);
-        else
-            cpu.call(entry, objAddr);  // whole-handler form: a0 = obj
+        while (cpu.pc != EeInterpreter::kReturnSentinel) {
+            if (!vfDumped && cpu.pc == 0x002335E8) {
+                vfDumped = true;
+                std::printf("drive-visor: VF at 0x2335E8 entry (instr %llu):\n",
+                            (unsigned long long)cpu.instructionsRetired);
+                for (int r = 0; r < 13; r++)
+                    std::printf("  vf%02d = %08X %08X %08X %08X\n", r,
+                                std::bit_cast<uint32_t>(cpu.vf[r][3]),
+                                std::bit_cast<uint32_t>(cpu.vf[r][2]),
+                                std::bit_cast<uint32_t>(cpu.vf[r][1]),
+                                std::bit_cast<uint32_t>(cpu.vf[r][0]));
+                std::fflush(stdout);
+            }
+            cpu.step();
+            if (++cpu.instructionsRetired > cpu.maxInstructions)
+                throw EeError{cpu.pc, 0, "budget exceeded"};
+        }
     } catch (const EeError& e) {
         std::printf("drive-visor: EeError pc=%08X word=%08X: %s\n", e.pc, e.word, e.what.c_str());
         return 1;
