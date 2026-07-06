@@ -102,6 +102,17 @@ is re-derived in SP1.
 - **Per-frame chain re-confirmed live**: BP at 0x232618 fired; backtrace
   `0x00233928 → 0x00232618` matches [[live-render-chain]].
 
+## Menu + boot captures DONE [LIVE-VERIFIED] (2026-07-06)
+
+- **Main menu**: savestate slot 7 → `re/ram/menu/eeMemory.bin` (32MB, gitignored)
+  + vu0Memory.bin. Captured with user parked on the OSDSYS main menu.
+- **Boot towers scene**: savestate slot 6 → `re/ram/boot/eeMemory.bin` (32MB,
+  gitignored) + vu0Memory.bin. Captured mid-boot animation (emulator paused via
+  DebugServer, state saved, resumed — no reset with BPs armed).
+- Sanity: FOV globals 0x2C8370/74 read 0.470/0.5405 in ALL THREE images
+  (boot/menu/clock) — dumps aligned and intact.
+- Savestate slot map: 6=boot towers, 7=main menu, 8=clock screen, 9=pre-clock.
+
 ## Light spots — updater does NOT run on the clock screen [LIVE-VERIFIED]
 
 - Exec BP at `FUN_0020eda0` (0x0020eda0): **never fires** on the crystal-clock
