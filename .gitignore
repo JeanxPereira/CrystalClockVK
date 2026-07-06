@@ -25,3 +25,5 @@ tools/gsdump/clock_prims.json
 
 # Patent page scans (redundant with US6693606.pdf + the digest); regenerable from the PDF
 docs/clock_patent/pages-to-jpg/
+
+re/

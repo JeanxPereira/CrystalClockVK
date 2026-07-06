@@ -84,8 +84,32 @@ is re-derived in SP1.
   plain 128-bit `memcpy(dst, src, n)` (lq/sq loop). `FUN_00230518`'s chain therefore
   ends in a staging-buffer copy (dst 0x01860200), not a GS kick.
 
-## Rod arrays — NOT captured yet
+## Clock-screen capture DONE [LIVE-VERIFIED] (2nd half of session, clock on screen)
 
-0x00375250 read all-zero: the crystal-clock screen was not active at capture time.
-Rod structs, packet buffer 0x375230 head, and the full RAM image require the clock
-on screen (user navigation) — pending in this session.
+- **Full EE RAM image**: `re/ram/clock/eeMemory.bin` (32MB, gitignored) + vu0Memory
+  + screenshot, extracted from savestate slot 8 (`...08.p2s`, zstd-in-zip → 7-Zip).
+  Byte-verified against live reads at 0x2738a0 (sceVu0 code) and 0x375250 (rod data).
+  Backup pre-clock state in slot 9.
+- **Rod array 0x375250 is NOT an array of 0x160 rod structs as documented** —
+  [FALSIFIED, layout richer]: live data shows groups of 4 vertex records of 0x50
+  bytes each (per record: +0x00 world xyz float, +0x10 two floats (u,v / phase),
+  +0x20 screen XY float pair ~1900/2100 range, +0x28 z-ish float, +0x30 w≈1.0,
+  +0x34/38 the SAME screen coords as 12.4 ints (0x772b=30507→1906.7 ✓), +0x3c
+  0xfffff010, +0x40 pass/flag 0x0f|0x10), followed by a 0x50 normal/terminator
+  record (unit vector + count). I.e. the TESSELATED QUADS live here, world+screen,
+  ready to correlate with prims_sw.json. Second population at ~0x375a90+ with larger
+  coords (menu cubes / other group). Full layout analysis = SP1, from the RAM image.
+- **Per-frame chain re-confirmed live**: BP at 0x232618 fired; backtrace
+  `0x00233928 → 0x00232618` matches [[live-render-chain]].
+
+## Light spots — updater does NOT run on the clock screen [LIVE-VERIFIED]
+
+- Exec BP at `FUN_0020eda0` (0x0020eda0): **never fires** on the crystal-clock
+  screen, while a control BP at 0x232618 fires immediately (BPs proven working).
+- `0x34c830` content is static idle data `{0, 0, 1160.0, 0} ×2` across reads;
+  read/write watchpoints (cached + uncached mirror) never trigger.
+- Consequence: the claim "FUN_0020eda0 runs once per frame from 0x211490"
+  is [FALSIFIED for the clock screen] — that updater belongs to another
+  screen/mode (candidates: version-info/Visor orb variant, or transition states).
+  The clock screen's spot/orbit animation must come from the FUN_002354c8-family
+  (parameterized copy) instead. Re-hunt in SP1 with the right mode active.
