@@ -140,6 +140,18 @@ int main() {
     cpu7.gpr[2].lo = 0xFFFFFFFFu;  // v0; call() sets a1 (gpr5) via its args
     assert(cpu7.call(0x7000, 0, 2) == 0x7FFFFFFFu);
 
+    // 8) instructionsRetired must reset per call(), not accumulate across
+    //    calls on a long-lived instance (Phase-2 drives call() in a per-frame
+    //    loop). Cap maxInstructions low; each call of the 3-instr snippet
+    //    from test 1 must pass every time even though 5000 calls * 3 instrs
+    //    = 15000 >> 1000 cumulative -- proving the budget is per-call.
+    poke(mem, 0x1000, {0x24820005u, 0x03E00008u, 0u});
+    EeInterpreter cpu8(mem);
+    cpu8.maxInstructions = 1000;
+    for (int i = 0; i < 5000; i++) {
+        assert(cpu8.call(0x1000, 37) == 42);
+    }
+
     std::printf("ee_interpreter: all assertions passed\n");
     return 0;
 }

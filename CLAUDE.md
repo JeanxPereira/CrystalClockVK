@@ -25,10 +25,11 @@ the look; read it from evidence.
    `setBlendState`, dynamic rendering, `local_read`).
 3. `gs/`: Pure PS2 logic — NO Vulkan symbols. GsState structs, SwizzleEngine, TextureDecoder,
    VramBuffer, VU0 math. Unit-testable.
-4. `gsvk/` (Phase 1): the GS→VK translator — GsState in, VK pipeline/blend/shader config out.
+4. `ee/`: Pure PS2 EE interpreter — NO Vulkan symbols, same rule as `gs/`. Unit-testable.
+5. `gsvk/` (Phase 1): the GS→VK translator — GsState in, VK pipeline/blend/shader config out.
    The only place GS and VK meet.
-5. `app/`: loop + pass dispatch driven by decoded GS packet state.
-6. `tools/gsdump/` (Phase 1): standalone GS-dump parser.
+6. `app/`: loop + pass dispatch driven by decoded GS packet state.
+7. `tools/gsdump/` (Phase 1): standalone GS-dump parser.
 
 ## Ground Truth & Tooling
 - **CrystalOSD decomp** (`C:\CodingProjects\Personal\CrystalOSD`) (STALE PATH — real location pending user): the spec. GS-packet builders

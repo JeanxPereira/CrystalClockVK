@@ -24,6 +24,7 @@ EeInterpreter::EeInterpreter(EeMemory& mem) : m_mem(mem) {
 
 uint64_t EeInterpreter::call(uint32_t addr, uint64_t a0, uint64_t a1,
                               uint64_t a2, uint64_t a3) {
+    instructionsRetired = 0;  // maxInstructions is a per-call runaway guard
     gpr[4].lo = a0; gpr[4].hi = 0;
     gpr[5].lo = a1; gpr[5].hi = 0;
     gpr[6].lo = a2; gpr[6].hi = 0;

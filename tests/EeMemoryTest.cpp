@@ -34,17 +34,6 @@ int main() {
     assert(hit);
     assert(mem.storeLog.size() == 1);
 
-    // real image (skip if absent)
-    EeMemory img;
-    if (!img.loadImage("re/ram/clock/eeMemory.bin")) {
-        std::printf("SKIPPED: re/ram/clock/eeMemory.bin not present\n");
-        return 0;
-    }
-    // first word of sceVu0MulMatrix @0x2738a0 is an lqc2 (opcode 0x36 = LQC2,
-    // top 6 bits 110110) — sp0-live-reads.md
-    const uint32_t w = img.read32(0x002738A0u);
-    assert((w >> 26) == 0x36u);
-
     bool boundaryMmioDamageHit = false;
     mem.onMmio = [&](const ps2ee::MmioAccess& a) {
         if (a.addr == EeMemory::kRamSize - 1 && a.isWrite && a.size == 4) {
@@ -99,6 +88,18 @@ int main() {
         assert(straddleHitMmio);
         assert(spr.storeLog.size() == storeLogBeforeStraddle);
     }
+
+    // real image (skip if absent) -- must come after all image-independent
+    // coverage above so that coverage always runs, even without the image.
+    EeMemory img;
+    if (!img.loadImage("re/ram/clock/eeMemory.bin")) {
+        std::printf("SKIPPED: re/ram/clock/eeMemory.bin not present\n");
+        return 0;
+    }
+    // first word of sceVu0MulMatrix @0x2738a0 is an lqc2 (opcode 0x36 = LQC2,
+    // top 6 bits 110110) — sp0-live-reads.md
+    const uint32_t w = img.read32(0x002738A0u);
+    assert((w >> 26) == 0x36u);
 
     std::printf("ee_memory: all assertions passed\n");
     return 0;
