@@ -59,6 +59,47 @@ int main() {
 
     assert(mem.read32(0x00000000u + EeMemory::kRamSize - 2) == 0);
 
+    // Scratchpad RAM (SPR): fixed window at 0x70000000, NOT translate()'d /
+    // NOT aliased onto the 0x10000000 MMIO range the naive mask would produce.
+    {
+        EeMemory spr;
+        bool sprHitMmio = false;
+        spr.onMmio = [&](const ps2ee::MmioAccess&) { sprHitMmio = true; };
+        spr.storeLogEnabled = true;
+
+        const uint32_t payload[4] = {0x11111111u, 0x22222222u, 0x33333333u, 0x44444444u};
+        spr.write128(0x70000000u, payload);
+        assert(!sprHitMmio);
+        uint32_t out[4] = {};
+        spr.read128(0x70000000u, out);
+        assert(!sprHitMmio);
+        assert(std::memcmp(out, payload, 16) == 0);
+        // Visible directly via sprData(), at offset 0 of the 16KB window.
+        assert(std::memcmp(spr.sprData(), payload, 16) == 0);
+        assert(spr.storeLog.size() == 1 && spr.storeLog[0].physAddr == 0x70000000u
+               && spr.storeLog[0].size == 16);
+
+        // Regression: the real D2 (GIF) DMA kick register at 0x1000A000 must
+        // still route to MMIO, not get swallowed as an SPR access.
+        bool kickHitMmio = false;
+        uint32_t kickAddr = 0;
+        spr.onMmio = [&](const ps2ee::MmioAccess& a) { kickHitMmio = true; kickAddr = a.addr; };
+        spr.write32(0x1000A000u, 0x101u);
+        assert(kickHitMmio);
+        assert(kickAddr == 0x1000A000u);
+        assert(spr.storeLog.size() == 1);  // MMIO write did not add a store record
+
+        // Straddling the SPR window's end (16KB = 0x4000, base 0x70000000):
+        // an 8-byte write starting 4 bytes before the end overruns by 4 bytes
+        // and must be guarded off to MMIO, not silently corrupt/wrap.
+        bool straddleHitMmio = false;
+        spr.onMmio = [&](const ps2ee::MmioAccess&) { straddleHitMmio = true; };
+        const size_t storeLogBeforeStraddle = spr.storeLog.size();
+        spr.write64(0x70003FFCu, 0x1122334455667788ull);
+        assert(straddleHitMmio);
+        assert(spr.storeLog.size() == storeLogBeforeStraddle);
+    }
+
     std::printf("ee_memory: all assertions passed\n");
     return 0;
 }

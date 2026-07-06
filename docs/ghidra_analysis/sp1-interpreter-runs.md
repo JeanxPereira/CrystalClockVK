@@ -216,3 +216,71 @@ requires scratchpad-RAM emulation in `EeMemory` (new work, not scoped to
 this task) so the real vertex packet can be captured. Logged here per the
 "real finding, not a failure to hide" rule — nothing was invented or fudged
 to force a pass.
+
+## Task 7: SPR emulation added — packet captured, still no real subset match [DUMP-MEASURED]
+
+`EeMemory` now backs a 16KB Scratchpad-RAM window at virtual `0x70000000`
+(`kSprBase`/`kSprSize`/`isSpr()`), checked in every accessor *before*
+`translate()` runs, so it is no longer aliased onto the `0x10000xxx` MMIO
+range and silently discarded. `0x1000A000` (the real D2/GIF DMA kick) is
+regression-tested to still route to `onMmio`. Straddling the SPR window's
+end (`0x70003FFC` + 8 bytes) is guarded to MMIO, mirroring the RAM
+boundary-guard pattern. Unit tests: `tests/EeMemoryTest.cpp` (128-bit
+roundtrip via `sprData()`, MMIO regression, straddle guard) — all pass,
+`ee_memory` suite 17/17 green project-wide.
+
+`eerun --dump-stores` now tags SPR stores with their real vaddr (not
+`translate()`'d) and both the extent-dump and `--decode` overlay logic
+route those bytes through the separate SPR backing store instead of the
+32MB RAM buffer. `--decode` decodes the SPR content first, then the
+existing main-RAM GIF window, into the same `GsCommandStream`.
+
+**Re-running the phase gate**, this session's captured `stores_232618.bin`
+now contains **31 SPR store extents** spanning `0x70000000..0x70000050` (80
+bytes) — the previously-invisible writes are now genuinely captured, not
+discarded. Decoding them:
+
+```
+decode: SPR content 70000000..70000050 (80 bytes)
+decode: after SPR pass -> 3 draws, 3 kicks, 1 giftags
+```
+
+`vdiff --subset` → **`0/3 candidate draws matched`**.
+
+**Honest read of the "3 draws"**: hand-decoded the raw captured header
+byte-for-byte (`data[0x00..0x10]` = `03 00 00 10 00 00 00 00 00 00 00 00 03
+00 00 50`): `nloop=3`, `pre=0`, `prim=0`, `flg=0` (PACKED), and the
+second tag word (`b`) is exactly `0` — which `decodeGifData` interprets as
+`nreg=16` (its "0 means 16" convention). `nloop=3 * nreg=16 * 16 bytes =
+768 bytes` of PACKED payload is required to satisfy that header, but only
+80 bytes of this run's SPR writes actually landed — the remaining ~688
+bytes `decodeGifData`'s inner loop walks are the zero-filled, never-written
+tail of the 16KB SPR buffer. That is exactly why the JSON candidate has 3
+"draws" with every field zero (`PRIM.type=0`, all verts `x=y=0`,
+`r=g=b=a=0`): the decoder is consuming untouched zero memory as if it were
+real GIFtag payload, not decoding real geometry. This is a decoder/model
+limitation, not a hardware fact — `decodeGifData`'s inner PACKED/REGLIST
+walk has no bound against the caller's `size` (unlike the outer
+`while (p+16<=size)` tag-header check), a property that was harmless for
+the main-RAM GIF window (its length is QWC-precise from a real MMIO
+`D2_QWC` value) but is wrong here, where no such hardware-verified length
+exists for SPR content.
+
+**Conclusion for the gate** [DUMP-MEASURED, not invented]: the core bug —
+SPR writes vanishing into the MMIO/discard path — is fixed and verified:
+the capture went from **0 bytes / 0 draws** to **80 real bytes across 31
+store extents**, a genuine, non-vacuous improvement. But treating those 80
+bytes as a ready-made GIFtag+PACKED stream starting at offset 0 does not
+recover real geometry — either the true GIFtag lives at a different offset
+inside the 16KB window than `0x70000000`, or this SPR region is a
+field-by-field workspace/staging struct (consistent with the extent shape:
+many small 4/8/16-byte stores at scattered sub-offsets, not one bulk
+quadword write) that gets assembled/copied/DMA'd elsewhere in a call this
+single `0x232618` invocation does not reach. **Subset match is still 0**
+and the "3 draws" are spurious artifacts of walking past the captured
+bytes, not real vertices — reported here rather than presented as
+progress it is not. Resolving this needs either (a) RE of the SPR
+workspace's true struct layout, or (b) tracing the actual consumer of this
+buffer (DMA source or FIFO write) to find where/how it becomes a real
+GIFtag — both out of scope for "emulate the SPR so it isn't discarded,"
+which is the part this task fixed.

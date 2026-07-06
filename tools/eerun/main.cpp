@@ -60,11 +60,19 @@ int runDecode(int argc, char** argv) {
         else std::printf("warning: base image '%s' not found; untouched bytes read as zero\n", basePath.c_str());
     }
 
+    // SPR (EE Scratchpad RAM) has no base-image counterpart -- on hardware
+    // it powers up unspecified/zeroed, and stores.bin's SPR extents (tagged
+    // with their real vaddr, 0x70000000..0x70003FFF, per EeMemory::isSpr)
+    // are the only content that ever lands there in this capture.
+    std::vector<uint8_t> spr(EeMemory::kSprSize, 0);
+    uint32_t sprMaxEnd = 0;
+
     // Overlay the captured store extents (final RAM content at dump time)
     // on top of the base image, in store order (later extents win on overlap).
     std::ifstream sf(storesPath, std::ios::binary);
     if (!sf) { std::printf("cannot open %s\n", storesPath.c_str()); return 1; }
     size_t extentCount = 0;
+    size_t sprExtentCount = 0;
     while (sf) {
         uint32_t addr = 0, len = 0;
         sf.read(reinterpret_cast<char*>(&addr), 4);
@@ -73,18 +81,44 @@ int runDecode(int argc, char** argv) {
         std::vector<uint8_t> bytes(len);
         sf.read(reinterpret_cast<char*>(bytes.data()), len);
         if (!sf) break;
-        if (uint64_t(addr) + len <= ram.size())
+        if (addr >= EeMemory::kSprBase && addr < EeMemory::kSprBase + EeMemory::kSprSize) {
+            const uint32_t off = addr - EeMemory::kSprBase;
+            const uint32_t end = std::min<uint32_t>(off + len, EeMemory::kSprSize);
+            if (end > off) std::memcpy(spr.data() + off, bytes.data(), end - off);
+            sprMaxEnd = std::max(sprMaxEnd, end);
+            sprExtentCount++;
+        } else if (uint64_t(addr) + len <= ram.size()) {
             std::memcpy(ram.data() + addr, bytes.data(), len);
+        }
         extentCount++;
     }
-    std::printf("decode: %zu store extents applied over base '%s'\n", extentCount, basePath.c_str());
+    std::printf("decode: %zu store extents applied over base '%s' (%zu in SPR)\n",
+                extentCount, basePath.c_str(), sprExtentCount);
 
+    GsCommandStream stream;
+
+    // SPR pass first: sp1-interpreter-runs.md's Task 6 finding is that the
+    // GIF-packet-shaped writes (GIFtag words, floats, flat color) landing on
+    // the aliased 0x1000xxxx range are actually the real vertex/rect packet
+    // being built in scratchpad, invisible before this SPR emulation existed.
+    if (sprMaxEnd > 0) {
+        std::printf("decode: SPR content %08X..%08X (%u bytes)\n",
+                    EeMemory::kSprBase, EeMemory::kSprBase + sprMaxEnd, sprMaxEnd);
+        GsDumpParser::decodeGifData(stream, spr.data(), sprMaxEnd);
+        std::printf("decode: after SPR pass -> %u draws, %u kicks, %u giftags\n",
+                    stream.counts.draws, stream.counts.kicks, stream.counts.giftags);
+    } else {
+        std::printf("decode: SPR empty (no stores landed in 0x70000000..0x70003FFF)\n");
+    }
+
+    // Main-RAM GIF window: the D2-DMA'd state-setup packet (TEST_1/ALPHA_1),
+    // decoded second so its register state applies on top of whatever the
+    // SPR pass already emitted -- both feed the same decodeState/stream.
     const uint32_t winEnd = std::min<uint32_t>(kGifWindowStart + kGifWindowLen,
                                                 static_cast<uint32_t>(ram.size()));
     const uint32_t winLen = winEnd - kGifWindowStart;
     std::printf("decode: GIF window %08X..%08X (%u bytes)\n", kGifWindowStart, winEnd, winLen);
 
-    GsCommandStream stream;
     GsDumpParser::decodeGifData(stream, ram.data() + kGifWindowStart, winLen);
     std::printf("decode: %u draws, %u kicks, %u giftags\n", stream.counts.draws,
                 stream.counts.kicks, stream.counts.giftags);
@@ -173,7 +207,13 @@ int main(int argc, char** argv) {
         std::FILE* f = std::fopen(dumpPath.c_str(), "wb");
         for (auto& [a, b] : ext) {
             std::fwrite(&a, 4, 1, f); uint32_t len = b - a; std::fwrite(&len, 4, 1, f);
-            std::fwrite(mem.ram() + a, 1, len, f);
+            // SPR extents are tagged with their real vaddr (0x70000000-range,
+            // see EeMemory::isSpr) and live in the separate SPR backing store,
+            // not the 32MB RAM buffer -- pick the right source per extent.
+            const uint8_t* src = (a >= EeMemory::kSprBase && a < EeMemory::kSprBase + EeMemory::kSprSize)
+                                      ? mem.sprData() + (a - EeMemory::kSprBase)
+                                      : mem.ram() + a;
+            std::fwrite(src, 1, len, f);
         }
         std::fclose(f);
         std::printf("stores dumped -> %s\n", dumpPath.c_str());
