@@ -117,8 +117,12 @@ is re-derived in SP1.
 - **Version menu** (Version/system-info screen): savestate slot 4 →
   `re/ram/version_menu/eeMemory.bin` (32MB, gitignored) + vu0Memory.bin. Same FOV
   globals check passes.
-- Savestate slot map: 4=version menu, 5=clock viewer (no menu), 6=boot towers,
-  7=main menu, 8=clock screen, 9=pre-clock.
+- **Browser** (memory card / disc browser screen): savestate slot 3 →
+  `re/ram/browser/eeMemory.bin` (32MB, gitignored) + vu0Memory.bin. Same FOV
+  globals check passes.
+- Savestate slot map: 3=browser, 4=version menu, 5=clock viewer (no menu),
+  6=boot towers, 7=main menu, 8=clock screen, 9=pre-clock. Per-screen capture
+  set COMPLETE (all interactive-1:1 scope screens imaged).
 
 ## Light spots — updater does NOT run on the clock screen [LIVE-VERIFIED]
 
