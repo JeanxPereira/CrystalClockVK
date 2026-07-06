@@ -456,3 +456,28 @@ Loop waits for that field == 0. NEXT: trace where s1 is loaded before
 `eerun ... 233928 --ready-at <addr>=0 --trace`, and REPORT honestly whether
 0x233928 then drives 0x232618 per-quad (and the real vdiff --subset count) or
 hits the next wall. Do this under the Phase 2 plan, not more ad-hoc spikes.
+
+## Phase 2 spike 2b — driver + stub target fully mapped (2026-07-06, static disasm of RAM image)
+
+[DUMP-MEASURED] Decoded 0x233928's prologue from re/ram/clock/eeMemory.bin:
+- 0x233978: `addiu s0, s6, 0x5250` with s6=lui 0x37 -> **s0 = 0x00375250 = THE ROD
+  ARRAY** (the tesselated quads). 0x233994: s1 = 0x00375230 (just below it).
+- Calls in order: 0x2335e8, 0x232470, 0x230518, 0x22f720, 0x232da0, 0x235350,
+  0x230fe8, 0x230518... It iterates/renders over the rod array. STRONG confirmation
+  0x233928 IS the per-frame render driver we want to drive ("become the driver").
+  (It does NOT call 0x232618 in its own body — 0x232618 is reached deeper, via one
+  of these helpers, e.g. 0x232da0/0x235350.)
+
+[DUMP-MEASURED] The Deci2 hang is a sub-call (function containing 0x271980).
+Decoded its loop: s0 = s1 + 0x1690; `0x2719dc: lw v0, 12(s0)` = *(s1+0x1690+0xc);
+`0x2719e0: bne v0,zero,0x2719d0` -> **`while (*(s1+0x1690+0xc) != 0) { a0 =
+*(s1+0x1690); call 0x26f478(a0); }`**. STUB TARGET CONFIRMED: force
+*(s1+0x1690+0xc) to read 0 (via --ready-at) to exit the loop.
+
+[OPEN — next Phase 2 task, well-scoped] s1's concrete value in fn 0x271980 is
+DYNAMIC (set/passed via the call chain, not a static global) -> needs a runtime
+trace. NEXT: add "dump GPRs when PC==<addr>" to eerun (a read/exec watch), run
+0x233928 until PC==0x2719dc, read s1, compute poll addr = s1+0x169c, then
+`eerun ... 233928 --ready-at <addr>=0 --trace` and REPORT honestly whether the
+driver then iterates the render helpers over the rod array (real vdiff --subset)
+or hits the next wall. This is the Phase 2 plan's first task.
