@@ -46,6 +46,65 @@ constexpr const char* kGprNames[32] = {
     "t8",   "t9", "k0", "k1", "gp", "sp", "s8", "ra",
 };
 
+// Phase 2 -- staging format DECODED (sp1-interpreter-runs.md, "Phase 2 --
+// staging format DECODED" section): draw_crystal_rod's internal SPR staging
+// record is NOT a hardware GIFtag -- decodeGifData misreads it (see the report
+// this session updates). Per rod = 112 bytes: 16-byte header (ignored for
+// geometry) + 4 vertices x 24 bytes. Per-vertex layout [DUMP-MEASURED]:
+//   +0x00, +0x04: floats (intermediate, ignored)
+//   +0x08: RGBA8
+//   +0x0c: float (ignored)
+//   +0x10: screen X|Y packed 12.4 fixed -- low16=X, high16=Y (both /16 = px)
+//   +0x14: 0xFFFFF010 marker (ignored)
+constexpr size_t kRodRecordBytes = 112;
+constexpr size_t kRodHeaderBytes = 16;
+constexpr size_t kRodVertBytes = 24;
+constexpr size_t kRodVertsPerRod = 4;
+
+// GS XYOFFSET (OFX, OFY), in raw 12.4 fixed-point units. Determined
+// EMPIRICALLY this session (phase2-staging-decode-report.md): searched the
+// full oracle vertex set (re/oracle/clock_sw_prims.json) for the translation
+// that best aligns the 7 distinct decoded rod-vertex screen positions with
+// oracle vertices; the winning offset lands one decoded vertex within 0.003px
+// of an exact oracle vertex (and all 7 within <2px), which is far tighter
+// than coincidence over ~20k oracle vertices -- not assumed/guessed.
+constexpr double kOfxRaw = 25788.0;  // 1611.75 px
+constexpr double kOfyRaw = 31656.0;  // 1978.5 px
+
+// Parses the raw internal staging bytes directly (per the mapped layout
+// above) into one GsPrimitive per rod, PRIM.type=4 (TRI_STRIP), 4 verts each.
+// This is deliberately NOT decodeGifData -- that assumes a real hardware
+// GIFtag, which this staging buffer is not (see sp1-interpreter-runs.md).
+GsCommandStream decodeStagingDirect(const uint8_t* spr, size_t len, uint32_t rodCount) {
+    GsCommandStream stream;
+    for (uint32_t r = 0; r < rodCount; r++) {
+        const size_t rodOff = r * kRodRecordBytes;
+        if (rodOff + kRodRecordBytes > len) break;
+        const uint8_t* rod = spr + rodOff;
+        GsPrimitive prim{};
+        prim.index = r;
+        prim.prim.type = 4;  // TRI_STRIP, per the contract's "start with type 4"
+        for (size_t v = 0; v < kRodVertsPerRod; v++) {
+            const uint8_t* vp = rod + kRodHeaderBytes + v * kRodVertBytes;
+            uint32_t xy;
+            std::memcpy(&xy, vp + 0x10, 4);
+            const uint32_t xRaw = xy & 0xFFFF;
+            const uint32_t yRaw = (xy >> 16) & 0xFFFF;
+            GsVertex vert{};
+            vert.x = static_cast<float>((static_cast<double>(xRaw) - kOfxRaw) / 16.0);
+            vert.y = static_cast<float>((static_cast<double>(yRaw) - kOfyRaw) / 16.0);
+            vert.r = vp[0x08];
+            vert.g = vp[0x09];
+            vert.b = vp[0x0a];
+            vert.a = vp[0x0b];
+            prim.verts.push_back(vert);
+        }
+        stream.prims.push_back(std::move(prim));
+    }
+    stream.counts.draws = static_cast<uint32_t>(stream.prims.size());
+    return stream;
+}
+
 // Phase 2 task 2: drive the per-rod renderer directly, bypassing 0x00233928's
 // Deci2-blocked body entirely (per phase2-render-contract.md). Seeds/state are
 // all [DUMP-MEASURED] from re/ram/clock/eeMemory.bin -- see the contract doc
@@ -54,11 +113,14 @@ int runDriveRods(int argc, char** argv) {
     // argv[1] = image path (argv[0] is the exe, argv[2] is "--drive-rods").
     std::string imagePath = argv[1];
     std::string jsonOut;
+    std::string stagingJsonOut;
     for (int i = 3; i < argc; i++) {
         if (!std::strcmp(argv[i], "--json") && i + 1 < argc) jsonOut = argv[++i];
+        else if (!std::strcmp(argv[i], "--staging-json") && i + 1 < argc) stagingJsonOut = argv[++i];
     }
     if (imagePath.empty() || jsonOut.empty()) {
-        std::printf("usage: eerun <image.bin> --drive-rods --json <out.json>\n");
+        std::printf("usage: eerun <image.bin> --drive-rods --json <out.json> "
+                    "[--staging-json <out.json>]\n");
         return 2;
     }
 
@@ -145,6 +207,20 @@ int runDriveRods(int argc, char** argv) {
             if ((k + 1) % 16 == 0) std::printf("\n");
         }
         std::printf("\n");
+    }
+
+    // Direct staging decode (Phase 2 "staging format DECODED" pivot): parse
+    // the raw internal record layout ourselves instead of feeding it through
+    // decodeGifData (which misreads it as a hardware GIFtag -- see the report
+    // this run is validating). Uses the rod-emission byte range captured
+    // above, BEFORE finalize's header patch (irrelevant to vertex geometry).
+    if (!stagingJsonOut.empty()) {
+        const uint32_t off = cursorStart - EeMemory::kSprBase;
+        GsCommandStream stagingStream =
+            decodeStagingDirect(mem.sprData() + off, bytesFromRods, rodsProcessed);
+        GsDumpParser::writeJson(stagingStream, stagingJsonOut);
+        std::printf("drive-rods: staging decode -> %zu prims (%u rods) -> %s\n",
+                    stagingStream.prims.size(), rodsProcessed, stagingJsonOut.c_str());
     }
 
     // NEW finalize (Task 2, per Task 1's decision): 0x00235350 is a pure

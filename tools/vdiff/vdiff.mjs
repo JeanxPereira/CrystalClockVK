@@ -94,6 +94,34 @@ function diff(oracle, cand) {
   return errs;
 }
 
+// Coordinate-cloud mode: unlike --subset (whole-draw vertex-set equality,
+// which assumes matching granularity/color), this checks each CANDIDATE
+// vertex individually against the full oracle vertex cloud (every vertex
+// from every oracle draw, flattened) and asks only "is there ANY oracle
+// vertex within `tol` px?" -- the right check when candidate draws use a
+// different granularity/color than the oracle (Phase 2 rod staging: 4-vert
+// chunks vs the oracle's 60-vert TRI_STRIPs), so geometry can be validated
+// even though draw-level or vertex-count-level comparison would not match.
+function cloudMatch(oracle, cand, tol) {
+  const cloud = [];
+  for (const o of oracle) for (const v of o.verts ?? []) cloud.push(v);
+  const results = [];
+  let matched = 0;
+  for (const c of cand) {
+    for (const v of c.verts ?? []) {
+      let best = null, bestDist = Infinity;
+      for (const o of cloud) {
+        const d = Math.hypot(v.x - o.x, v.y - o.y);
+        if (d < bestDist) { bestDist = d; best = o; }
+      }
+      const hit = bestDist <= tol;
+      if (hit) matched++;
+      results.push({ x: v.x, y: v.y, nearest: best ? { x: best.x, y: best.y } : null, dist: bestDist, hit });
+    }
+  }
+  return { matched, total: results.length, results };
+}
+
 if (process.argv[2] === "--self-test") {
   const a = [{ PRIM: { type: 4 }, verts: [{ x: 100, y: 200, r: 0, g: 255, b: 0, a: 128, u: 0, v: 0 }] }];
   const b = JSON.parse(JSON.stringify(a));
@@ -123,6 +151,13 @@ if (process.argv[2] === "--self-test") {
   const r3 = subsetMatch(oracle2, []);
   if (r3.matched !== 0 || r3.total !== 0) { console.error("subset: expected 0/0 on empty candidate"); process.exit(1); }
 
+  // --cloud self-test: oracle cloud has one vertex at (10,20); a candidate
+  // vertex within tol must hit, one far outside must miss.
+  const oracleCloud = [{ PRIM: { type: 4 }, verts: [{ x: 10, y: 20 }] }];
+  const candCloud = [{ PRIM: { type: 4 }, verts: [{ x: 11, y: 20 }, { x: 500, y: 500 }] }];
+  const rc = cloudMatch(oracleCloud, candCloud, 2);
+  if (rc.matched !== 1 || rc.total !== 2) { console.error("cloud: expected 1/2 matched"); process.exit(1); }
+
   console.log("vdiff self-test OK");
   process.exit(0);
 }
@@ -135,6 +170,18 @@ if (process.argv[2] === "--subset") {
   if (mismatches.length) {
     console.log("first unmatched candidate draws:");
     for (const i of mismatches) console.log(`  cand[${i}]: PRIM.type=${cand[i].PRIM?.type} nverts=${(cand[i].verts ?? []).length}`);
+  }
+  process.exit(matched === total ? 0 : 1);
+}
+
+if (process.argv[2] === "--cloud") {
+  const oracle = loadDraws(process.argv[3]);
+  const cand = loadDraws(process.argv[4]);
+  const tol = process.argv[5] ? Number(process.argv[5]) : 2;
+  const { matched, total, results } = cloudMatch(oracle, cand, tol);
+  console.log(`vdiff --cloud: ${matched}/${total} candidate vertices within ${tol}px of an oracle vertex`);
+  for (const r of results) {
+    console.log(`  (${r.x.toFixed(3)},${r.y.toFixed(3)}) -> nearest (${r.nearest?.x},${r.nearest?.y}) dist=${r.dist.toFixed(3)} ${r.hit ? "MATCH" : "miss"}`);
   }
   process.exit(matched === total ? 0 : 1);
 }

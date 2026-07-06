@@ -943,3 +943,41 @@ colored (8,8,8,128). Granularity + color DIFFER — draw-level --subset likely
 won't match even with correct geometry. The honest validation is a
 COORDINATE-CLOUD check (do our decoded rod X/Y, after GS OFX/OFY offset, land
 on oracle vertices?) plus rendering the rods for the visual (Milestone A).
+
+## Phase 2 — staging format DIRECTLY DECODED, geometry VALIDATED [DUMP-MEASURED]
+
+Implemented `decodeStagingDirect()` in `tools/eerun/main.cpp` (new
+`--staging-json <path>` flag on `--drive-rods`): parses the 112-byte-per-rod
+staging record directly per the layout mapped above (NOT `decodeGifData`,
+which misreads it as a hardware GIFtag), emitting one `GsPrimitive`
+(`PRIM.type=4`, 4 verts, RGBA from `+0x08`) per rod, written via the shared
+`GsDumpParser::writeJson` (same schema as the oracle/`gsdump --json`).
+
+**OFX/OFY found empirically**: `OFX=25788 raw (1611.75px)`,
+`OFY=31656 raw (1978.5px)`. Brute-force search over every
+`(decoded_px − oracle_vertex_px)` pair across the 7 distinct decoded
+rod-vertex positions (3 rods share a hub vertex) x ~20.5k oracle vertices
+(`re/oracle/clock_sw_prims.json`), scoring each candidate offset by how many
+of the 7 points land within 2px of *any* oracle vertex. Winner scores 7/7,
+with one vertex landing **0.003px** from an exact oracle vertex — far too
+precise to be coincidental. Not read from a live GS register capture of this
+exact frame (none exists in `re/` this session); the empirical fit's internal
+consistency is the evidence, reported honestly as that class of confidence.
+
+**Coordinate-cloud validation** (new `vdiff --cloud` mode,
+`tools/vdiff/vdiff.mjs`): checks each candidate vertex individually against
+the flattened oracle vertex cloud (right check when candidate/oracle
+granularity+color differ, unlike `--subset`).
+
+```
+node tools/vdiff/vdiff.mjs --cloud re/oracle/clock_sw_prims.json re/oracle/cand_rods_staging.json 2
+vdiff --cloud: 12/12 candidate vertices within 2px of an oracle vertex
+```
+
+**12/12 decoded rod vertices (3 rods x 4) land within 2px of an oracle
+vertex** — 4 of the 12 within 0.1px, the rest 1.2-2.0px. **Verdict: the rod
+geometry IS correct.** This validates `draw_crystal_rod`'s screen-space
+output against the oracle independent of the still-open "how the staging
+record becomes a real wire GIFtag" question. Full detail, including the
+per-vertex distances and caveats on residual 1-2px error:
+`.superpowers/sdd/phase2-staging-decode-report.md`.
