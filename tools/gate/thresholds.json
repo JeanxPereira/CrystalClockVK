@@ -1,0 +1,10 @@
+{
+  "toleranceAbs": 1.0,
+  "dumps": {
+    "clock_sw":      { "gs": "C:/Users/dell04/Documents/PCSX2/snaps/clock_sw.gs",      "maxPct": 6.8 },
+    "clock_viewer":  { "gs": "C:/Users/dell04/Documents/PCSX2/snaps/clock_viewer.gs",  "maxPct": 7.9 },
+    "clock_closeup": { "gs": "C:/Users/dell04/Documents/PCSX2/snaps/clock_closeup.gs", "maxPct": 5.6 },
+    "config_menu":   { "gs": "C:/Users/dell04/Documents/PCSX2/snaps/config_menu.gs",   "maxPct": 5.4 },
+    "boot":          { "gs": "C:/Users/dell04/Documents/PCSX2/snaps/boot.gs",          "maxPct": 10.5 }
+  }
+}
