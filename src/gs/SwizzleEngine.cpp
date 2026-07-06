@@ -272,11 +272,13 @@ std::vector<uint8_t> SwizzleEngine::swizzle(
     const uint8_t* src, int width, int height, int bufferWidth,
     GsPixelFormat format) {
 
+    const bool psmt8 = format == GsPixelFormat::PSMT8;
     size_t maxAddr = 0;
     for (int y = 0; y < height; y++) {
         for (int x = 0; x < width; x++) {
-            uint32_t addr = psmct32Address(x, y, bufferWidth);  // same swizzle for 32/24
-            size_t endAddr = addr + (format == GsPixelFormat::PSMT8 ? 1 : 4);
+            uint32_t addr = psmt8 ? psmt8Address(x, y, bufferWidth)
+                                  : psmct32Address(x, y, bufferWidth);  // same swizzle for 32/24
+            size_t endAddr = addr + (psmt8 ? 1 : 4);
             if (endAddr > maxAddr) maxAddr = endAddr;
         }
     }
@@ -288,6 +290,10 @@ std::vector<uint8_t> SwizzleEngine::swizzle(
 void SwizzleEngine::swizzleInto(
     uint8_t* vram, size_t vramSize, const uint8_t* src,
     int width, int height, int bufferWidth, GsPixelFormat format) {
+
+    if (format != GsPixelFormat::PSMCT32 && format != GsPixelFormat::PSMCT24 &&
+        format != GsPixelFormat::PSMT8)
+        throw std::runtime_error("Unsupported pixel format for swizzle");
 
     for (int y = 0; y < height; y++) {
         for (int x = 0; x < width; x++) {
