@@ -1,5 +1,6 @@
 #include "ee/EeInterpreter.hpp"
 #include "ee/EeMemory.hpp"
+#include <bit>
 #include <cassert>
 #include <cstdio>
 
@@ -36,15 +37,16 @@ int main() {
     assert(mem.read32(0x8004) == 0xCAFEBABEu);
 
     // 4) unknown opcode fails fast with pc + word
-    //    COP0 (op=0x10) is not in the required table -> must throw.
-    //    (0xFC000000, op=0x3F, is actually sd $0,0($0) per the R5900 ISA and
-    //     the required table -- a legitimate instruction, not a good negative
-    //     case; COP0 is unambiguously unimplemented here.)
-    poke(mem, 0x4000, {0x40000000u});
+    //    tlbwi (COP0 CO=1, fn=0x02) is not in the required table -> must
+    //    throw. (mfc0/mtc0 (rs=0/4) and di/ei (CO=1, fn=0x38/0x39) are now
+    //    legitimately implemented -- see tests 12/13 -- so this uses a COP0
+    //    CO-group op that genuinely isn't: tlbwi = 010000 10000 00000 00000
+    //    00000 000010 = 0x42000002.)
+    poke(mem, 0x4000, {0x42000002u});
     EeInterpreter cpu4(mem);
     bool threw = false;
     try { cpu4.call(0x4000); } catch (const EeError& e) {
-        threw = (e.pc == 0x4000 && e.word == 0x40000000u);
+        threw = (e.pc == 0x4000 && e.word == 0x42000002u);
     }
     assert(threw);
 
@@ -151,6 +153,75 @@ int main() {
     for (int i = 0; i < 5000; i++) {
         assert(cpu8.call(0x1000, 37) == 42);
     }
+
+    // 9) swc1/lwc1 roundtrip through memory (Phase-2 caller's FPU-context save).
+    //    swc1 $f20, 0xA0($sp) ; lwc1 $f21, 0xA0($sp) ; jr ra ; nop
+    //    swc1: 111001 11101 10100 0000000010100000 = 0xE7B400A0
+    //    lwc1: 110001 11101 10101 0000000010100000 = 0xC7B500A0
+    //    f20 and f21 start different -- a mixed-up ft/base or a swc1<->lwc1
+    //    swap would leave f21 unchanged (still its seeded sentinel) instead
+    //    of picking up f20's value through the store.
+    //    call() always seeds $sp = kDefaultStack, so the effective address is
+    //    kDefaultStack + 0xA0 regardless of the code's load address.
+    poke(mem, 0x9000, {0xE7B400A0u, 0xC7B500A0u, 0x03E00008u, 0u});
+    EeInterpreter cpu9(mem);
+    cpu9.fpr[20] = 12345.5f;
+    cpu9.fpr[21] = -1.0f;  // sentinel, must be overwritten by the lwc1
+    cpu9.call(0x9000);
+    assert(cpu9.fpr[21] == 12345.5f);
+    assert(std::bit_cast<uint32_t>(cpu9.fpr[20]) ==
+           mem.read32(EeInterpreter::kDefaultStack + 0xA0));
+
+    // 10) c.olt.s $f0, $f1 ; bc1t +2 (skip poison if cond true) ; nop (delay
+    //     slot, always runs) ; poison: addiu v0,zero,111 ; jr ra ; nop
+    //     c.olt.s fs=f0 ft=f1: 010001 10000 00001 00000 00000 110100 = 0x46010034
+    //     bc1t rt=1,imm=2 (target = branch_pc+4+2*4, lands on the jr,
+    //     skipping the poison slot) = 0x45010002
+    //     Run twice: f0<f1 (cond true, branch taken, poison skipped, v0
+    //     stays 0) and f0>f1 (cond false, branch not taken, poison runs,
+    //     v0 becomes 111) -- pins the comparison direction, not just "sets
+    //     some bit".
+    poke(mem, 0xA000, {0x46010034u, 0x45010002u, 0u, 0x2402006Fu, 0x03E00008u, 0u});
+    EeInterpreter cpu10a(mem);
+    cpu10a.fpr[0] = 1.0f; cpu10a.fpr[1] = 2.0f;  // f0 < f1 -> cond true -> branch taken -> skip poison
+    assert(cpu10a.call(0xA000) == 0);
+    EeInterpreter cpu10b(mem);
+    cpu10b.fpr[0] = 5.0f; cpu10b.fpr[1] = 2.0f;  // f0 > f1 -> cond false -> branch not taken -> poison runs
+    assert(cpu10b.call(0xA000) == 111);
+
+    // 11) syscall (SPECIAL fn=0x0C): BIOS call number in $v1. Real hardware's
+    //     FlushCache (#100) trampoline is exactly this shape:
+    //     addiu v1,zero,100 ; syscall ; jr ra ; nop
+    //     No kernel state is modeled -- this must no-op and just return, but
+    //     the number must be captured in cpu.syscalls so callers can report
+    //     which BIOS calls a run actually hit (a bug that dropped the number
+    //     or corrupted a register would fail this).
+    poke(mem, 0xB000, {0x24030064u, 0x0000000Cu, 0x03E00008u, 0u});
+    EeInterpreter cpu11(mem);
+    cpu11.call(0xB000);
+    assert(cpu11.syscalls.size() == 1 && cpu11.syscalls[0] == 100);
+    assert(cpu11.gpr[3].lo == 100);  // v1 must be untouched by the no-op
+
+    // 12) di (COP0 CO=1, fn=0x39): disable interrupts, no interrupt model
+    //     here so must no-op and just return (not throw, unlike test 4's
+    //     COP0 rs=0 case, which is a real negative case -- this pins that
+    //     rs=0x10/fn=0x39 specifically is handled, not COP0 broadly).
+    //     di = 010000 10000 00000 00000 00000 111001 = 0x42000039
+    poke(mem, 0xC000, {0x42000039u, 0x03E00008u, 0u});
+    EeInterpreter cpu12(mem);
+    cpu12.call(0xC000);  // must not throw
+
+    // 13) mtc0 v0, $12 (Status) ; mfc0 v1, $12 ; jr ra ; nop  (roundtrip
+    //     through cop0[] storage -- the caller's Status-register save/
+    //     restore around di/ei, e.g. `mfc0 v0,$12` seen at pc=0x271900).
+    //     mtc0: 010000 00100 00010 01100 00000000000 = 0x40826000
+    //     mfc0: 010000 00000 00011 01100 00000000000 = 0x40036000
+    poke(mem, 0xD000, {0x40826000u, 0x40036000u, 0x03E00008u, 0u});
+    EeInterpreter cpu13(mem);
+    cpu13.gpr[2].lo = 0xABCDu;  // v0
+    cpu13.call(0xD000);
+    assert(cpu13.gpr[3].lo == 0xABCDu);  // v1 picked up cop0[12] via the roundtrip
+    assert(cpu13.cop0[12] == 0xABCDu);
 
     std::printf("ee_interpreter: all assertions passed\n");
     return 0;

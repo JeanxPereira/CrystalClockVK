@@ -30,6 +30,8 @@ public:
     uint32_t fcr31 = 0;
     float vf[32][4] = {};
     float vacc[4] = {};
+    uint32_t cop0[32] = {};  // COP0 (system control) register file: plain storage,
+                             // no MMU/interrupt/exception semantics modeled
 
     static constexpr uint32_t kReturnSentinel = 0xDEADBEE0u;
     static constexpr uint32_t kDefaultStack = 0x01FF8000u;
@@ -42,6 +44,7 @@ public:
     uint64_t maxInstructions = 200'000'000;
     bool traceCalls = false;
     std::vector<uint32_t> trace;
+    std::vector<int32_t> syscalls;  // BIOS syscall numbers observed (from $v1 at each `syscall`)
 
 private:
     EeMemory& m_mem;

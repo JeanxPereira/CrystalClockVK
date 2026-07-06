@@ -164,6 +164,19 @@ void EeInterpreter::executeOne(uint32_t word, uint32_t atPc) {
         }
         case 0x0F:  // sync (memory barrier; no-op in this single-threaded interpreter)
             return;
+        case 0x0C: {  // syscall: BIOS call number in $v1 (positive index, or
+            // negative -N per the EE convention -- both resolve to the same
+            // table slot). No kernel/thread/DMA/GS state is modeled here, so
+            // this is a blanket no-op: the number is only recorded (not
+            // acted on) so callers of the interpreter can report which BIOS
+            // calls were actually hit, per the "read from evidence, don't
+            // invent" rule -- if a syscall turns out to need real semantics
+            // (e.g. a semaphore/thread wait), that will show up as a hang or
+            // wrong-result finding downstream, not be silently masked here.
+            const int32_t code = int32_t(uint32_t(gpr[3].lo));
+            syscalls.push_back(code);
+            return;
+        }
         case 0x0A:  // movz
             if (gpr[rt].lo == 0 && gpr[rt].hi == 0) gpr[rd] = gpr[rs];
             return;
@@ -375,6 +388,12 @@ void EeInterpreter::executeOne(uint32_t word, uint32_t atPc) {
         gpr[rt].lo = m_mem.read64(addr);
         gpr[rt].hi = 0;
         return;
+    case 0x31:  // lwc1 ft, off(base): fpr[ft] = *(float*)(base+off)
+        fpr[rt] = std::bit_cast<float>(m_mem.read32(addr));
+        return;
+    case 0x39:  // swc1 ft, off(base): *(float*)(base+off) = fpr[ft]
+        m_mem.write32(addr, std::bit_cast<uint32_t>(fpr[rt]));
+        return;
     case 0x3F:  // sd
         m_mem.write64(addr, gpr[rt].lo);
         return;
@@ -407,6 +426,9 @@ void EeInterpreter::executeOne(uint32_t word, uint32_t atPc) {
             case 0x32:  // c.eq.s
                 if (fpr[fs] == fpr[ft]) fcr31 |= kFcr31CondBit; else fcr31 &= ~kFcr31CondBit;
                 return;
+            case 0x34:  // c.olt.s (ordered less-than; NaN handling not modeled, same as c.lt.s)
+                if (fpr[fs] < fpr[ft]) fcr31 |= kFcr31CondBit; else fcr31 &= ~kFcr31CondBit;
+                return;
             case 0x3C:  // c.lt.s
                 if (fpr[fs] < fpr[ft]) fcr31 |= kFcr31CondBit; else fcr31 &= ~kFcr31CondBit;
                 return;
@@ -425,6 +447,30 @@ void EeInterpreter::executeOne(uint32_t word, uint32_t atPc) {
         default:
             throw EeError{atPc, word, "unknown COP1 rs"};
         }
+    }
+    case 0x10: {  // COP0 (system control): plain register storage, no
+        // MMU/exception/interrupt semantics -- mfc0/mtc0 just move values,
+        // matching the project rule of not inventing hardware behavior that
+        // isn't evidenced. rd here is the COP0 register number.
+        if (rs == 0x00) {  // mfc0 rt, cop0[rd]
+            gpr[rt].lo = sx32(cop0[rd]);
+            gpr[rt].hi = 0;
+            return;
+        }
+        if (rs == 0x04) {  // mtc0 rt, cop0[rd]
+            cop0[rd] = uint32_t(gpr[rt].lo);
+            return;
+        }
+        if (rs == 0x10) {  // CO=1: privileged EE-specific ops, selected by fn
+            switch (fn) {
+            case 0x38:  // ei (enable interrupts) -- no interrupt model here, no-op
+            case 0x39:  // di (disable interrupts) -- same
+                return;
+            default:
+                throw EeError{atPc, word, "unimplemented COP0 CO function"};
+            }
+        }
+        throw EeError{atPc, word, "unimplemented COP0 rs"};
     }
     case 0x36: {  // lqc2
         const uint32_t a = addr & ~0xFu;

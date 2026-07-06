@@ -284,3 +284,155 @@ workspace's true struct layout, or (b) tracing the actual consumer of this
 buffer (DMA source or FIFO write) to find where/how it becomes a real
 GIFtag — both out of scope for "emulate the SPR so it isn't discarded,"
 which is the part this task fixed.
+
+## Phase 2 caller spike: driving 0x00233928 [DUMP-MEASURED]
+
+Goal: run the caller loop `0x00233928` (which is supposed to assemble the
+full per-frame packet, 3801 draws per the oracle) instead of the single leaf
+`0x00232618`. Same discovery loop as above: run `eerun`, decode the
+`EeError`, implement the missing op with a discriminating unit test, rebuild,
+repeat. All new ops in `src/ee/EeInterpreter.cpp`, tests in
+`tests/EeInterpreterTest.cpp` (cases 9-13); `ee_interpreter` suite is
+14/14, full project suite 17/17 green.
+
+### Ops added this session
+
+1. **`lwc1`/`swc1`** (opcodes 0x31/0x39) — FPU load/store to memory. First
+   failure: `pc=00233958 word=E7B400A0` (`swc1 $f20, 0xA0($sp)`), the
+   caller's FPU-context save in its prologue.
+2. **`c.olt.s`** (COP1.S function 0x34) — ordered less-than compare, same
+   implementation as the existing `c.lt.s` (NaN handling not modeled).
+   First failure: `pc=00233960 word=46010034`.
+3. **`syscall`** (SPECIAL fn 0x0C) — implemented as a **blanket no-op**:
+   the BIOS call number (from `$v1`, positive-index convention) is recorded
+   into a new `EeInterpreter::syscalls` log but no kernel/thread/DMA/GS
+   state is touched, per the "don't invent hardware behavior" rule. First
+   failure: `pc=00258B64 word=0000000C`, `$v1=0x64=100`. Confirmed via a
+   dedicated lookup against `pcsx2/R5900OpcodeImpl.cpp`'s `R5900::bios[256]`
+   name table: **syscall 100 = `FlushCache`**, a pure cache-maintenance call
+   with no state an interpreter without a cache model needs to honor — a
+   legitimately safe no-op, not a guess.
+4. **`di`/`ei`** (COP0, rs=0x10 "CO" group, fn=0x39/0x38) — disable/enable
+   interrupts. No interrupt controller is modeled, so both no-op. First
+   failure: `pc=00271900`'s caller jumped into the trampoline at
+   `pc=00258B60`... (actually first COP0 CO-group failure was the `di` at
+   `pc=00271900`-adjacent code, word `0x42000039`).
+5. **`mfc0`/`mtc0`** (COP0 rs=0x00/0x04) — added a plain 32-register
+   `cop0[32]` file (no MMU/exception semantics) so `Status`-register
+   save/restore around `di`/`ei` roundtrips correctly. First failure:
+   `pc=00271900 word=40026000` (`mfc0 v0, $12` i.e. Status).
+
+Also hardened `tools/eerun/main.cpp` to print `v0/v1/a0/a1` and every
+recorded syscall number on both the success and `EeError` exit paths — this
+is what let the syscall-number/register state be read directly from
+evidence instead of guessed.
+
+### A live-RAM vs. Ghidra static-image mismatch, noted and bypassed
+
+Decompiling `0x00258B60` in Ghidra (`OSDSYS.elf`) returns a large, unrelated
+function body (calls to `FUN_00268c00`/`FUN_0026b9d0`, stack ops at
+`0x480(sp)`, etc.) that does **not** match the bytes actually present at
+file/physical offset `0x00258B60` in `re/ram/clock/eeMemory.bin`, which is a
+plain 4-instruction syscall trampoline (`addiu v1,zero,N` / `syscall` /
+`jr ra` / `nop`, repeated every 16 bytes for syscalls 0x63, 0x64, 0x66,
+-103, -104, -106...). Read directly from the RAM image with a small Python
+script (not trusted from Ghidra) — see the raw dump in this session's
+history. Per the project's live-evidence-over-decomp doctrine, the RAM
+capture is authoritative here; this is flagged as a discrepancy between the
+static Ghidra database and the live RAM capture's addressing for this
+region, not resolved further (out of scope for this spike) — a note for
+whoever next relies on Ghidra addresses in this range.
+
+### STOP — genuine wall hit: an interrupt/Deci2-completion polling loop
+
+`0x00233928` does **not** run to completion. After the ops above, execution
+enters a tight loop (function around `0x00271980`-`0x002719e0`, called
+repeatedly from the caller) that:
+
+1. Computes `s0 = s1 + 0x1690` (a fixed struct address off a global base
+   `s1`), then reads/writes fields of that struct (`s0+0x4`, `s0+0xc`).
+2. Calls through a small wrapper at `0x0026F478` into the syscall
+   trampoline at `0x00258D10` (`addiu v1,zero,0x7C` = **syscall 124**, which
+   `pcsx2/R5900OpcodeImpl.cpp`'s bios-name table maps to **`Deci2Call`** —
+   the PS2 debug/IOP communication link), returns, then:
+3. Loops back via `bne v0,zero,-5` at `pc=0x002719e0` reading
+   `lw v0, 0xc(s0)` at `0x002719dc` — i.e. **`while (*(s0+0xc) != 0) { ...
+   call Deci2Call ...; }`**.
+
+Nothing in the traced code path ever clears `*(s0+0xc)` on the taken
+(normal) side of this loop — the only store that zeroes it is on the
+`v0 < 0` error path (`sw zero, 0xc(s0)` at `0x002719bc`), which is itself
+followed by `di` + an unconditional infinite spin (a fatal-error halt
+pattern), not a real exit. On real hardware, this field is almost certainly
+cleared by an **interrupt handler** reacting to the actual Deci2/IOP
+response (the surrounding code installs handlers via the
+`AddIntcHandler`/`SetVInterruptHandler`-style syscalls seen earlier in the
+bios name table) — i.e. this loop's termination depends on interrupt-driven
+hardware state this bare EE interpreter has no model for (no interrupt
+controller, no IOP, no Deci2 link). Confirmed by direct instruction-level
+reading of `re/ram/clock/eeMemory.bin` at the addresses above (all opcodes
+and branch targets decoded by hand, not assumed).
+
+Run without `--trace` (faster) confirms this concretely: `eerun` burns the
+entire 200,000,000-instruction budget and throws `budget exceeded` at
+`pc=002719D4`, having logged **millions of repeated `syscall 124` entries**
+— i.e. the loop is not slow-but-finite, it is unbounded within this
+interpreter's model. This is **STOP CONDITION (B)**: a genuine wall,
+not a missing opcode — implementing more instructions will not make this
+loop terminate; it needs either (a) a real interrupt-controller +
+Deci2/IOP model (large, out of scope), or (b) discovering that this
+specific loop is skippable/short-circuitable for the clock's purposes
+(e.g. patching `s1`'s struct so `*(s0+0xc)` reads 0 from the start, if RE
+confirms that's a debug-only code path OSDSYS only takes when a debug
+station is attached — **not yet confirmed**, so not done here per the
+no-invention rule).
+
+### Call graph observed before the wall
+
+```
+0x00233928 (entry)
+  -> ... FPU/COP0 prologue (swc1 x N, di, mfc0 Status) ...
+  -> 0x00271900-ish region -> 0x00271980 loop:
+       -> 0x0026F478 (Deci2Call wrapper)
+            -> 0x00258D10 (syscall 124 = Deci2Call trampoline)
+       <- loops on *(s1+0x1690+0xc) != 0, never observed to clear
+```
+`0x00232618` (the Task-4 leaf render entry) was **not reached** in this run
+— the caller never gets past the Deci2 polling loop to whatever comes
+after it, so the "does it call 0x232618 multiple times" question from the
+brief is **not yet answerable**; the wall is upstream of that call site.
+
+### State/seeding implications for Phase 2 planning
+
+- The struct at `s1 + 0x1690` (12+ bytes, fields at `+0x4`, `+0xc` observed)
+  is a live piece of state this run reads that is not naturally driven to
+  a "done" value by anything modeled here. `s1` itself was not traced back
+  to its origin this session (likely a fixed global base set well before
+  this function, consistent with the project's other fixed-base-pointer
+  patterns like `0x232618`'s `a2=0x001F0000`) — worth resolving in a
+  follow-up so this struct can be seeded/faked past, if that turns out to
+  be the right call.
+- Syscalls 100 (`FlushCache`) and 124 (`Deci2Call`) are both confirmed by
+  name via `pcsx2/R5900OpcodeImpl.cpp`'s bios table; no other syscall
+  numbers were observed before the wall.
+- No vertex-level subset match was attempted this session — the run never
+  reaches packet-building code, so there is nothing yet to `vdiff`.
+
+### Recommended Phase-2 first tasks (this spike's honest recommendation)
+
+1. **RE the `Deci2Call` polling loop's real exit condition** — find what,
+   on real hardware, writes `*(s0+0xc) = 0` (interrupt handler, or a
+   same-frame follow-up syscall this run hasn't reached yet). This is the
+   single blocker between here and resuming forward progress on
+   `0x00233928`.
+2. Once past it, re-run the same discovery loop toward the next wall (more
+   missing opcodes are likely, e.g. more MMI ops, `lwl`/`lwr`/`swl`/`swr`,
+   more COP1/COP2 forms) — none of those are expected to be hard, based on
+   the pattern so far (every non-syscall gap this session was a
+   straightforward, cheaply-testable instruction).
+3. Investigate whether `0x00233928` is even the right caller to chase, or
+   whether it's debug/deci2-instrumented scaffolding OSDSYS only runs when
+   a dev station is attached (in which case a *different*, non-debug entry
+   point may be the real per-frame driver — worth a quick Ghidra
+   cross-reference check on who calls `0x00233928` and under what
+   condition, before sinking more time into this exact path).

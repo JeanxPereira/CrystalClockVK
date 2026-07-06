@@ -176,11 +176,15 @@ int main(int argc, char** argv) {
         std::printf("EeError at pc=%08X word=%08X: %s\nrecent pcs:", e.pc, e.word,
                     e.what.c_str());
         for (uint32_t p : lastPcs) std::printf(" %08X", p);
-        std::printf("\n");
+        std::printf("\nv0=%08llX v1=%08llX a0=%08llX a1=%08llX\n",
+                    (unsigned long long)cpu.gpr[2].lo, (unsigned long long)cpu.gpr[3].lo,
+                    (unsigned long long)cpu.gpr[4].lo, (unsigned long long)cpu.gpr[5].lo);
+        for (int32_t sc : cpu.syscalls) std::printf("syscall %d\n", sc);
         return 1;
     }
     std::printf("retired %llu instructions\n",
                 (unsigned long long)cpu.instructionsRetired);
+    for (int32_t sc : cpu.syscalls) std::printf("syscall %d\n", sc);
     if (trace) {
         std::map<uint32_t, int> calls;
         for (uint32_t t : cpu.trace) calls[t]++;
