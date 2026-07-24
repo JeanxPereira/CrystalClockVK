@@ -126,6 +126,7 @@ void Engine::runFrame() {
     vkBeginCommandBuffer(frame.commandBuffer, &beginInfo);
 
     PassRecorder recorder(frame.commandBuffer);
+    recorder.resetLayoutTracking();
 
     TimeInfo timeInfo = TimeSync::getCurrentTime();
 
@@ -162,106 +163,31 @@ void Engine::runFrame() {
     // Update UBO with viewProj, viewPos, prismColor
     m_orchestrator.updateUBO(params, &m_testParams);
 
-    // ═══════════════════════════════════════════════════════════════
-    // PASS A: Render tunnel to targets.tunnel
-    // ═══════════════════════════════════════════════════════════════
-    recorder.transitionImage(m_targets.tunnel.image,
-        VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    VkClearValue clear{};
+    clear.color = {{0.0f, 0.0f, 0.0f, 1.0f}};
+    VkExtent2D ext = m_swapchain.extent();
 
-    VkClearValue tunnelClear{};
-    tunnelClear.color = {{0.0f, 0.0f, 0.0f, 1.0f}};
+    recorder.runPass({m_testParams.enabled ? "Test Background" : "Tunnel Background",
+                      {0.2f, 0.2f, 0.6f}, &m_targets.tunnel, &m_targets.depth, {}, &clear, ext}, [&] {
+        if (m_testParams.enabled) m_orchestrator.recordTestBackgroundPass(recorder, params, m_testParams);
+        else m_orchestrator.recordTunnelPass(recorder, params);
+    });
 
-    recorder.beginDebugLabel(m_testParams.enabled ? "Test Background" : "Tunnel Background", 0.2f, 0.2f, 0.6f);
-    recorder.beginRendering(m_targets.tunnel.imageView, m_targets.depth.imageView,
-                            m_swapchain.extent(), &tunnelClear);
-    recorder.setViewportScissor(m_swapchain.extent());
+    recorder.copyImage(m_targets.tunnel, m_targets.mainColor, ext);
 
-    if (m_testParams.enabled)
-        m_orchestrator.recordTestBackgroundPass(recorder, params, m_testParams);
-    else
-        m_orchestrator.recordTunnelPass(recorder, params);
+    recorder.runPass({m_testParams.enabled ? "Test Cube" : "Crystal Clock (Pass 1)",
+                      {0.2f, 0.4f, 1.0f}, &m_targets.mainColor, &m_targets.depth,
+                      {&m_targets.tunnel}, nullptr, ext}, [&] {
+        if (m_testParams.enabled) m_orchestrator.recordTestCubePass(recorder, params, m_testParams);
+        else m_orchestrator.recordCrystalPasses(recorder, params);
+    });
 
-    recorder.endRendering();
-    recorder.endDebugLabel();
-
-    // Transition tunnel to SHADER_READ_ONLY for crystal refraction sampling
-    recorder.transitionImage(m_targets.tunnel.image,
-        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-
-    // ═══════════════════════════════════════════════════════════════
-    // PASS B: Render crystals to targets.mainColor, sampling targets.tunnel
-    // ═══════════════════════════════════════════════════════════════
-
-    // Copy tunnel content to main color image as base (so crystals blend ON TOP of tunnel)
-    recorder.transitionImage(m_targets.mainColor.image,
-        VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-    recorder.transitionImage(m_targets.tunnel.image,
-        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
-
-    VkImageCopy tunnelCopy{};
-    tunnelCopy.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
-    tunnelCopy.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
-    tunnelCopy.extent = {m_swapchain.extent().width, m_swapchain.extent().height, 1};
-    vkCmdCopyImage(frame.commandBuffer,
-                   m_targets.tunnel.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                   m_targets.mainColor.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                   1, &tunnelCopy);
-
-    // Transition for the crystal rendering pass
-    recorder.transitionImage(m_targets.tunnel.image,
-        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-    recorder.transitionImage(m_targets.mainColor.image,
-        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-
-    VkClearValue crystalClear{};
-    // Don't clear — we just copied the tunnel content
-
-    recorder.beginDebugLabel(m_testParams.enabled ? "Test Cube" : "Crystal Clock (Pass 1)", 0.2f, 0.4f, 1.0f);
-    recorder.beginRendering(m_targets.mainColor.imageView, m_targets.depth.imageView,
-                            m_swapchain.extent(), nullptr);
-    recorder.setViewportScissor(m_swapchain.extent());
-
-    if (m_testParams.enabled)
-        m_orchestrator.recordTestCubePass(recorder, params, m_testParams);
-    else
-        m_orchestrator.recordCrystalPasses(recorder, params);
-
-    recorder.endRendering();
-    recorder.endDebugLabel();
-
-    // ═══════════════════════════════════════════════════════════════
-    // Inter-rod refraction: copy mainColor → targets.tunnel,
-    // then re-render rods refracting now-updated bg (rods + tunnel).
-    // ═══════════════════════════════════════════════════════════════
     if (!m_testParams.enabled) {
-    recorder.transitionImage(m_targets.mainColor.image,
-        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
-    recorder.transitionImage(m_targets.tunnel.image,
-        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-
-    VkImageCopy interRodCopy{};
-    interRodCopy.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
-    interRodCopy.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
-    interRodCopy.extent = {m_swapchain.extent().width, m_swapchain.extent().height, 1};
-    vkCmdCopyImage(frame.commandBuffer,
-                   m_targets.mainColor.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                   m_targets.tunnel.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                   1, &interRodCopy);
-
-    recorder.transitionImage(m_targets.tunnel.image,
-        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-    recorder.transitionImage(m_targets.mainColor.image,
-        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-
-    recorder.beginDebugLabel("Crystal Clock (Pass 2: Inter-Rod)", 0.4f, 0.6f, 1.0f);
-    recorder.beginRendering(m_targets.mainColor.imageView, m_targets.depth.imageView,
-                            m_swapchain.extent(), nullptr);
-    recorder.setViewportScissor(m_swapchain.extent());
-
-    m_orchestrator.recordCrystalPasses(recorder, params);
-
-    recorder.endRendering();
-    recorder.endDebugLabel();
+        recorder.copyImage(m_targets.mainColor, m_targets.tunnel, ext);
+        recorder.runPass({"Crystal Clock (Pass 2: Inter-Rod)", {0.4f, 0.6f, 1.0f},
+                          &m_targets.mainColor, &m_targets.depth, {&m_targets.tunnel}, nullptr, ext}, [&] {
+            m_orchestrator.recordCrystalPasses(recorder, params);
+        });
     }
 
     // ImGui overlay

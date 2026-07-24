@@ -1,6 +1,20 @@
 #pragma once
 
 #include <vulkan/vulkan.h>
+#include "ResourceManager.hpp"
+#include <functional>
+#include <vector>
+#include <unordered_map>
+
+struct PassDesc {
+    const char* name;
+    float color[3];
+    AllocatedImage* colorTarget;
+    AllocatedImage* depthTarget;
+    std::vector<AllocatedImage*> reads;
+    VkClearValue* clear;
+    VkExtent2D extent;
+};
 
 // Wraps a VkCommandBuffer with typed recording helpers for structured pass recording.
 // Uses Sync2 barriers and VK_KHR_dynamic_rendering.
@@ -10,6 +24,11 @@ public:
 
     // Image layout transitions (Sync2)
     void transitionImage(VkImage image, VkImageLayout oldLayout, VkImageLayout newLayout);
+
+    // Declarative pass recording with layout tracking
+    void runPass(const PassDesc& desc, const std::function<void()>& body);
+    void copyImage(AllocatedImage& src, AllocatedImage& dst, VkExtent2D extent);
+    void resetLayoutTracking();
 
     // Dynamic rendering scope
     void beginRendering(VkImageView colorAttachment, VkExtent2D extent, VkClearValue* clearValue = nullptr, VkImageLayout layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
@@ -39,4 +58,5 @@ public:
 
 private:
     VkCommandBuffer m_cmd;
+    std::unordered_map<VkImage, VkImageLayout> m_layouts;
 };
