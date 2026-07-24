@@ -115,6 +115,7 @@ set(SOURCES
     src/app/RenderOrchestrator.cpp
     src/app/TimeSync.cpp
     src/app/TestScene.cpp
+    src/app/ClockScene.cpp
     src/app/Engine.cpp
 )
 

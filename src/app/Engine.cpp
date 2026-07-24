@@ -1,7 +1,5 @@
 #include "app/Engine.hpp"
 #include "app/TimeSync.hpp"
-#include "app/CrystalMath.hpp"
-#include "gs/GsConstants.hpp"
 #include <algorithm>
 #include <imgui.h>
 #include <iostream>
@@ -139,46 +137,11 @@ void Engine::runFrame() {
     params.tunnelImageView = m_targets.tunnel.imageView;
     params.frameIndex = m_frameNumber % 2;
 
-    VkExtent2D ext = m_swapchain.extent();
-
     m_testScene.params().enabled = m_testSceneActive;
 
-    if (m_testSceneActive) {
-        m_testScene.update(params, dt);
-        m_orchestrator.updateUBO(params, &m_testScene.params());
-        m_testScene.record(recorder, params, m_targets);
-    } else {
-        m_orchestrator.updateUBO(params, nullptr);
-
-        VkClearValue clear{};
-        clear.color = {{0.0f, 0.0f, 0.0f, 1.0f}};
-
-        recorder.runPass({"Tunnel Background", {0.2f, 0.2f, 0.6f},
-                          &m_targets.tunnel, &m_targets.depth, {}, &clear, ext}, [&] {
-            m_orchestrator.recordTunnelPass(recorder, params);
-        });
-
-        recorder.copyImage(m_targets.tunnel, m_targets.mainColor, ext);
-
-        recorder.runPass({"Crystal Clock (Pass 1)", {0.2f, 0.4f, 1.0f},
-                          &m_targets.mainColor, &m_targets.depth,
-                          {&m_targets.tunnel}, nullptr, ext}, [&] {
-            m_orchestrator.recordCrystalPasses(recorder, params);
-        });
-
-        recorder.copyImage(m_targets.mainColor, m_targets.tunnel, ext);
-        recorder.runPass({"Crystal Clock (Pass 2: Inter-Rod)", {0.4f, 0.6f, 1.0f},
-                          &m_targets.mainColor, &m_targets.depth, {&m_targets.tunnel}, nullptr, ext}, [&] {
-            m_orchestrator.recordCrystalPasses(recorder, params);
-        });
-    }
-
-    // ImGui overlay
-    int hlRod = CrystalMath::getHighlightedRod(timeInfo.hour);
-    int hourCounter = static_cast<int>(timeInfo.minute * 60 + timeInfo.secondsInMinute);
-    bool isWide = params.aspect > 1.5f;
-    int screenRatio = isWide ? GsConstants::SCREEN_RATIO_16_9 : GsConstants::SCREEN_RATIO_4_3;
-    float fillAmt = CrystalMath::computeRodScale(hlRod, 1.0f, isWide, screenRatio, true, hourCounter);
+    m_activeScene->update(params, dt);
+    m_orchestrator.updateUBO(params, m_testSceneActive ? &m_testScene.params() : nullptr);
+    m_activeScene->record(recorder, params, m_targets);
 
     ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize(ImVec2(280, 240), ImGuiCond_FirstUseEver);
@@ -193,18 +156,11 @@ void Engine::runFrame() {
         ImGui::Separator();
     }
 
-    ImGui::Text("Time: %02d:%02d:%02d.%03d", timeInfo.hour, timeInfo.minute, timeInfo.second, timeInfo.millisecond);
-    ImGui::Text("Highlighted Rod: %d", hlRod);
-    ImGui::Text("Hour Scale Slide: %.3f", fillAmt);
-    ImGui::Text("Sec in Min: %.2f", timeInfo.secondsInMinute);
-    ImGui::Separator();
-    ImGui::Text("Tunnel(1) + Glass(12) + Spec(12) + Fill(1)");
-    ImGui::Text("Draw Calls: %d", 1 + 12 + 12 + 1);
-    ImGui::Separator();
     ImGui::Checkbox("Enable Test Scene", &m_testSceneActive);
+    m_activeScene = m_testSceneActive ? static_cast<IScene*>(&m_testScene) : &m_clockScene;
     ImGui::End();
 
-    if (m_testSceneActive) m_testScene.drawUI();
+    m_activeScene->drawUI();
 
     // Render ImGui to targets.mainColor (already in COLOR_ATTACHMENT_OPTIMAL)
     m_ui.render(frame.commandBuffer, m_targets.mainColor.imageView, m_swapchain.extent());

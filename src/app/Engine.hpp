@@ -9,7 +9,9 @@
 #include "renderer/RenderTargets.hpp"
 #include "renderer/UIRenderer.hpp"
 #include "app/RenderOrchestrator.hpp"
+#include "app/IScene.hpp"
 #include "app/TestScene.hpp"
+#include "app/ClockScene.hpp"
 #include <chrono>
 #include <array>
 
@@ -34,6 +36,8 @@ private:
     RenderTargets m_targets;
 
     TestScene m_testScene{m_orchestrator};
+    ClockScene m_clockScene{m_orchestrator};
+    IScene* m_activeScene{&m_clockScene};
     bool m_testSceneActive{false};
 
     std::chrono::high_resolution_clock::time_point m_appStartTime;
