@@ -47,7 +47,7 @@ void TestScene::record(PassRecorder& recorder, const FrameParams& params, Render
     });
 }
 
-void TestScene::drawUI() {
+void TestScene::drawUI(const FrameParams& params) {
     ImGui::SetNextWindowPos(ImVec2(10, 260), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize(ImVec2(340, 560), ImGuiCond_FirstUseEver);
     ImGui::Begin("Refraction Test Scene");

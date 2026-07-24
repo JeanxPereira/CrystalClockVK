@@ -9,5 +9,5 @@ public:
     virtual ~IScene() = default;
     virtual void update(const FrameParams& params, float dt) = 0;
     virtual void record(PassRecorder& recorder, const FrameParams& params, RenderTargets& targets) = 0;
-    virtual void drawUI() = 0;
+    virtual void drawUI(const FrameParams& params) = 0;
 };

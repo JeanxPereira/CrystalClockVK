@@ -38,13 +38,11 @@ void ClockScene::record(PassRecorder& recorder, const FrameParams& params, Rende
     });
 }
 
-void ClockScene::drawUI() {
-    TimeInfo timeInfo = TimeSync::getCurrentTime();
+void ClockScene::drawUI(const FrameParams& params) {
+    const TimeInfo& timeInfo = params.time;
     int hlRod = CrystalMath::getHighlightedRod(timeInfo.hour);
     int hourCounter = static_cast<int>(timeInfo.minute * 60 + timeInfo.secondsInMinute);
-    ImGuiIO& io = ImGui::GetIO();
-    float aspect = io.DisplaySize.y > 0.0f ? io.DisplaySize.x / io.DisplaySize.y : 1.0f;
-    bool isWide = aspect > 1.5f;
+    bool isWide = params.aspect > 1.5f;
     int screenRatio = isWide ? GsConstants::SCREEN_RATIO_16_9 : GsConstants::SCREEN_RATIO_4_3;
     float fillAmt = CrystalMath::computeRodScale(hlRod, 1.0f, isWide, screenRatio, true, hourCounter);
 

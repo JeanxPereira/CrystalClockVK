@@ -155,12 +155,14 @@ void Engine::runFrame() {
         }
         ImGui::Separator();
     }
+    ImGui::End();
 
+    m_activeScene->drawUI(params);
+
+    ImGui::Begin("CrystalClock Debug");
     ImGui::Checkbox("Enable Test Scene", &m_testSceneActive);
     m_activeScene = m_testSceneActive ? static_cast<IScene*>(&m_testScene) : &m_clockScene;
     ImGui::End();
-
-    m_activeScene->drawUI();
 
     // Render ImGui to targets.mainColor (already in COLOR_ATTACHMENT_OPTIMAL)
     m_ui.render(frame.commandBuffer, m_targets.mainColor.imageView, m_swapchain.extent());

@@ -9,7 +9,7 @@ public:
 
     void update(const FrameParams& params, float dt) override;
     void record(PassRecorder& recorder, const FrameParams& params, RenderTargets& targets) override;
-    void drawUI() override;
+    void drawUI(const FrameParams& params) override;
 
 private:
     RenderOrchestrator& m_orchestrator;
