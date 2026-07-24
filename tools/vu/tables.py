@@ -1,0 +1,35 @@
+FTOI_BITS = {0: 0, 1: 4, 2: 12, 3: 15}
+
+def _fill():
+    t = {}
+    for f in range(0x00, 0x04): t[f] = ("VADD", "bc")
+    for f in range(0x04, 0x08): t[f] = ("VSUB", "bc")
+    for f in range(0x08, 0x0C): t[f] = ("VMADD", "bc")
+    for f in range(0x0C, 0x10): t[f] = ("VMSUB", "bc")
+    for f in range(0x10, 0x14): t[f] = ("VMAX", "bc")
+    for f in range(0x14, 0x18): t[f] = ("VMINI", "bc")
+    for f in range(0x18, 0x1C): t[f] = ("VMUL", "bc")
+    t[0x1C] = ("VMUL", "q")
+    t[0x1D] = ("VMAX", "i")
+    t[0x1E] = ("VMUL", "i")
+    t[0x1F] = ("VMINI", "i")
+    t[0x20] = ("VADD", "q")
+    t[0x21] = ("VMADD", "q")
+    t[0x22] = ("VADD", "i")
+    t[0x23] = ("VMADD", "i")
+    t[0x24] = ("VSUB", "q")
+    t[0x25] = ("VMSUB", "q")
+    t[0x26] = ("VSUB", "i")
+    t[0x27] = ("VMSUB", "i")
+    t[0x28] = ("VADD", "std")
+    t[0x29] = ("VMADD", "std")
+    t[0x2A] = ("VMUL", "std")
+    t[0x2B] = ("VMAX", "std")
+    t[0x2C] = ("VSUB", "std")
+    t[0x2D] = ("VMSUB", "std")
+    t[0x2E] = ("VOPMSUB", "std")
+    t[0x2F] = ("VMINI", "std")
+    for f in range(0x3C, 0x40): t[f] = ("SPECIAL", "special")
+    return t
+
+UPPER_MAIN = _fill()
