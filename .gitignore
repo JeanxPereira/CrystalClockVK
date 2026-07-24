@@ -19,3 +19,8 @@ compile_commands.json
 
 # Logs
 *.log
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
