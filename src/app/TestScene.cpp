@@ -88,6 +88,21 @@ void TestScene::drawUI(const FrameParams& params) {
         ImGui::ColorEdit3("Tint 2", &m_params.tint2.x);
     }
 
+    if (ImGui::CollapsingHeader("PS2 Icon Lighting", ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::Checkbox("Enable (replaces Tint)", &m_params.iconLighting);
+        if (ImGui::Button("Preset 0 (Browser)")) m_params.loadIconPreset(0);
+        ImGui::SameLine();
+        if (ImGui::Button("Preset 1 (Config)")) m_params.loadIconPreset(1);
+        for (int i = 0; i < 3; i++) {
+            ImGui::PushID(i);
+            ImGui::Text("Light %d", i + 1);
+            ImGui::SliderFloat3("Dir", &m_params.lightDir[i].x, -1.0f, 1.0f);
+            ImGui::ColorEdit3("Color", &m_params.lightColor[i].x);
+            ImGui::PopID();
+        }
+        ImGui::ColorEdit3("Ambient", &m_params.ambient.x);
+    }
+
     if (ImGui::CollapsingHeader("Cube", ImGuiTreeNodeFlags_DefaultOpen)) {
         ImGui::Checkbox("Auto Rotate", &m_autoRotate);
         ImGui::SliderFloat("Size", &m_cubeScale, 0.1f, 5.0f);

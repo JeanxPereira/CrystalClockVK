@@ -13,6 +13,9 @@ layout(set = 0, binding = 0) uniform FrameUBO {
     vec4 refractB;
     vec4 tintA;
     vec4 tintB;
+    vec4 lightDir[3];
+    vec4 lightColor[3];
+    vec4 ambient;
 } ubo;
 
 layout(push_constant) uniform PushConstants {

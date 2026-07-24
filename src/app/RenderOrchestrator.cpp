@@ -336,6 +336,11 @@ void RenderOrchestrator::updateUBO(const FrameParams& params, const TestScenePar
         ubo.refractB = glm::vec4(test->emissiveBase, test->diffuseMix, test->reflectStrength, test->fadeAlpha);
         ubo.tintA = glm::vec4(test->tint1, test->animateTint ? -1.0f : test->tintLerp);
         ubo.tintB = glm::vec4(test->tint2, test->colorPeriod);
+        for (int i = 0; i < 3; i++) {
+            ubo.lightDir[i] = glm::vec4(test->lightDir[i], 0.0f);
+            ubo.lightColor[i] = glm::vec4(test->lightColor[i], 1.0f);
+        }
+        ubo.ambient = glm::vec4(test->ambient, test->iconLighting ? 1.0f : 0.0f);
     }
 
     std::memcpy(m_uboBuffer[params.frameIndex].allocationInfo.pMappedData, &ubo, sizeof(FrameUBO));

@@ -23,6 +23,9 @@ layout(set = 0, binding = 0) uniform FrameUBO {
     vec4 refractB; // x=emissiveBase, y=diffuseMix, z=reflectStrength, w=fadeAlpha
     vec4 tintA;    // rgb=color1, w=tintLerp override (<0 = animate)
     vec4 tintB;    // rgb=color2, w=colorPeriod
+    vec4 lightDir[3];
+    vec4 lightColor[3];
+    vec4 ambient;  // rgb=ambient, w=icon lighting enable
 } ubo;
 
 layout(set = 0, binding = 1) uniform sampler2D bgTexture;
@@ -57,11 +60,20 @@ void main() {
 
     vec3 finalColor = mix(refr, diffuse.rgb, diffuse.r * ubo.refractB.y);
 
-    float time = pc.screenParams.z;
-    float tintLerp = ubo.tintA.w < 0.0
-        ? abs(mod(time / max(ubo.tintB.w, 0.001), 1.0) * 2.0 - 1.0)
-        : ubo.tintA.w;
-    finalColor *= mix(ubo.tintA.rgb, ubo.tintB.rgb, tintLerp);
+    if (ubo.ambient.w > 0.5) {
+        // OSDSYS icon rig (hddosd.elf 0x2BD7B0): lit = ambient + sum(Ci * max(0, N.-Di))
+        vec3 lit = ubo.ambient.rgb;
+        for (int i = 0; i < 3; i++) {
+            lit += ubo.lightColor[i].rgb * max(0.0, dot(N, normalize(-ubo.lightDir[i].xyz)));
+        }
+        finalColor *= lit;
+    } else {
+        float time = pc.screenParams.z;
+        float tintLerp = ubo.tintA.w < 0.0
+            ? abs(mod(time / max(ubo.tintB.w, 0.001), 1.0) * 2.0 - 1.0)
+            : ubo.tintA.w;
+        finalColor *= mix(ubo.tintA.rgb, ubo.tintB.rgb, tintLerp);
+    }
     finalColor += refl;
 
     float fade = clamp(ubo.refractB.w, 0.0, 1.0);

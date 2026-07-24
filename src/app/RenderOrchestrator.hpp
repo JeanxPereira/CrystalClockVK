@@ -24,6 +24,9 @@ struct FrameUBO {
     glm::vec4 refractB;    // x=emissiveBase, y=diffuseMix, z=reflectStrength, w=fadeAlpha
     glm::vec4 tintA;       // rgb=color1, w=tintLerp override (<0 = animate)
     glm::vec4 tintB;       // rgb=color2, w=colorPeriod
+    glm::vec4 lightDir[3];
+    glm::vec4 lightColor[3];
+    glm::vec4 ambient;     // rgb=ambient, w=icon lighting enable
 };
 
 struct TestSceneParams {
@@ -48,6 +51,31 @@ struct TestSceneParams {
     glm::vec3 tint2{0.25f, 1.0f, 1.0f};
     int composition = 0;
     glm::mat4 cubeModel{1.0f};
+    bool iconLighting = true;
+    glm::vec3 lightDir[3] = {
+        {0.5f, 0.5f, 0.5f}, {0.0f, -0.4f, -1.0f}, {-0.5f, -0.5f, 0.5f}};
+    glm::vec3 lightColor[3] = {
+        {0.4794f, 0.4794f, 0.4306f}, {0.2599f, 0.3294f, 0.5f}, {0.14f, 0.14f, 0.38f}};
+    glm::vec3 ambient{0.24f, 0.24f, 0.24f};
+
+    void loadIconPreset(int preset) {
+        if (preset == 0) {
+            lightDir[0] = {0.5f, 0.5f, 0.5f};
+            lightDir[1] = {0.0f, -0.4f, -1.0f};
+            lightDir[2] = {-0.5f, -0.5f, 0.5f};
+            lightColor[0] = {0.4794f, 0.4794f, 0.4306f};
+            lightColor[1] = {0.2599f, 0.3294f, 0.5f};
+            lightColor[2] = {0.14f, 0.14f, 0.38f};
+        } else {
+            lightDir[0] = {0.5f, 0.2f, 0.5f};
+            lightDir[1] = {-0.5f, 0.5f, 0.0f};
+            lightDir[2] = {0.0f, -1.0f, 0.0f};
+            lightColor[0] = {0.4f, 0.4f, 0.4f};
+            lightColor[1] = {0.2f, 0.2f, 0.2f};
+            lightColor[2] = {0.0f, 0.0f, 0.0f};
+        }
+        ambient = {0.24f, 0.24f, 0.24f};
+    }
 };
 
 struct FrameParams {
