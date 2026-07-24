@@ -20,6 +20,34 @@ struct FrameUBO {
     glm::mat4 view;
     glm::vec4 viewPos;     // xyz = camera position, w = unused
     glm::vec4 prismColor;  // rgb = cycling color, a = time
+    glm::vec4 refractA;    // x=eta, y=refractScale, z=refractBoost, w=rimStrength
+    glm::vec4 refractB;    // x=emissiveBase, y=diffuseMix, z=reflectStrength, w=fadeAlpha
+    glm::vec4 tintA;       // rgb=color1, w=tintLerp override (<0 = animate)
+    glm::vec4 tintB;       // rgb=color2, w=colorPeriod
+};
+
+struct TestSceneParams {
+    bool enabled = false;
+    int bgMode = 2;
+    float bgScale = 8.0f;
+    float bgScrollSpeed = 0.0f;
+    glm::vec3 bgColor1{0.0f, 0.0f, 0.0f};
+    glm::vec3 bgColor2{1.0f, 1.0f, 1.0f};
+    float eta = 0.5f;
+    float refractScale = 1.0f;
+    float refractBoost = 4.0f;
+    float rimStrength = 1.0f;
+    float emissiveBase = 0.25f;
+    float diffuseMix = 0.2f;
+    float reflectStrength = 0.6f;
+    float fadeAlpha = 1.0f;
+    bool animateTint = true;
+    float tintLerp = 0.0f;
+    float colorPeriod = 20.0f;
+    glm::vec3 tint1{1.0f, 0.25f, 1.0f};
+    glm::vec3 tint2{0.25f, 1.0f, 1.0f};
+    int composition = 0;
+    glm::mat4 cubeModel{1.0f};
 };
 
 struct FrameParams {
@@ -51,7 +79,9 @@ public:
     void init(const VulkanContext& ctx, const SwapchainManager& swapchain, ResourceManager& resources);
     void recordTunnelPass(PassRecorder& recorder, const FrameParams& params);
     void recordCrystalPasses(PassRecorder& recorder, const FrameParams& params);
-    void updateUBO(const FrameParams& params);
+    void recordTestBackgroundPass(PassRecorder& recorder, const FrameParams& params, const TestSceneParams& test);
+    void recordTestCubePass(PassRecorder& recorder, const FrameParams& params, const TestSceneParams& test);
+    void updateUBO(const FrameParams& params, const TestSceneParams* test = nullptr);
     void destroy(VkDevice device, ResourceManager& resources);
 
     VkPipelineLayout pipelineLayout() const { return m_pipelineLayout; }
@@ -85,12 +115,17 @@ private:
     VkPipeline m_glassPipeline{VK_NULL_HANDLE};
     VkPipeline m_specularPipeline{VK_NULL_HANDLE};
     VkPipeline m_reversePipeline{VK_NULL_HANDLE};
+    VkPipelineLayout m_testBgLayout{VK_NULL_HANDLE};
+    VkPipeline m_testBgPipeline{VK_NULL_HANDLE};
+    VkPipeline m_testCubePipeline{VK_NULL_HANDLE};
 
     // Meshes
     AllocatedBuffer m_rodVertexBuffer{};
     uint32_t m_rodVertexCount{0};
     AllocatedBuffer m_tunnelVertexBuffer{};
     uint32_t m_tunnelVertexCount{0};
+    AllocatedBuffer m_cubeVertexBuffer{};
+    uint32_t m_cubeVertexCount{0};
 
     // GS register config per pass
     static constexpr int PASS_COUNT = 5;

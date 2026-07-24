@@ -138,6 +138,40 @@ std::vector<CrystalVertex> CrystalGeometry::generateCylinderMesh(
     return vertices;
 }
 
+std::vector<CrystalVertex> CrystalGeometry::generateCubeMesh(float size) {
+    std::vector<CrystalVertex> vertices;
+    vertices.reserve(36);
+    float h = size * 0.5f;
+
+    struct Face { glm::vec3 n, u, v; };
+    const Face faces[6] = {
+        {{ 0,  0,  1}, {1, 0, 0}, {0, 1, 0}},
+        {{ 0,  0, -1}, {-1, 0, 0}, {0, 1, 0}},
+        {{ 1,  0,  0}, {0, 0, -1}, {0, 1, 0}},
+        {{-1,  0,  0}, {0, 0, 1}, {0, 1, 0}},
+        {{ 0,  1,  0}, {1, 0, 0}, {0, 0, -1}},
+        {{ 0, -1,  0}, {1, 0, 0}, {0, 0, 1}},
+    };
+
+    for (const auto& f : faces) {
+        glm::vec3 c = f.n * h;
+        glm::vec3 p00 = c - f.u * h - f.v * h;
+        glm::vec3 p10 = c + f.u * h - f.v * h;
+        glm::vec3 p11 = c + f.u * h + f.v * h;
+        glm::vec3 p01 = c - f.u * h + f.v * h;
+
+        vertices.push_back({p00, f.n, {0.0f, 0.0f}});
+        vertices.push_back({p10, f.n, {1.0f, 0.0f}});
+        vertices.push_back({p11, f.n, {1.0f, 1.0f}});
+
+        vertices.push_back({p00, f.n, {0.0f, 0.0f}});
+        vertices.push_back({p11, f.n, {1.0f, 1.0f}});
+        vertices.push_back({p01, f.n, {0.0f, 1.0f}});
+    }
+
+    return vertices;
+}
+
 VkVertexInputBindingDescription CrystalGeometry::getBindingDescription() {
     VkVertexInputBindingDescription binding{};
     binding.binding = 0;

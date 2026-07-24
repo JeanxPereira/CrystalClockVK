@@ -12,6 +12,9 @@
 #include "app/CrystalMath.hpp"
 #include "gs/GsConstants.hpp"
 #include <chrono>
+#include <algorithm>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/quaternion.hpp>
 #include <imgui.h>
 #include <iostream>
 #include <array>
@@ -118,7 +121,7 @@ int main(int argc, char* argv[]) {
         AllocatedImage tunnelImage = resources.createImage(
             swapchain.extent(),
             swapchain.imageFormat(),
-            VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
+            VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
 
         // Main color target — crystals render here, then blit to swapchain
         AllocatedImage mainColorImage = resources.createImage(
@@ -130,13 +133,17 @@ int main(int argc, char* argv[]) {
 
         uint32_t frameNumber = 0;
         bool resizeRequested = false;
+        TestSceneParams testParams{};
+        glm::quat cubeRot{1.0f, 0.0f, 0.0f, 0.0f};
+        float cubeScale = 1.0f;
+        bool cubeAutoRotate = false;
         auto appStartTime = std::chrono::high_resolution_clock::now();
         auto lastFrameTime = appStartTime;
         float fps = 0.0f;
 
+        try {
         while (!window.shouldClose()) {
             window.pollEvents();
-            ui.beginFrame();
 
             auto now = std::chrono::high_resolution_clock::now();
             float dt = std::chrono::duration<float>(now - lastFrameTime).count();
@@ -145,9 +152,21 @@ int main(int argc, char* argv[]) {
 
             int w, h;
             SDL_GetWindowSize(window.getHandle(), &w, &h);
-            if (w == 0 || h == 0) continue;
+            if (w == 0 || h == 0 ||
+                (SDL_GetWindowFlags(window.getHandle()) & SDL_WINDOW_MINIMIZED)) {
+                SDL_Delay(50);
+                continue;
+            }
 
             if (resizeRequested) {
+                VkSurfaceCapabilitiesKHR surfCaps{};
+                vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
+                    vulkan.physicalDevice(), vulkan.surface(), &surfCaps);
+                if (surfCaps.currentExtent.width == 0 || surfCaps.currentExtent.height == 0 ||
+                    surfCaps.maxImageExtent.width == 0 || surfCaps.maxImageExtent.height == 0) {
+                    SDL_Delay(50);
+                    continue;
+                }
                 vkDeviceWaitIdle(vulkan.device());
                 swapchain.recreate(static_cast<uint32_t>(w), static_cast<uint32_t>(h));
                 swapSync.destroy(vulkan.device());
@@ -163,7 +182,7 @@ int main(int argc, char* argv[]) {
 
                 tunnelImage = resources.createImage(
                     swapchain.extent(), swapchain.imageFormat(),
-                    VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
+                    VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
 
                 mainColorImage = resources.createImage(
                     swapchain.extent(), swapchain.imageFormat(),
@@ -185,6 +204,8 @@ int main(int argc, char* argv[]) {
 
             uint32_t imageIdx = swapchain.imageIndex();
             VkSemaphore renderSem = swapSync.renderSemaphoreForImage(imageIdx);
+
+            ui.beginFrame();
 
             vkResetFences(vulkan.device(), 1, &frame.renderFence);
             vkResetCommandBuffer(frame.commandBuffer, 0);
@@ -208,8 +229,28 @@ int main(int argc, char* argv[]) {
             params.tunnelImageView = tunnelImage.imageView;
             params.frameIndex = frameNumber % 2;
 
+            if (testParams.enabled) {
+                ImGuiIO& io = ImGui::GetIO();
+                if (!io.WantCaptureMouse) {
+                    if (ImGui::IsMouseDragging(ImGuiMouseButton_Left, 0.0f)) {
+                        float sens = 0.008f;
+                        glm::quat yaw = glm::angleAxis(io.MouseDelta.x * sens, glm::vec3(0, 1, 0));
+                        glm::quat pitch = glm::angleAxis(io.MouseDelta.y * sens, glm::vec3(1, 0, 0));
+                        cubeRot = glm::normalize(pitch * yaw * cubeRot);
+                    }
+                    if (io.MouseWheel != 0.0f) {
+                        cubeScale = std::clamp(cubeScale * std::exp(io.MouseWheel * 0.1f), 0.1f, 5.0f);
+                    }
+                }
+                if (cubeAutoRotate) {
+                    cubeRot = glm::normalize(glm::angleAxis(dt * 0.5f, glm::vec3(0, 1, 0)) * cubeRot);
+                }
+                testParams.cubeModel = glm::mat4_cast(cubeRot) *
+                    glm::scale(glm::mat4(1.0f), glm::vec3(cubeScale));
+            }
+
             // Update UBO with viewProj, viewPos, prismColor
-            orchestrator.updateUBO(params);
+            orchestrator.updateUBO(params, &testParams);
 
             // ═══════════════════════════════════════════════════════════════
             // PASS A: Render tunnel to tunnelImage
@@ -220,12 +261,15 @@ int main(int argc, char* argv[]) {
             VkClearValue tunnelClear{};
             tunnelClear.color = {{0.0f, 0.0f, 0.0f, 1.0f}};
 
-            recorder.beginDebugLabel("Tunnel Background", 0.2f, 0.2f, 0.6f);
+            recorder.beginDebugLabel(testParams.enabled ? "Test Background" : "Tunnel Background", 0.2f, 0.2f, 0.6f);
             recorder.beginRendering(tunnelImage.imageView, depthImage.imageView,
                                     swapchain.extent(), &tunnelClear);
             recorder.setViewportScissor(swapchain.extent());
 
-            orchestrator.recordTunnelPass(recorder, params);
+            if (testParams.enabled)
+                orchestrator.recordTestBackgroundPass(recorder, params, testParams);
+            else
+                orchestrator.recordTunnelPass(recorder, params);
 
             recorder.endRendering();
             recorder.endDebugLabel();
@@ -262,12 +306,15 @@ int main(int argc, char* argv[]) {
             VkClearValue crystalClear{};
             // Don't clear — we just copied the tunnel content
 
-            recorder.beginDebugLabel("Crystal Clock (Pass 1)", 0.2f, 0.4f, 1.0f);
+            recorder.beginDebugLabel(testParams.enabled ? "Test Cube" : "Crystal Clock (Pass 1)", 0.2f, 0.4f, 1.0f);
             recorder.beginRendering(mainColorImage.imageView, depthImage.imageView,
                                     swapchain.extent(), nullptr);
             recorder.setViewportScissor(swapchain.extent());
 
-            orchestrator.recordCrystalPasses(recorder, params);
+            if (testParams.enabled)
+                orchestrator.recordTestCubePass(recorder, params, testParams);
+            else
+                orchestrator.recordCrystalPasses(recorder, params);
 
             recorder.endRendering();
             recorder.endDebugLabel();
@@ -276,6 +323,7 @@ int main(int argc, char* argv[]) {
             // Inter-rod refraction: copy mainColor → tunnelImage,
             // then re-render rods refracting now-updated bg (rods + tunnel).
             // ═══════════════════════════════════════════════════════════════
+            if (!testParams.enabled) {
             recorder.transitionImage(mainColorImage.image,
                 VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
             recorder.transitionImage(tunnelImage.image,
@@ -304,6 +352,7 @@ int main(int argc, char* argv[]) {
 
             recorder.endRendering();
             recorder.endDebugLabel();
+            }
 
             // ImGui overlay
             int hlRod = CrystalMath::getHighlightedRod(timeInfo.hour);
@@ -332,6 +381,59 @@ int main(int argc, char* argv[]) {
             ImGui::Separator();
             ImGui::Text("Tunnel(1) + Glass(12) + Spec(12) + Fill(1)");
             ImGui::Text("Draw Calls: %d", 1 + 12 + 12 + 1);
+            ImGui::End();
+
+            ImGui::SetNextWindowPos(ImVec2(10, 260), ImGuiCond_FirstUseEver);
+            ImGui::SetNextWindowSize(ImVec2(340, 560), ImGuiCond_FirstUseEver);
+            ImGui::Begin("Refraction Test Scene");
+            ImGui::Checkbox("Enable Test Scene", &testParams.enabled);
+            if (testParams.enabled) {
+                ImGui::TextDisabled("LMB drag: rotate cube | Wheel: scale");
+
+                if (ImGui::CollapsingHeader("Background", ImGuiTreeNodeFlags_DefaultOpen)) {
+                    const char* bgModes[] = {"Stripes (Vertical)", "Stripes (Horizontal)", "Checkerboard", "Grid"};
+                    ImGui::Combo("Pattern", &testParams.bgMode, bgModes, 4);
+                    ImGui::SliderFloat("Scale", &testParams.bgScale, 1.0f, 64.0f);
+                    ImGui::SliderFloat("Scroll Speed", &testParams.bgScrollSpeed, 0.0f, 2.0f);
+                    ImGui::ColorEdit3("Color 1", &testParams.bgColor1.x);
+                    ImGui::ColorEdit3("Color 2", &testParams.bgColor2.x);
+                }
+
+                if (ImGui::CollapsingHeader("Refraction", ImGuiTreeNodeFlags_DefaultOpen)) {
+                    ImGui::SliderFloat("Eta (IOR ratio)", &testParams.eta, 0.0f, 1.5f);
+                    ImGui::SliderFloat("Offset Scale", &testParams.refractScale, 0.0f, 10.0f);
+                    ImGui::SliderFloat("Emissive Boost", &testParams.refractBoost, 0.0f, 8.0f);
+                    ImGui::SliderFloat("Rim Strength", &testParams.rimStrength, 0.0f, 4.0f);
+                    ImGui::SliderFloat("Emissive Base", &testParams.emissiveBase, 0.0f, 1.0f);
+                }
+
+                if (ImGui::CollapsingHeader("Composition", ImGuiTreeNodeFlags_DefaultOpen)) {
+                    const char* compModes[] = {"Front (opaque)", "Back (scene mix)"};
+                    ImGui::Combo("Mode", &testParams.composition, compModes, 2);
+                    ImGui::SliderFloat("Diffuse Mix", &testParams.diffuseMix, 0.0f, 1.0f);
+                    ImGui::SliderFloat("Reflect Strength", &testParams.reflectStrength, 0.0f, 2.0f);
+                    ImGui::SliderFloat("Fade Alpha", &testParams.fadeAlpha, 0.0f, 1.0f);
+                }
+
+                if (ImGui::CollapsingHeader("Tint", ImGuiTreeNodeFlags_DefaultOpen)) {
+                    ImGui::Checkbox("Animate", &testParams.animateTint);
+                    if (testParams.animateTint)
+                        ImGui::SliderFloat("Period (s)", &testParams.colorPeriod, 1.0f, 60.0f);
+                    else
+                        ImGui::SliderFloat("Lerp", &testParams.tintLerp, 0.0f, 1.0f);
+                    ImGui::ColorEdit3("Tint 1", &testParams.tint1.x);
+                    ImGui::ColorEdit3("Tint 2", &testParams.tint2.x);
+                }
+
+                if (ImGui::CollapsingHeader("Cube", ImGuiTreeNodeFlags_DefaultOpen)) {
+                    ImGui::Checkbox("Auto Rotate", &cubeAutoRotate);
+                    ImGui::SliderFloat("Size", &cubeScale, 0.1f, 5.0f);
+                    if (ImGui::Button("Reset Rotation")) {
+                        cubeRot = glm::quat{1.0f, 0.0f, 0.0f, 0.0f};
+                        cubeScale = 1.0f;
+                    }
+                }
+            }
             ImGui::End();
 
             // Render ImGui to mainColorImage (already in COLOR_ATTACHMENT_OPTIMAL)
@@ -388,6 +490,9 @@ int main(int argc, char* argv[]) {
             }
 
             frameNumber++;
+        }
+        } catch (const std::exception& e) {
+            std::cerr << "Render loop error: " << e.what() << std::endl;
         }
 
         vkDeviceWaitIdle(vulkan.device());
