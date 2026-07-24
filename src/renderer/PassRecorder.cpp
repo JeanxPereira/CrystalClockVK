@@ -1,4 +1,5 @@
 #include "PassRecorder.hpp"
+#include "renderer/FrameGuards.hpp"
 
 void PassRecorder::transitionImage(VkImage image, VkImageLayout oldLayout, VkImageLayout newLayout) {
     VkImageMemoryBarrier2 barrier{};
@@ -37,7 +38,7 @@ void PassRecorder::runPass(const PassDesc& desc, const std::function<void()>& bo
         transitionImage(desc.colorTarget->image, cur, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
         m_layouts[desc.colorTarget->image] = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     }
-    beginDebugLabel(desc.name, desc.color[0], desc.color[1], desc.color[2]);
+    DebugLabelGuard labelGuard(*this, desc.name, desc.color[0], desc.color[1], desc.color[2]);
     if (desc.depthTarget)
         beginRendering(desc.colorTarget->imageView, desc.depthTarget->imageView, desc.extent, desc.clear);
     else
@@ -45,7 +46,6 @@ void PassRecorder::runPass(const PassDesc& desc, const std::function<void()>& bo
     setViewportScissor(desc.extent);
     body();
     endRendering();
-    endDebugLabel();
 }
 
 void PassRecorder::copyImage(AllocatedImage& src, AllocatedImage& dst, VkExtent2D extent) {

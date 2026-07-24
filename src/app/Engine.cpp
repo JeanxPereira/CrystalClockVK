@@ -1,5 +1,6 @@
 #include "app/Engine.hpp"
 #include "app/TimeSync.hpp"
+#include "renderer/FrameGuards.hpp"
 #include <algorithm>
 #include <imgui.h>
 #include <iostream>
@@ -112,7 +113,7 @@ void Engine::runFrame() {
     VkSemaphore acquireSem = m_swapchain.acquireSemaphore();
     VkSemaphore renderSem = m_swapchain.renderSemaphore();
 
-    m_ui.beginFrame();
+    UIFrameGuard uiFrame(m_ui);
 
     vkResetFences(m_vulkan.device(), 1, &frame.renderFence);
     vkResetCommandBuffer(frame.commandBuffer, 0);
@@ -165,7 +166,7 @@ void Engine::runFrame() {
     ImGui::End();
 
     // Render ImGui to targets.mainColor (already in COLOR_ATTACHMENT_OPTIMAL)
-    m_ui.render(frame.commandBuffer, m_targets.mainColor.imageView, m_swapchain.extent());
+    uiFrame.render(frame.commandBuffer, m_targets.mainColor.imageView, m_swapchain.extent());
 
     // Blit targets.mainColor to swapchain
     recorder.transitionImage(m_targets.mainColor.image,
