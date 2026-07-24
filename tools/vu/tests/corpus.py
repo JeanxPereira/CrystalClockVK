@@ -23,3 +23,6 @@ def funct_sweep():
 
 def funct_sweep_dest_zero():
     return [(0<<21)|(1<<16)|(2<<11)|(3<<6)|funct for funct in range(0x40)]
+
+def special_sweep():
+    return [(0xF<<21)|(1<<16)|(2<<11)|(fd<<6)|funct for funct in range(0x3C, 0x40) for fd in range(0x20)]
