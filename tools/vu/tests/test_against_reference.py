@@ -1,7 +1,7 @@
 import re
 from tools.vu.decode import decode_upper
 from tools.vu.reference.vu_micro_ref import ref_upper
-from tools.vu.tests.corpus import ROTATION, PROJECTION, funct_sweep
+from tools.vu.tests.corpus import ROTATION, PROJECTION, funct_sweep, funct_sweep_dest_zero
 
 def norm(s: str) -> list:
     return re.sub(r"[,\s]+", " ", s.strip().lower()).split()
@@ -19,3 +19,6 @@ def test_projection_corpus():
 
 def test_funct_sweep():
     for w in funct_sweep(): _check(w)
+
+def test_funct_sweep_dest_zero():
+    for w in funct_sweep_dest_zero(): _check(w)

@@ -20,3 +20,6 @@ PROJECTION = [0x191493d,0x191ed4b,0x1928c38,0x1932605,0x193bab5,0x1944a48,0x194d
 
 def funct_sweep():
     return [(0xF<<21)|(1<<16)|(2<<11)|(3<<6)|funct for funct in range(0x40)]
+
+def funct_sweep_dest_zero():
+    return [(0<<21)|(1<<16)|(2<<11)|(3<<6)|funct for funct in range(0x40)]

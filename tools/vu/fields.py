@@ -9,8 +9,10 @@ def dest_mask(dest: int) -> str:
     return s
 
 def dest_suffix(dest: int) -> str:
-    m = dest_mask(dest)
-    return "." + m if m else ""
+    # reference get_4bit_field() falls through to "xyzw" for field==0
+    # (vu_micro_ref.py lines 61-62), so a zero dest mask still yields a suffix
+    m = dest_mask(dest) or "xyzw"
+    return "." + m
 
 def fields(word: int) -> dict:
     return {

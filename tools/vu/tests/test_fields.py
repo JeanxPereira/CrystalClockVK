@@ -11,7 +11,7 @@ def test_dest_mask_partial():
 
 def test_dest_suffix():
     assert dest_suffix(0xF) == ".xyzw"
-    assert dest_suffix(0x0) == ""
+    assert dest_suffix(0x0) == ".xyzw"
 
 def test_bc_names():
     assert BC == ("x", "y", "z", "w")
