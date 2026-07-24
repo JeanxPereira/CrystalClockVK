@@ -114,6 +114,7 @@ set(SOURCES
     src/app/CrystalGeometry.cpp
     src/app/RenderOrchestrator.cpp
     src/app/TimeSync.cpp
+    src/app/Engine.cpp
 )
 
 # Output binary to bin/ at project root (not inside build/)
