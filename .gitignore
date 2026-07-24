@@ -24,3 +24,7 @@ compile_commands.json
 __pycache__/
 *.pyc
 .pytest_cache/
+
+# VU decoder dumps (kept local, .gitkeep preserves dir)
+tools/vu/dumps/*.bin
+tools/vu/dumps/index.json
