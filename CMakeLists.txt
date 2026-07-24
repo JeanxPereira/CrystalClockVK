@@ -114,6 +114,7 @@ set(SOURCES
     src/app/CrystalGeometry.cpp
     src/app/RenderOrchestrator.cpp
     src/app/TimeSync.cpp
+    src/app/TestScene.cpp
     src/app/Engine.cpp
 )
 

@@ -3,7 +3,6 @@
 #include "app/CrystalMath.hpp"
 #include "gs/GsConstants.hpp"
 #include <algorithm>
-#include <glm/gtc/matrix_transform.hpp>
 #include <imgui.h>
 #include <iostream>
 
@@ -140,49 +139,33 @@ void Engine::runFrame() {
     params.tunnelImageView = m_targets.tunnel.imageView;
     params.frameIndex = m_frameNumber % 2;
 
-    if (m_testParams.enabled) {
-        ImGuiIO& io = ImGui::GetIO();
-        if (!io.WantCaptureMouse) {
-            if (ImGui::IsMouseDragging(ImGuiMouseButton_Left, 0.0f)) {
-                float sens = 0.008f;
-                glm::quat yaw = glm::angleAxis(io.MouseDelta.x * sens, glm::vec3(0, 1, 0));
-                glm::quat pitch = glm::angleAxis(io.MouseDelta.y * sens, glm::vec3(1, 0, 0));
-                m_cubeRot = glm::normalize(pitch * yaw * m_cubeRot);
-            }
-            if (io.MouseWheel != 0.0f) {
-                m_cubeScale = std::clamp(m_cubeScale * std::exp(io.MouseWheel * 0.1f), 0.1f, 5.0f);
-            }
-        }
-        if (m_cubeAutoRotate) {
-            m_cubeRot = glm::normalize(glm::angleAxis(dt * 0.5f, glm::vec3(0, 1, 0)) * m_cubeRot);
-        }
-        m_testParams.cubeModel = glm::mat4_cast(m_cubeRot) *
-            glm::scale(glm::mat4(1.0f), glm::vec3(m_cubeScale));
-    }
-
-    // Update UBO with viewProj, viewPos, prismColor
-    m_orchestrator.updateUBO(params, &m_testParams);
-
-    VkClearValue clear{};
-    clear.color = {{0.0f, 0.0f, 0.0f, 1.0f}};
     VkExtent2D ext = m_swapchain.extent();
 
-    recorder.runPass({m_testParams.enabled ? "Test Background" : "Tunnel Background",
-                      {0.2f, 0.2f, 0.6f}, &m_targets.tunnel, &m_targets.depth, {}, &clear, ext}, [&] {
-        if (m_testParams.enabled) m_orchestrator.recordTestBackgroundPass(recorder, params, m_testParams);
-        else m_orchestrator.recordTunnelPass(recorder, params);
-    });
+    m_testScene.params().enabled = m_testSceneActive;
 
-    recorder.copyImage(m_targets.tunnel, m_targets.mainColor, ext);
+    if (m_testSceneActive) {
+        m_testScene.update(params, dt);
+        m_orchestrator.updateUBO(params, &m_testScene.params());
+        m_testScene.record(recorder, params, m_targets);
+    } else {
+        m_orchestrator.updateUBO(params, nullptr);
 
-    recorder.runPass({m_testParams.enabled ? "Test Cube" : "Crystal Clock (Pass 1)",
-                      {0.2f, 0.4f, 1.0f}, &m_targets.mainColor, &m_targets.depth,
-                      {&m_targets.tunnel}, nullptr, ext}, [&] {
-        if (m_testParams.enabled) m_orchestrator.recordTestCubePass(recorder, params, m_testParams);
-        else m_orchestrator.recordCrystalPasses(recorder, params);
-    });
+        VkClearValue clear{};
+        clear.color = {{0.0f, 0.0f, 0.0f, 1.0f}};
 
-    if (!m_testParams.enabled) {
+        recorder.runPass({"Tunnel Background", {0.2f, 0.2f, 0.6f},
+                          &m_targets.tunnel, &m_targets.depth, {}, &clear, ext}, [&] {
+            m_orchestrator.recordTunnelPass(recorder, params);
+        });
+
+        recorder.copyImage(m_targets.tunnel, m_targets.mainColor, ext);
+
+        recorder.runPass({"Crystal Clock (Pass 1)", {0.2f, 0.4f, 1.0f},
+                          &m_targets.mainColor, &m_targets.depth,
+                          {&m_targets.tunnel}, nullptr, ext}, [&] {
+            m_orchestrator.recordCrystalPasses(recorder, params);
+        });
+
         recorder.copyImage(m_targets.mainColor, m_targets.tunnel, ext);
         recorder.runPass({"Crystal Clock (Pass 2: Inter-Rod)", {0.4f, 0.6f, 1.0f},
                           &m_targets.mainColor, &m_targets.depth, {&m_targets.tunnel}, nullptr, ext}, [&] {
@@ -217,60 +200,11 @@ void Engine::runFrame() {
     ImGui::Separator();
     ImGui::Text("Tunnel(1) + Glass(12) + Spec(12) + Fill(1)");
     ImGui::Text("Draw Calls: %d", 1 + 12 + 12 + 1);
+    ImGui::Separator();
+    ImGui::Checkbox("Enable Test Scene", &m_testSceneActive);
     ImGui::End();
 
-    ImGui::SetNextWindowPos(ImVec2(10, 260), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(340, 560), ImGuiCond_FirstUseEver);
-    ImGui::Begin("Refraction Test Scene");
-    ImGui::Checkbox("Enable Test Scene", &m_testParams.enabled);
-    if (m_testParams.enabled) {
-        ImGui::TextDisabled("LMB drag: rotate cube | Wheel: scale");
-
-        if (ImGui::CollapsingHeader("Background", ImGuiTreeNodeFlags_DefaultOpen)) {
-            const char* bgModes[] = {"Stripes (Vertical)", "Stripes (Horizontal)", "Checkerboard", "Grid"};
-            ImGui::Combo("Pattern", &m_testParams.bgMode, bgModes, 4);
-            ImGui::SliderFloat("Scale", &m_testParams.bgScale, 1.0f, 64.0f);
-            ImGui::SliderFloat("Scroll Speed", &m_testParams.bgScrollSpeed, 0.0f, 2.0f);
-            ImGui::ColorEdit3("Color 1", &m_testParams.bgColor1.x);
-            ImGui::ColorEdit3("Color 2", &m_testParams.bgColor2.x);
-        }
-
-        if (ImGui::CollapsingHeader("Refraction", ImGuiTreeNodeFlags_DefaultOpen)) {
-            ImGui::SliderFloat("Eta (IOR ratio)", &m_testParams.eta, 0.0f, 1.5f);
-            ImGui::SliderFloat("Offset Scale", &m_testParams.refractScale, 0.0f, 10.0f);
-            ImGui::SliderFloat("Emissive Boost", &m_testParams.refractBoost, 0.0f, 8.0f);
-            ImGui::SliderFloat("Rim Strength", &m_testParams.rimStrength, 0.0f, 4.0f);
-            ImGui::SliderFloat("Emissive Base", &m_testParams.emissiveBase, 0.0f, 1.0f);
-        }
-
-        if (ImGui::CollapsingHeader("Composition", ImGuiTreeNodeFlags_DefaultOpen)) {
-            const char* compModes[] = {"Front (opaque)", "Back (scene mix)"};
-            ImGui::Combo("Mode", &m_testParams.composition, compModes, 2);
-            ImGui::SliderFloat("Diffuse Mix", &m_testParams.diffuseMix, 0.0f, 1.0f);
-            ImGui::SliderFloat("Reflect Strength", &m_testParams.reflectStrength, 0.0f, 2.0f);
-            ImGui::SliderFloat("Fade Alpha", &m_testParams.fadeAlpha, 0.0f, 1.0f);
-        }
-
-        if (ImGui::CollapsingHeader("Tint", ImGuiTreeNodeFlags_DefaultOpen)) {
-            ImGui::Checkbox("Animate", &m_testParams.animateTint);
-            if (m_testParams.animateTint)
-                ImGui::SliderFloat("Period (s)", &m_testParams.colorPeriod, 1.0f, 60.0f);
-            else
-                ImGui::SliderFloat("Lerp", &m_testParams.tintLerp, 0.0f, 1.0f);
-            ImGui::ColorEdit3("Tint 1", &m_testParams.tint1.x);
-            ImGui::ColorEdit3("Tint 2", &m_testParams.tint2.x);
-        }
-
-        if (ImGui::CollapsingHeader("Cube", ImGuiTreeNodeFlags_DefaultOpen)) {
-            ImGui::Checkbox("Auto Rotate", &m_cubeAutoRotate);
-            ImGui::SliderFloat("Size", &m_cubeScale, 0.1f, 5.0f);
-            if (ImGui::Button("Reset Rotation")) {
-                m_cubeRot = glm::quat{1.0f, 0.0f, 0.0f, 0.0f};
-                m_cubeScale = 1.0f;
-            }
-        }
-    }
-    ImGui::End();
+    if (m_testSceneActive) m_testScene.drawUI();
 
     // Render ImGui to targets.mainColor (already in COLOR_ATTACHMENT_OPTIMAL)
     m_ui.render(frame.commandBuffer, m_targets.mainColor.imageView, m_swapchain.extent());

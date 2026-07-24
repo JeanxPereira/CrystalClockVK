@@ -9,7 +9,7 @@
 #include "renderer/RenderTargets.hpp"
 #include "renderer/UIRenderer.hpp"
 #include "app/RenderOrchestrator.hpp"
-#include <glm/gtc/quaternion.hpp>
+#include "app/TestScene.hpp"
 #include <chrono>
 #include <array>
 
@@ -33,10 +33,8 @@ private:
     std::array<FrameData, FrameOverlap> m_frames;
     RenderTargets m_targets;
 
-    TestSceneParams m_testParams;
-    glm::quat m_cubeRot{1.0f, 0.0f, 0.0f, 0.0f};
-    float m_cubeScale{1.0f};
-    bool m_cubeAutoRotate{false};
+    TestScene m_testScene{m_orchestrator};
+    bool m_testSceneActive{false};
 
     std::chrono::high_resolution_clock::time_point m_appStartTime;
     std::chrono::high_resolution_clock::time_point m_lastFrameTime;
