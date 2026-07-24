@@ -11,7 +11,8 @@ public class TT {
   [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr h, int x, int y, int w, int hh, bool r);
 }
 '@
-$p = Get-Process CrystalClockVK
+$p = Get-Process CrystalClockVK -ErrorAction SilentlyContinue
+if (-not $p) { 'DEAD MID-TORTURE'; exit 1 }
 1..2 | ForEach-Object {
   [TT]::ShowWindow($p.MainWindowHandle, 6) | Out-Null; Start-Sleep 2
   [TT]::ShowWindow($p.MainWindowHandle, 9) | Out-Null; Start-Sleep 2
@@ -26,3 +27,4 @@ $bad = @(Select-String -Path $log, (Join-Path $root 'torture.err.log') -Pattern 
 if (Get-Process CrystalClockVK -ErrorAction SilentlyContinue) { 'STILL UP'; exit 1 }
 'CLEAN EXIT'
 if ($bad -ne 0) { exit 1 }
+exit 0
