@@ -8,9 +8,9 @@ Recreation of the PlayStation 2 OSDSYS "Crystal Clock" visual effect.
 Read `MEMORY.md` and `CrystalClockVK-ImplPlan.md` in this directory immediately upon entering the project.
 The codebase is structured into four strict layers:
 1. `core/`: Vulkan Bootstrap via vk-bootstrap, SDL3.
-2. `renderer/`: Lean Vulkan 1.4 Wrapper (VMA, PassRecorder, Dynamic Rendering).
+2. `renderer/`: Lean Vulkan 1.4 Wrapper (VMA, SwapchainManager owns frame policy, PassRecorder with declarative runPass/copyImage + layout tracking, RenderTargets, RAII FrameGuards, Dynamic Rendering).
 3. `gs/`: PS2-specific pure math and memory logic (No Vulkan API calls allowed here).
-4. `app/`: Crystal Clock orchestration and pass dispatch.
+4. `app/`: `Engine` owns all resources in declaration order (ordered teardown) and runs the frame loop; scenes are `IScene` modules (`ClockScene`, `TestScene`) selected at runtime; `main.cpp` only constructs Engine. Only `renderer/` touches barriers — the sole exception is Engine's final swapchain blit.
 
 ## Build System
 - **CMake 3.30+**, C++23 standard (cross-platform compatible with MSVC/Clang/GCC)

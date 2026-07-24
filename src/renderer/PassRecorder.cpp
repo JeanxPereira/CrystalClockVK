@@ -1,4 +1,5 @@
 #include "PassRecorder.hpp"
+#include "renderer/FrameGuards.hpp"
 
 void PassRecorder::transitionImage(VkImage image, VkImageLayout oldLayout, VkImageLayout newLayout) {
     VkImageMemoryBarrier2 barrier{};
@@ -23,6 +24,46 @@ void PassRecorder::transitionImage(VkImage image, VkImageLayout oldLayout, VkIma
 
     vkCmdPipelineBarrier2(m_cmd, &depInfo);
 }
+
+void PassRecorder::runPass(const PassDesc& desc, const std::function<void()>& body) {
+    for (AllocatedImage* r : desc.reads) {
+        VkImageLayout cur = m_layouts.count(r->image) ? m_layouts[r->image] : VK_IMAGE_LAYOUT_UNDEFINED;
+        if (cur != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+            transitionImage(r->image, cur, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+            m_layouts[r->image] = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        }
+    }
+    VkImageLayout cur = m_layouts.count(desc.colorTarget->image) ? m_layouts[desc.colorTarget->image] : VK_IMAGE_LAYOUT_UNDEFINED;
+    if (cur != VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) {
+        transitionImage(desc.colorTarget->image, cur, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+        m_layouts[desc.colorTarget->image] = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    }
+    DebugLabelGuard labelGuard(*this, desc.name, desc.color[0], desc.color[1], desc.color[2]);
+    if (desc.depthTarget)
+        beginRendering(desc.colorTarget->imageView, desc.depthTarget->imageView, desc.extent, desc.clear);
+    else
+        beginRendering(desc.colorTarget->imageView, desc.extent, desc.clear);
+    setViewportScissor(desc.extent);
+    body();
+    endRendering();
+}
+
+void PassRecorder::copyImage(AllocatedImage& src, AllocatedImage& dst, VkExtent2D extent) {
+    VkImageLayout sc = m_layouts.count(src.image) ? m_layouts[src.image] : VK_IMAGE_LAYOUT_UNDEFINED;
+    VkImageLayout dc = m_layouts.count(dst.image) ? m_layouts[dst.image] : VK_IMAGE_LAYOUT_UNDEFINED;
+    if (sc != VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL) transitionImage(src.image, sc, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+    if (dc != VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) transitionImage(dst.image, dc, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    VkImageCopy region{};
+    region.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+    region.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+    region.extent = {extent.width, extent.height, 1};
+    vkCmdCopyImage(m_cmd, src.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                   dst.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+    m_layouts[src.image] = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    m_layouts[dst.image] = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+}
+
+void PassRecorder::resetLayoutTracking() { m_layouts.clear(); }
 
 void PassRecorder::beginRendering(VkImageView colorAttachment, VkExtent2D extent, VkClearValue* clearValue, VkImageLayout layout) {
     VkRenderingAttachmentInfo colorInfo{};

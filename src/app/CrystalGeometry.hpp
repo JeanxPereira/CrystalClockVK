@@ -30,6 +30,8 @@ public:
         float length = 100.0f,
         int slices = 30);
 
+    static std::vector<CrystalVertex> generateCubeMesh(float size = 1.0f);
+
     static VkVertexInputBindingDescription getBindingDescription();
     static std::array<VkVertexInputAttributeDescription, 3> getAttributeDescriptions();
 };

@@ -108,6 +108,17 @@ void RenderOrchestrator::createDescriptorResources(const VulkanContext& ctx) {
     plInfo.pushConstantRangeCount = 1;
     plInfo.pPushConstantRanges = &pushRange;
     vkCreatePipelineLayout(ctx.device(), &plInfo, nullptr, &m_pipelineLayout);
+
+    VkPushConstantRange bgPushRange{};
+    bgPushRange.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    bgPushRange.offset = 0;
+    bgPushRange.size = sizeof(glm::vec4) * 3;
+
+    VkPipelineLayoutCreateInfo bgPlInfo{};
+    bgPlInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    bgPlInfo.pushConstantRangeCount = 1;
+    bgPlInfo.pPushConstantRanges = &bgPushRange;
+    vkCreatePipelineLayout(ctx.device(), &bgPlInfo, nullptr, &m_testBgLayout);
 }
 
 void RenderOrchestrator::createPipelines(VkDevice device, VkFormat colorFormat) {
@@ -118,6 +129,10 @@ void RenderOrchestrator::createPipelines(VkDevice device, VkFormat colorFormat) 
     VkShaderModule crystalVert = ShaderLoader::loadModule(device, shaderDir / "Crystal.vert.spv");
     VkShaderModule crystalFrag = ShaderLoader::loadModule(device, shaderDir / "Crystal.frag.spv");
     VkShaderModule specularFrag = ShaderLoader::loadModule(device, shaderDir / "CrystalSpecular.frag.spv");
+    VkShaderModule testBgVert = ShaderLoader::loadModule(device, shaderDir / "TestBackground.vert.spv");
+    VkShaderModule testBgFrag = ShaderLoader::loadModule(device, shaderDir / "TestBackground.frag.spv");
+    VkShaderModule testCrystalVert = ShaderLoader::loadModule(device, shaderDir / "TestCrystal.vert.spv");
+    VkShaderModule testCrystalFrag = ShaderLoader::loadModule(device, shaderDir / "TestCrystal.frag.spv");
 
     auto binding = CrystalGeometry::getBindingDescription();
     auto attrs = CrystalGeometry::getAttributeDescriptions();
@@ -175,6 +190,33 @@ void RenderOrchestrator::createPipelines(VkDevice device, VkFormat colorFormat) 
         .setPipelineLayout(m_pipelineLayout)
         .build(device);
 
+    m_testBgPipeline = PipelineBuilder()
+        .setShaders(testBgVert, testBgFrag)
+        .setTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
+        .setCullMode(VK_CULL_MODE_NONE)
+        .setBlendMode(BlendMode::Opaque)
+        .setDepthTest(false, false)
+        .setColorFormat(colorFormat)
+        .setDepthFormat(VK_FORMAT_D32_SFLOAT)
+        .setPipelineLayout(m_testBgLayout)
+        .build(device);
+
+    m_testCubePipeline = PipelineBuilder()
+        .setShaders(testCrystalVert, testCrystalFrag)
+        .setVertexInput(bindings, attributes)
+        .setTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
+        .setCullMode(VK_CULL_MODE_BACK_BIT)
+        .setBlendMode(BlendMode::Opaque)
+        .setDepthTest(false, false)
+        .setColorFormat(colorFormat)
+        .setDepthFormat(VK_FORMAT_D32_SFLOAT)
+        .setPipelineLayout(m_pipelineLayout)
+        .build(device);
+
+    vkDestroyShaderModule(device, testBgVert, nullptr);
+    vkDestroyShaderModule(device, testBgFrag, nullptr);
+    vkDestroyShaderModule(device, testCrystalVert, nullptr);
+    vkDestroyShaderModule(device, testCrystalFrag, nullptr);
     vkDestroyShaderModule(device, tunnelVert, nullptr);
     vkDestroyShaderModule(device, tunnelFrag, nullptr);
     vkDestroyShaderModule(device, crystalVert, nullptr);
@@ -201,8 +243,17 @@ void RenderOrchestrator::uploadMeshes(ResourceManager& resources) {
         VMA_MEMORY_USAGE_GPU_ONLY);
     resources.uploadToBuffer(m_tunnelVertexBuffer, cylVertices.data(), cylSize);
 
+    auto cubeVertices = CrystalGeometry::generateCubeMesh(8.0f);
+    m_cubeVertexCount = static_cast<uint32_t>(cubeVertices.size());
+    VkDeviceSize cubeSize = sizeof(CrystalVertex) * m_cubeVertexCount;
+    m_cubeVertexBuffer = resources.createBuffer(cubeSize,
+        VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        VMA_MEMORY_USAGE_GPU_ONLY);
+    resources.uploadToBuffer(m_cubeVertexBuffer, cubeVertices.data(), cubeSize);
+
     std::cout << "[OK] Meshes uploaded: rod=" << m_rodVertexCount
-              << " tunnel=" << m_tunnelVertexCount << " vertices\n";
+              << " tunnel=" << m_tunnelVertexCount
+              << " cube=" << m_cubeVertexCount << " vertices\n";
 }
 
 void RenderOrchestrator::loadTextures(ResourceManager& resources) {
@@ -261,7 +312,7 @@ void RenderOrchestrator::updateRodStates(const FrameParams& params) {
     }
 }
 
-void RenderOrchestrator::updateUBO(const FrameParams& params) {
+void RenderOrchestrator::updateUBO(const FrameParams& params, const TestSceneParams* test) {
     float fov = glm::radians(CrystalMath::CAMERA_FOV);
     glm::mat4 proj = GsCrystalMath::buildGsProjection(
         fov, params.aspect, CrystalMath::CAMERA_NEAR, CrystalMath::CAMERA_FAR);
@@ -279,6 +330,13 @@ void RenderOrchestrator::updateUBO(const FrameParams& params) {
     ubo.view = view;
     ubo.viewPos = glm::vec4(0.0f, 0.0f, CrystalMath::CAMERA_Z, 1.0f);
     ubo.prismColor = glm::vec4(CrystalMath::lerpPrismColor(smoothSeconds), 1.0f);
+
+    if (test) {
+        ubo.refractA = glm::vec4(test->eta, test->refractScale, test->refractBoost, test->rimStrength);
+        ubo.refractB = glm::vec4(test->emissiveBase, test->diffuseMix, test->reflectStrength, test->fadeAlpha);
+        ubo.tintA = glm::vec4(test->tint1, test->animateTint ? -1.0f : test->tintLerp);
+        ubo.tintB = glm::vec4(test->tint2, test->colorPeriod);
+    }
 
     std::memcpy(m_uboBuffer[params.frameIndex].allocationInfo.pMappedData, &ubo, sizeof(FrameUBO));
     vmaFlushAllocation(m_ctx->allocator(), m_uboBuffer[params.frameIndex].allocation, 0, sizeof(FrameUBO));
@@ -313,6 +371,49 @@ void RenderOrchestrator::recordTunnelPass(PassRecorder& recorder, const FramePar
         VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
         &pc, sizeof(pc));
     recorder.draw(m_tunnelVertexCount);
+}
+
+void RenderOrchestrator::recordTestBackgroundPass(PassRecorder& recorder, const FrameParams& params, const TestSceneParams& test) {
+    m_descriptorAllocator[params.frameIndex].resetPools();
+
+    recorder.bindPipeline(m_testBgPipeline);
+
+    struct { glm::vec4 color1, color2, params; } pc{};
+    pc.color1 = glm::vec4(test.bgColor1, 1.0f);
+    pc.color2 = glm::vec4(test.bgColor2, 1.0f);
+    pc.params = glm::vec4(
+        static_cast<float>(test.bgMode),
+        test.bgScale,
+        params.aspect,
+        params.totalTime * test.bgScrollSpeed);
+
+    recorder.pushConstants(m_testBgLayout, VK_SHADER_STAGE_FRAGMENT_BIT, &pc, sizeof(pc));
+    recorder.draw(3);
+}
+
+void RenderOrchestrator::recordTestCubePass(PassRecorder& recorder, const FrameParams& params, const TestSceneParams& test) {
+    VkDescriptorSet descSet = m_descriptorAllocator[params.frameIndex].allocate(m_descriptorLayout);
+
+    DescriptorWriter writer;
+    writer.writeBuffer(0, m_uboBuffer[params.frameIndex].buffer, sizeof(FrameUBO), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+    writer.writeImage(1, params.tunnelImageView, m_sampler, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+    writer.writeImage(2, m_noiseTexture.imageView, m_sampler, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+    writer.updateSet(params.device, descSet);
+
+    recorder.bindPipeline(m_testCubePipeline);
+    recorder.bindDescriptorSet(m_pipelineLayout, 0, descSet);
+    recorder.bindVertexBuffer(m_cubeVertexBuffer.buffer);
+
+    CrystalPushConstants pc{};
+    pc.model = test.cubeModel;
+    pc.rodColor = glm::vec4(0.0f, 0.0f, 0.0f, static_cast<float>(test.composition));
+    pc.screenParams = glm::vec4(
+        static_cast<float>(params.extent.width),
+        static_cast<float>(params.extent.height),
+        params.totalTime, 1.0f);
+
+    recorder.pushConstants(m_pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, &pc, sizeof(pc));
+    recorder.draw(m_cubeVertexCount);
 }
 
 void RenderOrchestrator::recordCrystalPasses(PassRecorder& recorder, const FrameParams& params) {
@@ -380,6 +481,7 @@ void RenderOrchestrator::recordCrystalPasses(PassRecorder& recorder, const Frame
 void RenderOrchestrator::destroy(VkDevice device, ResourceManager& resources) {
     resources.destroyBuffer(m_rodVertexBuffer);
     resources.destroyBuffer(m_tunnelVertexBuffer);
+    resources.destroyBuffer(m_cubeVertexBuffer);
     resources.destroyImage(m_noiseTexture);
     resources.destroyImage(m_normalTexture);
     for (int i = 0; i < 2; i++) {
@@ -390,6 +492,9 @@ void RenderOrchestrator::destroy(VkDevice device, ResourceManager& resources) {
     vkDestroyPipeline(device, m_glassPipeline, nullptr);
     vkDestroyPipeline(device, m_specularPipeline, nullptr);
     vkDestroyPipeline(device, m_reversePipeline, nullptr);
+    vkDestroyPipeline(device, m_testBgPipeline, nullptr);
+    vkDestroyPipeline(device, m_testCubePipeline, nullptr);
+    vkDestroyPipelineLayout(device, m_testBgLayout, nullptr);
     vkDestroyPipelineLayout(device, m_pipelineLayout, nullptr);
     vkDestroyDescriptorSetLayout(device, m_descriptorLayout, nullptr);
     m_descriptorAllocator[0].destroy();
