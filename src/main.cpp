@@ -21,40 +21,6 @@
 #include <array>
 #include <vector>
 
-struct SwapchainSync {
-    std::vector<VkSemaphore> acquireSems;
-    std::vector<VkSemaphore> renderSems;
-    uint32_t acquireIndex = 0;
-
-    static SwapchainSync create(VkDevice device, uint32_t imageCount) {
-        SwapchainSync sync;
-        VkSemaphoreCreateInfo semInfo{};
-        semInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-        sync.acquireSems.resize(imageCount + 1);
-        for (auto& sem : sync.acquireSems)
-            vkCreateSemaphore(device, &semInfo, nullptr, &sem);
-        sync.renderSems.resize(imageCount);
-        for (auto& sem : sync.renderSems)
-            vkCreateSemaphore(device, &semInfo, nullptr, &sem);
-        sync.acquireIndex = 0;
-        return sync;
-    }
-    void destroy(VkDevice device) {
-        for (auto sem : acquireSems) vkDestroySemaphore(device, sem, nullptr);
-        for (auto sem : renderSems) vkDestroySemaphore(device, sem, nullptr);
-        acquireSems.clear();
-        renderSems.clear();
-    }
-    VkSemaphore nextAcquireSemaphore() {
-        VkSemaphore sem = acquireSems[acquireIndex];
-        acquireIndex = (acquireIndex + 1) % static_cast<uint32_t>(acquireSems.size());
-        return sem;
-    }
-    VkSemaphore renderSemaphoreForImage(uint32_t imageIndex) const {
-        return renderSems[imageIndex];
-    }
-};
-
 static void transitionDepthImage(const VulkanContext& vulkan, FrameData& frame, AllocatedImage& img) {
     vkWaitForFences(vulkan.device(), 1, &frame.renderFence, VK_TRUE, UINT64_MAX);
     vkResetFences(vulkan.device(), 1, &frame.renderFence);
@@ -111,7 +77,6 @@ int main(int argc, char* argv[]) {
         for (auto& frame : frames) {
             frame = FrameData::create(vulkan.device(), vulkan.graphicsQueueFamily());
         }
-        auto swapSync = SwapchainSync::create(vulkan.device(), swapchain.imageCount());
 
         RenderTargets targets;
         targets.create(resources, swapchain.extent(), swapchain.imageFormat());
@@ -119,7 +84,6 @@ int main(int argc, char* argv[]) {
         transitionDepthImage(vulkan, frames[0], targets.depth);
 
         uint32_t frameNumber = 0;
-        bool resizeRequested = false;
         TestSceneParams testParams{};
         glm::quat cubeRot{1.0f, 0.0f, 0.0f, 0.0f};
         float cubeScale = 1.0f;
@@ -137,47 +101,19 @@ int main(int argc, char* argv[]) {
             lastFrameTime = now;
             fps = fps * 0.95f + (1.0f / std::max(dt, 0.0001f)) * 0.05f;
 
-            int w, h;
-            SDL_GetWindowSize(window.getHandle(), &w, &h);
-            if (w == 0 || h == 0 ||
-                (SDL_GetWindowFlags(window.getHandle()) & SDL_WINDOW_MINIMIZED)) {
-                SDL_Delay(50);
-                continue;
-            }
-
-            if (resizeRequested) {
-                VkSurfaceCapabilitiesKHR surfCaps{};
-                vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
-                    vulkan.physicalDevice(), vulkan.surface(), &surfCaps);
-                if (surfCaps.currentExtent.width == 0 || surfCaps.currentExtent.height == 0 ||
-                    surfCaps.maxImageExtent.width == 0 || surfCaps.maxImageExtent.height == 0) {
-                    SDL_Delay(50);
-                    continue;
-                }
-                vkDeviceWaitIdle(vulkan.device());
-                swapchain.recreate(static_cast<uint32_t>(w), static_cast<uint32_t>(h));
-                swapSync.destroy(vulkan.device());
-                swapSync = SwapchainSync::create(vulkan.device(), swapchain.imageCount());
-
+            FrameStatus fs = swapchain.beginFrame(window.getHandle());
+            if (fs == FrameStatus::SkipFrame) continue;
+            if (fs == FrameStatus::Recreated) {
                 targets.destroy(resources);
                 targets.create(resources, swapchain.extent(), swapchain.imageFormat());
-
                 transitionDepthImage(vulkan, frames[0], targets.depth);
-                resizeRequested = false;
             }
 
             auto& frame = frames[frameNumber % FrameOverlap];
             vkWaitForFences(vulkan.device(), 1, &frame.renderFence, VK_TRUE, UINT64_MAX);
 
-            VkSemaphore acquireSem = swapSync.nextAcquireSemaphore();
-            VkResult acquireResult = swapchain.acquireNextImage(acquireSem);
-            if (acquireResult == VK_ERROR_OUT_OF_DATE_KHR) {
-                resizeRequested = true;
-                continue;
-            }
-
-            uint32_t imageIdx = swapchain.imageIndex();
-            VkSemaphore renderSem = swapSync.renderSemaphoreForImage(imageIdx);
+            VkSemaphore acquireSem = swapchain.acquireSemaphore();
+            VkSemaphore renderSem = swapchain.renderSemaphore();
 
             ui.beginFrame();
 
@@ -458,10 +394,8 @@ int main(int argc, char* argv[]) {
 
             vkQueueSubmit2(vulkan.graphicsQueue(), 1, &submitInfo, frame.renderFence);
 
-            VkResult presentResult = swapchain.present(renderSem);
-            if (presentResult == VK_ERROR_OUT_OF_DATE_KHR || presentResult == VK_SUBOPTIMAL_KHR) {
-                resizeRequested = true;
-            }
+            bool dummy;
+            swapchain.endFrame(dummy);
 
             frameNumber++;
         }
@@ -476,7 +410,6 @@ int main(int argc, char* argv[]) {
         resources.destroyImage(targets.tunnel);
         resources.destroyImage(targets.mainColor);
 
-        swapSync.destroy(vulkan.device());
         for (auto& frame : frames) {
             frame.destroy(vulkan.device());
         }
