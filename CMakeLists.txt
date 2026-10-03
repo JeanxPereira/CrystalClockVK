@@ -169,7 +169,7 @@ if(EXISTS ${SCENE_FIXTURE})
 endif()
 
 target_sources(ClockScene PRIVATE src/scene/FrameHead.cpp)
-file(GLOB HEAD_SCENES ${CLOCK_FIXTURE}/../../*/scene.json)
+file(GLOB HEAD_SCENES CONFIGURE_DEPENDS ${CLOCK_FIXTURE}/../../*/scene.json ${CLOCK_FIXTURE}/../../synthetic-head/scene-*.json)
 if(HEAD_SCENES)
     add_executable(HeadTest tests/scene/HeadTest.cpp)
     target_link_libraries(HeadTest PRIVATE SceneTestSupport)
