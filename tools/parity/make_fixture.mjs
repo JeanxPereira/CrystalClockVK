@@ -48,6 +48,8 @@ export function describeState(state, targetOfBlock, primitive) {
   if (!fields(state, 'COLCLAMP').CLAMP) reasons.push('colour wrap');
 
   // AA1 on a line or triangle forces the blend with ALPHA as it stands, even with ABE 0 (GSDrawScanline.cpp: abe || aa1).
+  // With ABE 1, AA1 replaces the alpha only where it is 0x80 (GSDrawScanline.cpp); the renderer replaces it always.
+  if (prim.ABE && prim.AA1 && primitive !== 'Sprites') reasons.push('antialiasing with alpha blending');
   let blend = null;
   if (prim.ABE || (prim.AA1 && primitive !== 'Sprites')) {
     if (alpha.A > 2 || alpha.B > 2 || alpha.C > 2 || alpha.D > 2) reasons.push('reserved blend term');

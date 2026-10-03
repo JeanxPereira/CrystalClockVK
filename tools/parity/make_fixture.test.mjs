@@ -62,3 +62,15 @@ test('the clock frame becomes 188 passes lined up with the oracle', async () => 
   }
   for (const texture of frame.textures) assert.equal(fs.statSync(path.join(out, texture.file)).size, texture.width * texture.height * 4);
 });
+
+test('antialiasing with alpha blending is refused on lines and triangles', async () => {
+  const { describeState } = await import('./make_fixture.mjs');
+  const zero = Object.fromEntries(['FRAME', 'ZBUF', 'TEST', 'ALPHA', 'SCISSOR', 'FBA', 'PABE', 'DTHE', 'XYOFFSET'].map((n) => [n, '0']));
+  // PRIM: ABE is bit 6, AA1 bit 7; COLCLAMP 1 keeps the state otherwise drawable.
+  const state = (prim) => ({ ...zero, COLCLAMP: '1', PRIM: String(prim) });
+  const both = (1 << 6) | (1 << 7);
+  for (const primitive of ['Triangles', 'Lines']) assert.match(describeState(state(both), new Map(), primitive).skip ?? '', /antialiasing with alpha blending/);
+  assert.equal(describeState(state(both), new Map(), 'Sprites').skip, null);
+  assert.equal(describeState(state(1 << 7), new Map(), 'Triangles').skip, null);
+  assert.equal(describeState(state(1 << 6), new Map(), 'Triangles').skip, null);
+});
