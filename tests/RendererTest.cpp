@@ -168,6 +168,53 @@ int main(int argc, char** argv) {
         CHECK(px(image, 1, 1)[0] == 200 && px(image, 3, 1)[0] == 202);
     }
 
+    // Triangles are walked as the GS rasterizer walks them: per row, the start value plus truncated steps in blocks of four.
+    // A(0,0) red 0, B(60,0) red 58, C(0,60) red 0: cross -3600, step = -(58 * 128 * float(60 / -3600)) = 123.73333740234375.
+    // At (57,1): lane 1, block 14: int(123.7333) + 14 * int(494.9333) = 123 + 6916 = 7039, red 7039 >> 7 = 54 (exact: 55.1).
+    {
+        renderer.setTarget("t", W, H, black);
+        renderer.setDepth(W, H, depth100);
+        renderer.draw(pass(scene::Primitive::Triangles, {at(0, 0, 0, 0, 0, 0, 128), at(60, 0, 0, 58, 0, 0, 128), at(0, 60, 0, 0, 0, 0, 128)}));
+        image = renderer.readTarget("t");
+        if (px(image, 57, 1)[0] != 54) std::fprintf(stderr, "walked: red %d\n", px(image, 57, 1)[0]);
+        CHECK(px(image, 57, 1)[0] == 54);
+
+        // Depth steps in doubles from the float k3 = float(60 / -3600) = -0.01666666753590107: B's Z 2147479552 gives a step of
+        // 35791327.73332977; at (40,1), block 10 lane 0, ten additions of 4 * step give 1431653109.33, truncated 1431653109 (exact: ...034.67).
+        renderer.setDepth(W, H, depth100);
+        renderer.draw(pass(scene::Primitive::Triangles, {at(0, 0, 0, 0, 0, 0, 128), at(60, 0, 2147479552u, 0, 0, 0, 128), at(0, 60, 0, 0, 0, 0, 128)}));
+        const uint32_t z = renderer.readDepth()[1 * W + 40];
+        if (z != 1431653109u) std::fprintf(stderr, "walked: depth %u\n", z);
+        CHECK(z == 1431653109u);
+
+        // Columns alternate 0 and 240 red, so a bilinear weight w between an even and an odd texel reads 15 * w.
+        std::vector<uint8_t> stripes(64 * 64 * 4, 0);
+        for (uint32_t i = 0; i < 64 * 64; i++) { stripes[i * 4] = (i % 2) ? 240 : 0; stripes[i * 4 + 3] = 128; }
+        renderer.setTexture("stripes", 64, 64, stripes);
+
+        // Texel coordinates step as truncated integers: A(0,0) U 0, B(49.8125,0) U 25.3125, C(0,49.8125) U 0, less half a texel:
+        // step float(-(405 * 4096 * float(49.8125 / -2481.28515625))) = 33302.484375; at (46,1): -32768 + int(33302.48 * 2) + 11 * 133209
+        // = 1499135, texel 22, weight 13, red 195 (exact: 1499146.3, weight 14).
+        renderer.setTarget("t", W, H, black);
+        scene::Pass texel = pass(scene::Primitive::Triangles, {{0, 0, 0, 128, 128, 128, 128, 0, 0, 1}, {49.8125f, 0, 0, 128, 128, 128, 128, 25.3125f, 0, 1}, {0, 49.8125f, 0, 128, 128, 128, 128, 0, 0, 1}});
+        texel.texture = scene::Texture{"stripes", false, 64, 64, scene::Coordinates::Texel, {scene::AddressMode::Clamp, 0, 0}, {scene::AddressMode::Clamp, 0, 0}, scene::Filter::Bilinear, {}};
+        renderer.draw(texel);
+        image = renderer.readTarget("t");
+        if (px(image, 46, 1)[0] != 195) std::fprintf(stderr, "walked: texel red %d\n", px(image, 46, 1)[0]);
+        CHECK(px(image, 46, 1)[0] == 195);
+
+        // S T Q step as floats, added once per block, and S / Q is divided per pixel: A(0,0) S 0 Q 1, B(57.0625,0) S 36.5 Q 2,
+        // C(0,57.0625) S 0 Q 1, texture 64 wide. At (48,1) the GS reads u = int(s / q) - 0x8000 = 69910520: texel 1066 (42 after
+        // repeat), weight 11, red 165 (exact: 69910557, weight 12).
+        renderer.setTarget("t", W, H, black);
+        scene::Pass projective = pass(scene::Primitive::Triangles, {{0, 0, 0, 128, 128, 128, 128, 0, 0, 1}, {57.0625f, 0, 0, 128, 128, 128, 128, 36.5f, 0, 2}, {0, 57.0625f, 0, 128, 128, 128, 128, 0, 0, 1}});
+        projective.texture = scene::Texture{"stripes", false, 64, 64, scene::Coordinates::Projective, {scene::AddressMode::Repeat, 0, 0}, {scene::AddressMode::Repeat, 0, 0}, scene::Filter::Bilinear, {}};
+        renderer.draw(projective);
+        image = renderer.readTarget("t");
+        if (px(image, 48, 1)[0] != 165) std::fprintf(stderr, "walked: projective red %d\n", px(image, 48, 1)[0]);
+        CHECK(px(image, 48, 1)[0] == 165);
+    }
+
     CHECK(context.validationErrors() == 0);
     return 0;
 }

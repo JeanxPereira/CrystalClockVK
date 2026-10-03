@@ -11,7 +11,7 @@ layout(set = 0, binding = 2) uniform usampler2D textureImage;
 // misc: blend on, fixed, depth test (0 never 1 always 2 >= 3 >), depth write
 // tex: on, coordinates (0 texel 1 projective 2 sprite steps), filter (0 nearest 1 bilinear), alpha (0 texel 1 constant)
 // texSize: width, height, constant alpha, zero when black      address: mode (0 repeat 1 clamp 2 region clamp 3 region repeat), min, max
-// flags: antialias, target width, target height
+// flags: antialias, target width, target height, triangle rows (walked by the GS rasterizer: texel 0 is integer steps, 1 is S T Q)
 layout(push_constant) uniform DrawState {
     ivec4 scissor; ivec4 blend; ivec4 misc; ivec4 tex; ivec4 texSize; ivec4 addressU; ivec4 addressV; ivec4 flags;
 } state;
@@ -21,6 +21,11 @@ layout(location = 1) noperspective in vec4 inColour;
 layout(location = 2) noperspective in vec3 inTexture;
 layout(location = 3) flat in vec4 inStepped;
 layout(location = 4) flat in ivec2 inFirst;
+layout(location = 5) flat in vec4 inScanTexture;
+layout(location = 6) flat in vec4 inScanColour;
+layout(location = 7) flat in vec4 inStepTexture;
+layout(location = 8) flat in vec4 inStepColour;
+layout(location = 9) flat in uvec4 inDepthSteps;
 
 int address(int value, ivec4 mode, int size) {
     if (mode.x == 0) return value & (size - 1);
@@ -39,6 +44,15 @@ ivec4 texel(ivec2 at) {
 // Bilinear weights are four bits: a + ((b - a) * f >> 4).
 ivec4 mix4(ivec4 a, ivec4 b, int f) { return a + (((b - a) * f) >> 4); }
 
+ivec4 sampleTexture(ivec2 uv) {
+    if (state.tex.z == 0) return texel(uv >> 16);
+    ivec2 f = (uv >> 12) & 0xf;
+    ivec2 i = uv >> 16;
+    ivec4 top = mix4(texel(i), texel(i + ivec2(1, 0)), f.x);
+    ivec4 bottom = mix4(texel(i + ivec2(0, 1)), texel(i + ivec2(1, 1)), f.x);
+    return mix4(top, bottom, f.y);
+}
+
 // A sprite's coordinate as the GS rasterizer (SSE4.1 build, four-pixel blocks) steps it: V adds its step once per row in
 // floats; U is the row's start, truncated, plus the truncated step times the lane offset inside a block, plus whole blocks.
 ivec2 steppedCoordinate(ivec2 pixel) {
@@ -51,22 +65,104 @@ ivec2 steppedCoordinate(ivec2 pixel) {
     return ivec2(int(inStepped.x) + int(lane) + (offset >> 2) * int(block), int(v));
 }
 
-ivec4 sampleTexture(ivec2 pixel) {
-    ivec2 uv;
-    if (state.tex.y == 2) {
-        uv = steppedCoordinate(pixel);
-    } else {
-        vec2 texels = state.tex.y == 0 ? inTexture.xy : inTexture.xy / inTexture.z * vec2(state.texSize.xy);
-        uv = ivec2(floor(texels * 65536.0));
-        if (state.tex.z == 1) uv -= 0x8000;
-    }
-    if (state.tex.z == 0) return texel(uv >> 16);
-    ivec2 f = (uv >> 12) & 0xf;
-    ivec2 i = uv >> 16;
-    ivec4 top = mix4(texel(i), texel(i + ivec2(1, 0)), f.x);
-    ivec4 bottom = mix4(texel(i + ivec2(0, 1)), texel(i + ivec2(1, 1)), f.x);
-    return mix4(top, bottom, f.y);
+// Unsigned 64-bit integers as (low, high) and IEEE doubles as their bits: the GS steps depth in doubles.
+uvec2 add64(uvec2 a, uvec2 b) { uint carry; uint low = uaddCarry(a.x, b.x, carry); return uvec2(low, a.y + b.y + carry); }
+uvec2 sub64(uvec2 a, uvec2 b) { uint borrow; uint low = usubBorrow(a.x, b.x, borrow); return uvec2(low, a.y - b.y - borrow); }
+bool below64(uvec2 a, uvec2 b) { return a.y < b.y || (a.y == b.y && a.x < b.x); }
+uvec2 shiftLeft64(uvec2 a, int n) {
+    if (n == 0) return a;
+    if (n >= 64) return uvec2(0u);
+    if (n >= 32) return uvec2(0u, a.x << (n - 32));
+    return uvec2(a.x << n, (a.y << n) | (a.x >> (32 - n)));
 }
+uvec2 shiftRight64(uvec2 a, int n) {
+    if (n == 0) return a;
+    if (n >= 64) return uvec2(0u);
+    if (n >= 32) return uvec2(a.y >> (n - 32), 0u);
+    return uvec2((a.x >> n) | (a.y << (32 - n)), a.y >> n);
+}
+uvec2 shiftRightSticky64(uvec2 a, int n) {
+    uvec2 r = shiftRight64(a, n);
+    bool lost = n >= 64 ? a != uvec2(0u) : shiftLeft64(r, n) != a;
+    return uvec2(r.x | (lost ? 1u : 0u), r.y);
+}
+
+uvec2 doubleOf(float value) {
+    uint u = floatBitsToUint(value);
+    if ((u & 0x7fffffffu) == 0u) return uvec2(0u, u & 0x80000000u);
+    uint exponent = ((u >> 23) & 0xffu) + 896u;
+    uint mantissa = u & 0x7fffffu;
+    return uvec2(mantissa << 29, (u & 0x80000000u) | (exponent << 20) | (mantissa >> 3));
+}
+
+// Double addition rounded to nearest even: mantissas carry three extra bits (guard, round, sticky).
+uvec2 addDouble(uvec2 a, uvec2 b) {
+    if (((a.y & 0x7fffffffu) | a.x) == 0u) return b;
+    if (((b.y & 0x7fffffffu) | b.x) == 0u) return a;
+    uint signA = a.y >> 31, signB = b.y >> 31;
+    int exponentA = int((a.y >> 20) & 0x7ffu), exponentB = int((b.y >> 20) & 0x7ffu);
+    uvec2 mantissaA = shiftLeft64(uvec2(a.x, (a.y & 0xfffffu) | (exponentA != 0 ? 0x100000u : 0u)), 3);
+    uvec2 mantissaB = shiftLeft64(uvec2(b.x, (b.y & 0xfffffu) | (exponentB != 0 ? 0x100000u : 0u)), 3);
+    exponentA = max(exponentA, 1);
+    exponentB = max(exponentB, 1);
+    if (exponentB > exponentA || (exponentB == exponentA && below64(mantissaA, mantissaB))) {
+        uvec2 m = mantissaA; mantissaA = mantissaB; mantissaB = m;
+        int e = exponentA; exponentA = exponentB; exponentB = e;
+        uint s = signA; signA = signB; signB = s;
+    }
+    mantissaB = shiftRightSticky64(mantissaB, exponentA - exponentB);
+    int exponent = exponentA;
+    uvec2 m;
+    if (signA == signB) {
+        m = add64(mantissaA, mantissaB);
+        if (m.y >= (1u << 24)) { m = shiftRightSticky64(m, 1); exponent++; }
+    } else {
+        m = sub64(mantissaA, mantissaB);
+        if (m == uvec2(0u)) return uvec2(0u);
+        while (m.y < (1u << 23) && exponent > 1) { m = shiftLeft64(m, 1); exponent--; }
+    }
+    uint extra = m.x & 7u;
+    m = shiftRight64(m, 3);
+    if (extra > 4u || (extra == 4u && (m.x & 1u) == 1u)) {
+        m = add64(m, uvec2(1u, 0u));
+        if (m.y >= (1u << 21)) { m = shiftRight64(m, 1); exponent++; }
+    }
+    if (m.y < (1u << 20)) exponent = 0;
+    return uvec2(m.x, (signA << 31) | (uint(exponent) << 20) | (m.y & 0xfffffu));
+}
+
+// Truncation toward zero to a 32-bit integer (cvttpd2dq).
+uint truncateDouble(uvec2 d) {
+    int exponent = int((d.y >> 20) & 0x7ffu);
+    if (exponent < 1023) return 0u;
+    uvec2 mantissa = uvec2(d.x, (d.y & 0xfffffu) | 0x100000u);
+    int shift = exponent - 1075;
+    uint whole = shift >= 0 ? shiftLeft64(mantissa, shift).x : shiftRight64(mantissa, -shift).x;
+    return (d.y >> 31) == 1u ? uint(-int(whole)) : whole;
+}
+
+// Single-precision division rounded to nearest even (divps), by long division of the mantissas.
+float divideFloat(float a, float b) {
+    uint ua = floatBitsToUint(a), ub = floatBitsToUint(b);
+    if ((ua & 0x7fffffffu) == 0u) return a;
+    uint sign = (ua ^ ub) & 0x80000000u;
+    int exponent = int((ua >> 23) & 0xffu) - int((ub >> 23) & 0xffu) + 127;
+    uint dividend = (ua & 0x7fffffu) | 0x800000u, divisor = (ub & 0x7fffffu) | 0x800000u;
+    if (dividend < divisor) { dividend <<= 1; exponent--; }
+    uint quotient = 0u;
+    for (int i = 0; i < 25; i++) {
+        quotient <<= 1;
+        if (dividend >= divisor) { dividend -= divisor; quotient |= 1u; }
+        dividend <<= 1;
+    }
+    uint roundBit = quotient & 1u;
+    quotient >>= 1;
+    if (roundBit == 1u && (dividend != 0u || (quotient & 1u) == 1u)) quotient++;
+    if (quotient == 0x1000000u) { quotient >>= 1; exponent++; }
+    return uintBitsToFloat(sign | (uint(exponent) << 23) | (quotient & 0x7fffffu));
+}
+
+ivec4 signed16(ivec4 v) { return v - (ivec4(greaterThanEqual(v, ivec4(0x8000))) << 16); }
 
 ivec3 term(int which, ivec3 source, ivec3 destination) { return which == 0 ? source : which == 1 ? destination : ivec3(0); }
 
@@ -74,12 +170,64 @@ void main() {
     ivec2 pixel = ivec2(gl_FragCoord.xy);
     if (pixel.x < state.scissor.x || pixel.y < state.scissor.y || pixel.x > state.scissor.z || pixel.y > state.scissor.w) discard;
 
-    // The GS carries vertex colour with seven fraction bits and modulates (texel << 2) * colour >> 16.
-    ivec4 shade = ivec4(inColour * 128.0);
-    ivec4 colour = shade >> 7;
-    if (state.tex.x == 1) colour = min((sampleTexture(pixel) * shade) >> 14, ivec4(255));
+    // The GS carries vertex colour with seven fraction bits in 16 bits and modulates (texel << 2) * colour >> 16.
+    ivec4 shade;
+    uint depth;
+    ivec2 uv = ivec2(0);
+    if (state.flags.w == 1) {
+        // A triangle row, as CDrawScanline steps it from the row's first pixel in blocks of four: a value is the row start
+        // plus the step times the lane offset, plus one block step per block; integers truncate each of those terms.
+        int skip = inFirst.x & 3;
+        int offset = pixel.x - (inFirst.x - skip);
+        int blocks = offset >> 2;
+        float lane = float((offset & 3) - skip);
+
+        precise float laneDepth = inStepTexture.w * lane;
+        uvec2 z = addDouble(inDepthSteps.xy, doubleOf(laneDepth));
+        for (int i = 0; i < blocks; i++) z = addDouble(z, inDepthSteps.zw);
+        depth = truncateDouble(z);
+
+        precise vec4 laneColour = inStepColour * lane;
+        precise vec4 blockColour = inStepColour * 4.0;
+        ivec4 colour16 = ((ivec4(inScanColour) & 0xffff) + (ivec4(laneColour) & 0xffff)) & 0xffff;
+        ivec4 colourBlock = ivec4(blockColour) & 0xffff;
+        for (int i = 0; i < blocks; i++) {
+            colour16 = (colour16 + colourBlock) & 0xffff;
+            colour16 = mix(colour16, ivec4(0), greaterThanEqual(colour16, ivec4(0x8000)));
+        }
+        shade = signed16(colour16);
+
+        if (state.tex.x == 1) {
+            if (state.tex.y == 0) {
+                precise vec2 laneTexture = inStepTexture.xy * lane;
+                precise vec2 blockTexture = inStepTexture.xy * 4.0;
+                uv = ivec2(inScanTexture.xy) + ivec2(laneTexture) + blocks * ivec2(blockTexture);
+            } else {
+                precise vec3 laneTexture = inStepTexture.xyz * lane;
+                precise vec3 blockTexture = inStepTexture.xyz * 4.0;
+                precise vec3 stq = inScanTexture.xyz + laneTexture;
+                for (int i = 0; i < blocks; i++) stq += blockTexture;
+                uv = ivec2(int(divideFloat(stq.x, stq.z)), int(divideFloat(stq.y, stq.z)));
+                if (state.tex.z == 1) uv -= 0x8000;
+            }
+        }
+    } else {
+        shade = ivec4(inColour * 128.0);
+        depth = uint(inDepth.x * 4096.0 + inDepth.y);
+        if (state.tex.x == 1) {
+            if (state.tex.y == 2) {
+                uv = steppedCoordinate(pixel);
+            } else {
+                vec2 texels = state.tex.y == 0 ? inTexture.xy : inTexture.xy / inTexture.z * vec2(state.texSize.xy);
+                uv = ivec2(floor(texels * 65536.0));
+                if (state.tex.z == 1) uv -= 0x8000;
+            }
+        }
+    }
+
+    ivec4 colour = min((shade & 0xffff) >> 7, ivec4(255));
+    if (state.tex.x == 1) colour = clamp((sampleTexture(uv) * 4 * shade) >> 16, ivec4(0), ivec4(255));
     if (state.flags.x == 1) colour.a = 0x80;
-    uint depth = uint(inDepth.x * 4096.0 + inDepth.y);
 
     beginInvocationInterlockARB();
     uint stored = imageLoad(depthImage, pixel).r;
