@@ -259,6 +259,9 @@ else()
     add_test(NAME NativeRendererTest COMMAND NativeRendererTest ${CMAKE_SOURCE_DIR}/bin/shaders)
 endif()
 
-add_executable(CrystalClock src/app/Main.cpp)
-target_link_libraries(CrystalClock PRIVATE ClockRender)
+add_executable(CrystalClock src/app/Main.cpp src/app/DebugPanel.cpp src/app/Png.cpp)
+target_link_libraries(CrystalClock PRIVATE ClockRender ClockSceneNative SceneInputs ImGui)
+target_compile_definitions(CrystalClock PRIVATE
+    CLOCK_SHADERS="${CMAKE_SOURCE_DIR}/bin/shaders" CLOCK_TEXTURES="${CLOCK_TEXTURES}" CLOCK_START="${CLOCK_START}"
+    CLOCK_MESH="${CMAKE_SOURCE_DIR}/facts/data/rod-mesh.json" CLOCK_SCREENSHOTS="${CMAKE_SOURCE_DIR}/out/screenshots")
 target_link_libraries(ParityTool PRIVATE ClockRender ClockSceneNative SceneInputs)
