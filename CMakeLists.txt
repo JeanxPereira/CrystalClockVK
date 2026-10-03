@@ -93,68 +93,13 @@ endforeach()
 
 add_custom_target(Shaders ALL DEPENDS ${SHADER_SPIRV_OUTPUTS})
 
-# ──────────────────────────────────────────────────────────────────────────────
-# APPLICATION
-# ──────────────────────────────────────────────────────────────────────────────
-set(SOURCES
-    src/main.cpp
-    src/core/WindowContext.cpp
-    src/core/VulkanContext.cpp
-    src/core/RenderDocWrapper.cpp
-    src/renderer/SwapchainManager.cpp
-    src/renderer/ShaderLoader.cpp
-    src/renderer/PipelineBuilder.cpp
-    src/renderer/ResourceManager.cpp
-    src/renderer/PassRecorder.cpp
-    src/renderer/DescriptorAllocator.cpp
-    src/renderer/UIRenderer.cpp
-    src/gs/VramBuffer.cpp
-    src/gs/SwizzleEngine.cpp
-    src/gs/TextureDecoder.cpp
-    src/app/CrystalGeometry.cpp
-    src/app/RenderOrchestrator.cpp
-    src/app/TimeSync.cpp
-)
+find_package(Vulkan REQUIRED)
+target_link_libraries(ImGui PRIVATE Vulkan::Vulkan SDL3::SDL3)
 
-# Output binary to bin/ at project root (not inside build/)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG ${CMAKE_SOURCE_DIR}/bin)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_SOURCE_DIR}/bin)
 
-add_executable(${PROJECT_NAME} ${SOURCES})
-add_dependencies(${PROJECT_NAME} Shaders)
-
-target_include_directories(${PROJECT_NAME} PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/src
-)
-
-target_compile_definitions(${PROJECT_NAME} PRIVATE GLM_FORCE_DEPTH_ZERO_TO_ONE)
-
-target_link_libraries(${PROJECT_NAME} PRIVATE
-    SDL3::SDL3
-    vk-bootstrap
-    VulkanMemoryAllocator
-    glm::glm
-    ImGui
-)
-
-find_package(Vulkan REQUIRED)
-if (Vulkan_FOUND)
-    target_link_libraries(${PROJECT_NAME} PRIVATE Vulkan::Vulkan)
-    target_link_libraries(ImGui PRIVATE Vulkan::Vulkan SDL3::SDL3)
-endif()
-
-if (APPLE)
-    target_compile_definitions(${PROJECT_NAME} PRIVATE VK_USE_PLATFORM_METAL_EXT)
-elseif (WIN32)
-    target_compile_definitions(${PROJECT_NAME} PRIVATE VK_USE_PLATFORM_WIN32_KHR)
-elseif (UNIX)
-    target_compile_definitions(${PROJECT_NAME} PRIVATE VK_USE_PLATFORM_XCB_KHR)
-endif()
-
-# ──────────────────────────────────────────────────────────────────────────────
-# NATIVE RENDERER (parity tool and tests; the application above is unchanged)
-# ──────────────────────────────────────────────────────────────────────────────
 FetchContent_Declare(
     json
     GIT_REPOSITORY https://github.com/nlohmann/json.git
@@ -163,50 +108,59 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(json)
 
-add_library(ClockRenderer STATIC
+add_library(ClockParity STATIC
     src/core/HeadlessContext.cpp
     src/core/VmaUsage.cpp
-    src/renderer/GsParityRenderer.cpp
+    src/parity/GsParityRenderer.cpp
     src/parity/Fixture.cpp
     src/parity/StbImage.cpp
     src/parity/Compare.cpp
 )
-add_dependencies(ClockRenderer Shaders)
-target_include_directories(ClockRenderer PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty)
-target_link_libraries(ClockRenderer PUBLIC nlohmann_json::nlohmann_json vk-bootstrap VulkanMemoryAllocator Vulkan::Vulkan)
+add_dependencies(ClockParity Shaders)
+target_include_directories(ClockParity PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty)
+target_link_libraries(ClockParity PUBLIC nlohmann_json::nlohmann_json vk-bootstrap VulkanMemoryAllocator Vulkan::Vulkan)
 
 set(CLOCK_FIXTURE ${CMAKE_SOURCE_DIR}/References/fixtures/hddosd-110U-whole3-clock/f0 CACHE PATH "Parity fixture")
 
 enable_testing()
 
 add_executable(HeadlessTest tests/HeadlessTest.cpp)
-target_link_libraries(HeadlessTest PRIVATE ClockRenderer)
+target_link_libraries(HeadlessTest PRIVATE ClockParity)
 add_test(NAME HeadlessTest COMMAND HeadlessTest)
 
 add_executable(RendererTest tests/RendererTest.cpp)
-target_link_libraries(RendererTest PRIVATE ClockRenderer)
+target_link_libraries(RendererTest PRIVATE ClockParity)
 add_test(NAME RendererTest COMMAND RendererTest ${CMAKE_SOURCE_DIR}/bin/shaders)
 
 add_executable(FixtureTest tests/FixtureTest.cpp)
-target_link_libraries(FixtureTest PRIVATE ClockRenderer)
+target_link_libraries(FixtureTest PRIVATE ClockParity)
+set(PARITY_ACTIVE "")
 if(EXISTS ${CLOCK_FIXTURE}/frame.json)
     add_test(NAME FixtureTest COMMAND FixtureTest ${CLOCK_FIXTURE})
+    list(APPEND PARITY_ACTIVE FixtureTest)
 endif()
 
 add_executable(CompareTest tests/CompareTest.cpp)
-target_link_libraries(CompareTest PRIVATE ClockRenderer)
+target_link_libraries(CompareTest PRIVATE ClockParity)
 add_test(NAME CompareTest COMMAND CompareTest)
 
 add_executable(ParityTool tools/ParityTool/main.cpp)
-target_link_libraries(ParityTool PRIVATE ClockRenderer)
+target_link_libraries(ParityTool PRIVATE ClockParity)
 
 get_filename_component(FIXTURE_ROOT ${CLOCK_FIXTURE}/../.. ABSOLUTE)
 function(add_parity_test NAME CAPTURE)
     set(FIXTURE ${FIXTURE_ROOT}/hddosd-110U-${CAPTURE}/f0)
     if(EXISTS ${FIXTURE}/frame.json)
+        set(PARITY_ACTIVE ${PARITY_ACTIVE} ${NAME} PARENT_SCOPE)
         add_test(NAME ${NAME} COMMAND ParityTool ${FIXTURE} ${CMAKE_BINARY_DIR}/parity-report/${CAPTURE} ${CMAKE_SOURCE_DIR}/bin/shaders ${CMAKE_SOURCE_DIR}/tools/ParityTool/budgets/hddosd-110U-${CAPTURE}.json)
     endif()
 endfunction()
 add_parity_test(ParityClock whole3-clock)
 add_parity_test(ParityConfig whole3-config)
 add_parity_test(ParityToClock whole2-to-clock)
+if(PARITY_ACTIVE)
+    string(REPLACE ";" " " PARITY_ACTIVE_TEXT "${PARITY_ACTIVE}")
+    message(STATUS "parity gates active: ${PARITY_ACTIVE_TEXT}")
+else()
+    message(STATUS "parity gates inactive: no fixture at ${CLOCK_FIXTURE}")
+endif()

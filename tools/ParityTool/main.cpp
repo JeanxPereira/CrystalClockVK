@@ -1,7 +1,7 @@
 #include "core/HeadlessContext.hpp"
 #include "parity/Compare.hpp"
 #include "parity/Fixture.hpp"
-#include "renderer/GsParityRenderer.hpp"
+#include "parity/GsParityRenderer.hpp"
 #include <nlohmann/json.hpp>
 #include <algorithm>
 #include <cstdio>

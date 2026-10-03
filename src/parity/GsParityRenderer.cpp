@@ -1,4 +1,4 @@
-#include "renderer/GsParityRenderer.hpp"
+#include "parity/GsParityRenderer.hpp"
 #include <algorithm>
 #include <bit>
 #include <cmath>
