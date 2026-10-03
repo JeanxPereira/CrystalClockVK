@@ -46,7 +46,12 @@ test('the clock frame becomes 188 passes lined up with the oracle', async () => 
 
   const lines = frame.passes.filter((p) => p.primitive === 'Lines');
   assert.equal(lines.length, 14);
-  assert.ok(lines.every((p) => p.antialias && p.blend === null && p.depth.test === 'Greater'));
+  assert.ok(lines.every((p) => p.antialias && p.depth.test === 'Greater'));
+  // ABE is 0 on the orb trails, but AA1 forces the blend with the ALPHA register as it stands (0x48: (Cs - 0) * As + Cd).
+  assert.ok(lines.every((p) => p.blend && p.blend.a === 'Source' && p.blend.b === 'Zero' && p.blend.c === 'SourceAlpha' && p.blend.d === 'Destination'));
+  const faces = frame.passes.filter((p) => p.primitive === 'Triangles' && p.antialias);
+  assert.equal(faces.length, 36);
+  assert.ok(faces.every((p) => p.blend && p.blend.a === 'Source' && p.blend.b === 'Destination' && p.blend.c === 'SourceAlpha' && p.blend.d === 'Destination'));
 
   for (const pass of frame.passes) {
     assert.ok(fs.existsSync(path.join(out, `${pass.oracle.colour}.png`)), pass.oracle.colour);

@@ -32,7 +32,7 @@ function fields(state, name) {
 }
 
 /** The native description of a draw's state, and why it cannot be drawn if it cannot. */
-export function describeState(state, targetOfBlock) {
+export function describeState(state, targetOfBlock, primitive) {
   const prim = fields(state, 'PRIM'), frame = fields(state, 'FRAME'), zbuf = fields(state, 'ZBUF');
   const test = fields(state, 'TEST'), alpha = fields(state, 'ALPHA'), scissor = fields(state, 'SCISSOR');
   const reasons = [];
@@ -47,8 +47,9 @@ export function describeState(state, targetOfBlock) {
   if (fields(state, 'DTHE').DTHE) reasons.push('dithering');
   if (!fields(state, 'COLCLAMP').CLAMP) reasons.push('colour wrap');
 
+  // AA1 on a line or triangle forces the blend with ALPHA as it stands, even with ABE 0 (GSDrawScanline.cpp: abe || aa1).
   let blend = null;
-  if (prim.ABE) {
+  if (prim.ABE || (prim.AA1 && primitive !== 'Sprites')) {
     if (alpha.A > 2 || alpha.B > 2 || alpha.C > 2 || alpha.D > 2) reasons.push('reserved blend term');
     else blend = { a: TERM[alpha.A], b: TERM[alpha.B], c: FACTOR[alpha.C], d: TERM[alpha.D], fixed: alpha.FIX };
   }
@@ -211,7 +212,7 @@ export async function makeFixture(dump, outDir, frame = 0) {
   const textures = new Map();
   let field = 0;
   const passes = matched.map((m) => {
-    const state = describeState(m.state, targetOfBlock);
+    const state = describeState(m.state, targetOfBlock, m.primitive);
     field ||= state.field;
     const flat = !state.smooth || m.primitive === 'Sprites';
     if (state.smooth && m.primitive === 'Lines') state.skip ||= 'gouraud line';
