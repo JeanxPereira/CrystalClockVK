@@ -167,6 +167,9 @@ add_library(ClockRenderer STATIC
     src/core/HeadlessContext.cpp
     src/core/VmaUsage.cpp
     src/renderer/GsParityRenderer.cpp
+    src/parity/Fixture.cpp
+    src/parity/StbImage.cpp
+    src/parity/Compare.cpp
 )
 add_dependencies(ClockRenderer Shaders)
 target_include_directories(ClockRenderer PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty)
@@ -183,3 +186,11 @@ add_test(NAME HeadlessTest COMMAND HeadlessTest)
 add_executable(RendererTest tests/RendererTest.cpp)
 target_link_libraries(RendererTest PRIVATE ClockRenderer)
 add_test(NAME RendererTest COMMAND RendererTest ${CMAKE_SOURCE_DIR}/bin/shaders)
+
+add_executable(FixtureTest tests/FixtureTest.cpp)
+target_link_libraries(FixtureTest PRIVATE ClockRenderer)
+add_test(NAME FixtureTest COMMAND FixtureTest ${CLOCK_FIXTURE})
+
+add_executable(CompareTest tests/CompareTest.cpp)
+target_link_libraries(CompareTest PRIVATE ClockRenderer)
+add_test(NAME CompareTest COMMAND CompareTest)
