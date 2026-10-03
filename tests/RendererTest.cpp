@@ -154,6 +154,20 @@ int main(int argc, char** argv) {
         CHECK(steps[296 * 4] == 69);
     }
 
+    // Gouraud colour keeps seven fraction bits (c << 7) and modulates as (texel << 2) * c7 >> 16. Red runs 100..132 over
+    // x 0..64, half a unit per pixel: at x 1 c7 = 100.5 * 128 = 12864, 255 * 12864 >> 14 = 200; at x 3, 101.5 gives 202.
+    {
+        const std::vector<uint8_t> white{255, 255, 255, 128};
+        renderer.setTexture("white", 1, 1, white);
+        renderer.setTarget("t", W, H, black);
+        scene::Pass shaded = pass(scene::Primitive::Triangles, {{0, 0, 0, 100, 0, 0, 128, 0, 0, 1}, {64, 0, 0, 132, 0, 0, 128, 0, 0, 1}, {0, 32, 0, 100, 0, 0, 128, 0, 0, 1}});
+        shaded.texture = scene::Texture{"white", false, 1, 1, scene::Coordinates::Texel, {scene::AddressMode::Clamp, 0, 0}, {scene::AddressMode::Clamp, 0, 0}, scene::Filter::Nearest, {}};
+        renderer.draw(shaded);
+        image = renderer.readTarget("t");
+        if (px(image, 1, 1)[0] != 200 || px(image, 3, 1)[0] != 202) std::fprintf(stderr, "gouraud: %d %d\n", px(image, 1, 1)[0], px(image, 3, 1)[0]);
+        CHECK(px(image, 1, 1)[0] == 200 && px(image, 3, 1)[0] == 202);
+    }
+
     CHECK(context.validationErrors() == 0);
     return 0;
 }

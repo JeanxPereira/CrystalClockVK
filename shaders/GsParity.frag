@@ -74,8 +74,10 @@ void main() {
     ivec2 pixel = ivec2(gl_FragCoord.xy);
     if (pixel.x < state.scissor.x || pixel.y < state.scissor.y || pixel.x > state.scissor.z || pixel.y > state.scissor.w) discard;
 
-    ivec4 colour = ivec4(inColour);
-    if (state.tex.x == 1) colour = min((sampleTexture(pixel) * colour) >> 7, ivec4(255));
+    // The GS carries vertex colour with seven fraction bits and modulates (texel << 2) * colour >> 16.
+    ivec4 shade = ivec4(inColour * 128.0);
+    ivec4 colour = shade >> 7;
+    if (state.tex.x == 1) colour = min((sampleTexture(pixel) * shade) >> 14, ivec4(255));
     if (state.flags.x == 1) colour.a = 0x80;
     uint depth = uint(inDepth.x * 4096.0 + inDepth.y);
 
