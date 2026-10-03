@@ -98,8 +98,8 @@ private:
                 A::sub(A::mul(a[0], b[1]), A::mul(b[0], a[1])), 0.0f};
     }
     static Vec4 cameraNormalize(const Vec4& v) {
-        const float length = A::add(0.0f, A::sqrtExact(A::add(A::add(A::mul(v[0], v[0]), A::mul(v[1], v[1])), A::mul(v[2], v[2]))));
-        const float q = A::divExact(1.0f, length);
+        const float length = A::add(0.0f, A::vu0Root(A::add(A::add(A::mul(v[0], v[0]), A::mul(v[1], v[1])), A::mul(v[2], v[2]))));
+        const float q = A::vu0Quotient(1.0f, length);
         return {A::mul(v[0], q), A::mul(v[1], q), A::mul(v[2], q), 0.0f};
     }
 };

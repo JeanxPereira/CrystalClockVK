@@ -6,6 +6,15 @@
 
 namespace scenetest {
 
+int run(int argc, char** argv, const std::function<int(int, char**)>& body) {
+    try {
+        return body(argc, argv);
+    } catch (const std::exception& e) {
+        std::fprintf(stderr, "exception: %s\n", e.what());
+        return 1;
+    }
+}
+
 nlohmann::json loadScene(const std::string& path) {
     std::ifstream in(path, std::ios::binary);
     if (!in) throw std::runtime_error("cannot open " + path);
@@ -33,23 +42,35 @@ bool sameBits(float value, uint32_t expected, std::string_view what) {
     return false;
 }
 
+namespace {
+
+bool sizeIs(const nlohmann::json& hex, size_t size, std::string_view what) {
+    if (hex.is_array() && hex.size() == size) return true;
+    std::fprintf(stderr, "%.*s: expected an array of %zu, the fixture holds %s\n", static_cast<int>(what.size()), what.data(), size, hex.dump().substr(0, 80).c_str());
+    return false;
+}
+
+}
+
 bool sameBits(float value, const nlohmann::json& hex, std::string_view what) { return sameBits(value, hexBits(hex), what); }
 
 bool sameBits(const scene::Vec4& value, const nlohmann::json& hex, std::string_view what) {
-    bool same = hex.size() == 4;
-    for (size_t i = 0; same && i < 4; ++i) same = sameBits(value[i], hex[i], std::string(what) + "[" + std::to_string(i) + "]");
+    if (!sizeIs(hex, 4, what)) return false;
+    bool same = true;
+    for (size_t i = 0; same && i < 4; ++i) same = sameBits(value[i], hex.at(i), std::string(what) + "[" + std::to_string(i) + "]");
     return same;
 }
 
 bool sameBits(const scene::Mat4& value, const nlohmann::json& hex, std::string_view what) {
-    bool same = hex.size() == 4;
-    for (size_t r = 0; same && r < 4; ++r) same = sameBits(value[r], hex[r], std::string(what) + "[" + std::to_string(r) + "]");
+    if (!sizeIs(hex, 4, what)) return false;
+    bool same = true;
+    for (size_t r = 0; same && r < 4; ++r) same = sameBits(value[r], hex.at(r), std::string(what) + "[" + std::to_string(r) + "]");
     return same;
 }
 
-scene::Vec4 hexVec4(const nlohmann::json& hex) { return {hexFloat(hex[0]), hexFloat(hex[1]), hexFloat(hex[2]), hexFloat(hex[3])}; }
+scene::Vec4 hexVec4(const nlohmann::json& hex) { return {hexFloat(hex.at(0)), hexFloat(hex.at(1)), hexFloat(hex.at(2)), hexFloat(hex.at(3))}; }
 
-scene::Mat4 hexMat4(const nlohmann::json& hex) { return {hexVec4(hex[0]), hexVec4(hex[1]), hexVec4(hex[2]), hexVec4(hex[3])}; }
+scene::Mat4 hexMat4(const nlohmann::json& hex) { return {hexVec4(hex.at(0)), hexVec4(hex.at(1)), hexVec4(hex.at(2)), hexVec4(hex.at(3))}; }
 
 uint32_t fnv(const float* values, size_t count) {
     uint32_t h = 0x811c9dc5u;

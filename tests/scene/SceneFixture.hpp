@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <string_view>
 
@@ -8,6 +9,9 @@
 #include "scene/Matrix.hpp"
 
 namespace scenetest {
+
+// Runs a test body; an exception is a failure with its message printed.
+int run(int argc, char** argv, const std::function<int(int, char**)>& body);
 
 nlohmann::json loadScene(const std::string& path);
 

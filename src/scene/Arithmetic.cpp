@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cmath>
+#include <limits>
 
 namespace scene {
 
@@ -20,7 +21,7 @@ const std::array<float, 0x4001>& sineTable() {
     return table;
 }
 
-// HDD OSD 1.10U libm (facts/config-cubes.md, References/model/ee_libm.mjs): cosf 0x00294B28, sinf 0x00294D98,
+// HDD OSD 1.10U libm (facts/config-cubes.md, References/model/ee_libm.mjs): cosf 0x00294B28,
 // __kernel_cosf 0x00296CF8, __kernel_sinf 0x002977A0, __ieee754_rem_pio2f 0x00295850.
 const float C1 = asFloat(0x3d2aaaab), C2 = asFloat(0xbab60b61), C3 = asFloat(0x37d00d01), C4 = asFloat(0xb493f27c), C5 = asFloat(0x310f74f6),
             C6 = asFloat(0xad47d74e);
@@ -123,11 +124,11 @@ const float kHalfPi = asFloat(0x3fc90fdb);
 }
 
 float EeArithmetic::cut(double x) {
-    if (std::isnan(x)) return static_cast<float>(x);
-    if (x >= kMaxFloat) return kMaxFloat;
-    if (x <= -kMaxFloat) return -kMaxFloat;
+    if (std::isnan(x)) return std::numeric_limits<float>::quiet_NaN();
+    // 2^128 - 2^103: from here on fround gives Infinity, which the model keeps.
+    if (std::fabs(x) >= 3.4028235677973366e38) return x > 0 ? std::numeric_limits<float>::infinity() : -std::numeric_limits<float>::infinity();
     float near = static_cast<float>(x);
-    if (std::fabs(static_cast<double>(near)) > std::fabs(x)) near = down(near);
+    if (std::isfinite(near) && std::fabs(static_cast<double>(near)) > std::fabs(x)) near = down(near);
     return flush(near);
 }
 
@@ -148,25 +149,21 @@ float EeArithmetic::sub(float a, float b) { return add(a, -b); }
 
 float EeArithmetic::mul(float a, float b) { return cut(static_cast<double>(a) * static_cast<double>(b)); }
 
-float EeArithmetic::div(float a, float b) {
-    if (b == 0.0f) return (std::signbit(a) != std::signbit(b)) ? -kMaxFloat : kMaxFloat;
-    return cut(static_cast<double>(a) / static_cast<double>(b));
-}
+float EeArithmetic::div(float a, float b) { return cut(static_cast<double>(a) / static_cast<double>(b)); }
 
-float EeArithmetic::sqrt(float a) { return cut(std::sqrt(std::fabs(static_cast<double>(a)))); }
+float EeArithmetic::sqrt(float a) { return cut(std::sqrt(static_cast<double>(a))); }
 
-float EeArithmetic::divExact(float a, float b) {
-    if (b == 0.0f) return (std::signbit(a) != std::signbit(b)) ? -kMaxFloat : kMaxFloat;
+float EeArithmetic::vu0Quotient(float a, float b) {
     float q = cut(static_cast<double>(a) / static_cast<double>(b));
-    if (q != 0.0f && std::fabs(q) != kMaxFloat && std::fabs(static_cast<double>(q) * b) > std::fabs(static_cast<double>(a))) q = flush(down(q));
+    while (static_cast<double>(q) * b > a) q = down(q);
     return q;
 }
 
-float EeArithmetic::sqrtExact(float a) {
+float EeArithmetic::vu0Root(float a) {
     const double x = std::fabs(static_cast<double>(a));
     float r = cut(std::sqrt(x));
-    while (r != 0.0f && static_cast<double>(r) * r > x) r = down(r);
-    return flush(r);
+    while (static_cast<double>(r) * r > x) r = down(r);
+    return r;
 }
 
 int32_t EeArithmetic::toInt(float x) {
@@ -205,19 +202,6 @@ float EeArithmetic::cosf(float x) {
     }
 }
 
-float EeArithmetic::sinf(float x) {
-    const uint32_t ix = floatBits(x) & 0x7fffffffu;
-    if (ix <= 0x3f490fd8u) return sinKernel(x, 0.0f, false);
-    if (ix > 0x7f7fffffu) return sub(x, x);
-    const Reduced r = remPio2(x);
-    switch (r.n & 3) {
-        case 0: return sinKernel(r.y0, r.y1, true);
-        case 1: return cosKernel(r.y0, r.y1);
-        case 2: return -sinKernel(r.y0, r.y1, true);
-        default: return -cosKernel(r.y0, r.y1);
-    }
-}
-
 std::pair<float, float> EeArithmetic::sineCosine(float radians) {
     const bool negative = radians < 0.0f;
     const float t = negative ? add(kHalfPi, radians) : sub(kHalfPi, radians);
@@ -232,7 +216,7 @@ std::pair<float, float> EeArithmetic::sineCosine(float radians) {
     sum = add(sum, v[1]);
     sum = add(sum, v[0]);
     const float cosine = add(0.0f, sum);
-    const float q = add(0.0f, sqrtExact(sub(1.0f, mul(cosine, cosine))));
+    const float q = add(0.0f, vu0Root(sub(1.0f, mul(cosine, cosine))));
     return {negative ? sub(0.0f, q) : add(0.0f, q), cosine};
 }
 

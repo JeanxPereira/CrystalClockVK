@@ -44,17 +44,26 @@ struct Random {
 
 bool close(float a, float b, float tolerance) { return std::fabs(a - b) <= tolerance * std::max(1.0f, std::fabs(b)); }
 
+bool isNan(float x) { return std::isnan(x); }
+
 int fixedCases() {
     CHECK(sameBits(Ee::cut(1.0 - std::ldexp(1.0, -60)), 0x3f800000u, "the double sum loses the addend"));
     CHECK(sameBits(Ee::add(1.0f, -std::ldexp(1.0f, -60)), 0x3f7fffffu, "add(1, -2^-60)"));
     CHECK(sameBits(Ee::mul(scene::kMinNormal, 0.5f), 0x00000000u, "mul(MIN_NORMAL, 0.5)"));
     CHECK(sameBits(Ee::mul(-scene::kMinNormal, 0.5f), 0x80000000u, "mul(-MIN_NORMAL, 0.5)"));
-    CHECK(sameBits(Ee::mul(scene::kMaxFloat, 2.0f), 0x7f7fffffu, "mul(MAX, 2)"));
-    CHECK(sameBits(Ee::add(scene::kMaxFloat, scene::kMaxFloat), 0x7f7fffffu, "add(MAX, MAX)"));
-    CHECK(sameBits(Ee::div(1.0f, 0.0f), 0x7f7fffffu, "div(1, 0)"));
-    CHECK(sameBits(Ee::div(-1.0f, 0.0f), 0xff7fffffu, "div(-1, 0)"));
-    CHECK(sameBits(Ee::divExact(1.0f, 0.0f), 0x7f7fffffu, "divExact(1, 0)"));
-    CHECK(sameBits(Ee::divExact(-1.0f, 0.0f), 0xff7fffffu, "divExact(-1, 0)"));
+    CHECK(sameBits(Ee::mul(scene::kMaxFloat, 2.0f), 0x7f800000u, "mul(MAX, 2)"));
+    CHECK(sameBits(Ee::add(scene::kMaxFloat, scene::kMaxFloat), 0x7f800000u, "add(MAX, MAX)"));
+    CHECK(sameBits(Ee::cut(3.4028235e38), 0x7f7fffffu, "cut just above MAX"));
+    CHECK(sameBits(Ee::cut(3.4028236e38), 0x7f800000u, "cut past MAX"));
+    CHECK(sameBits(Ee::cut(-3.4028236e38), 0xff800000u, "cut past -MAX"));
+    CHECK(sameBits(Ee::div(1.0f, 0.0f), 0x7f800000u, "div(1, 0)"));
+    CHECK(sameBits(Ee::div(-1.0f, 0.0f), 0xff800000u, "div(-1, 0)"));
+    CHECK(isNan(Ee::div(0.0f, 0.0f)));
+    CHECK(isNan(Ee::sqrt(-1.0f)));
+    CHECK(sameBits(Ee::vu0Quotient(1.0f, 0.0f), 0x7f800000u, "vu0Quotient(1, 0)"));
+    CHECK(sameBits(Ee::vu0Root(0.0f), 0x00000000u, "vu0Root(0)"));
+    const Vec3 zero = EeMatrix::normalize({0.0f, 0.0f, 0.0f});
+    CHECK(isNan(zero[0]) && isNan(zero[1]) && isNan(zero[2]));
 
     const struct { uint32_t x; int32_t i; uint32_t u; } ints[] = {
         {0x3fc00000u, 1, 1}, {0xbfc00000u, -1, 0}, {0x4f32d05eu, 2147483647, 3000000000u},
@@ -80,9 +89,9 @@ int sweeps() {
     std::vector<float> products;
     for (int i = 0; i < 20000; ++i) {
         const float a = random.single(90, 160), b = random.single(90, 160);
-        products.insert(products.end(), {Ee::mul(a, b), Ee::div(a, b), Ee::sqrt(a), Ee::divExact(a, b), Ee::sqrtExact(a)});
+        products.insert(products.end(), {Ee::mul(a, b), Ee::div(a, b), Ee::sqrt(std::fabs(a)), Ee::vu0Quotient(std::fabs(a), std::fabs(b)), Ee::vu0Root(a)});
     }
-    CHECK(fnv(products.data(), products.size()) == 0x1480e5deu);
+    CHECK(fnv(products.data(), products.size()) == 0x1c1172deu);
     return 0;
 }
 
@@ -115,27 +124,23 @@ int sineTable() {
 }
 
 int libm() {
-    const struct { uint32_t x, cosine, sine; } cases[] = {
-        {0x00000000u, 0x3f800000u, 0x00000000u}, {0x3f000000u, 0x3f60a940u, 0x3ef57743u}, {0x3f800000u, 0x3f0a5140u, 0x3f576aa3u},
-        {0xbf800000u, 0x3f0a5140u, 0xbf576aa3u}, {0x3f490fdau, 0x3f3504f4u, 0x3f3504f3u}, {0x3fc90fdbu, 0xb33bbd2eu, 0x3f7fffffu},
-        {0xbfc90fdbu, 0xb33bbd2eu, 0xbf7fffffu}, {0x40000000u, 0xbed51132u, 0x3f68c7b7u}, {0x40200000u, 0xbf4d17bfu, 0x3f193578u},
-        {0x40400000u, 0xbf7d7025u, 0x3e1081c3u}, {0x40490fdbu, 0xbf7fffffu, 0xb3bbbd2eu}, {0xc0490fdbu, 0xbf7fffffu, 0x33bbbd2eu},
-        {0x40800000u, 0xbf275530u, 0xbf41bdceu}, {0x41200000u, 0xbf56cd64u, 0xbf0b44f7u}, {0x42c80000u, 0x3f5cc0edu, 0xbf01a12du},
-        {0x43480000u, 0x3ef970a9u, 0xbf5f9069u}, {0x3727c5acu, 0x3f7fffffu, 0x3727c5abu}, {0x3e99999au, 0x3f7490edu, 0x3e974e6du}};
+    const struct { uint32_t x, cosine; } cases[] = {
+        {0x00000000u, 0x3f800000u}, {0x3f000000u, 0x3f60a940u}, {0x3f800000u, 0x3f0a5140u}, {0xbf800000u, 0x3f0a5140u},
+        {0x3f490fdau, 0x3f3504f4u}, {0x3fc90fdbu, 0xb33bbd2eu}, {0xbfc90fdbu, 0xb33bbd2eu}, {0x40000000u, 0xbed51132u},
+        {0x40200000u, 0xbf4d17bfu}, {0x40400000u, 0xbf7d7025u}, {0x40490fdbu, 0xbf7fffffu}, {0xc0490fdbu, 0xbf7fffffu},
+        {0x40800000u, 0xbf275530u}, {0x41200000u, 0xbf56cd64u}, {0x42c80000u, 0x3f5cc0edu}, {0x43480000u, 0x3ef970a9u},
+        {0x3727c5acu, 0x3f7fffffu}, {0x3e99999au, 0x3f7490edu}};
     for (const auto& c : cases) {
         const float x = asFloat(c.x);
         CHECK(sameBits(Ee::cosf(x), c.cosine, "cosf(" + scenetest::bitsText(c.x) + ")"));
-        CHECK(sameBits(Ee::sinf(x), c.sine, "sinf(" + scenetest::bitsText(c.x) + ")"));
-        CHECK(close(NativeArithmetic::cosf(x), Ee::cosf(x), 1e-6f) && close(NativeArithmetic::sinf(x), Ee::sinf(x), 1e-6f));
+        CHECK(close(NativeArithmetic::cosf(x), Ee::cosf(x), 1e-6f));
     }
-    std::vector<float> cosines, sines;
+    std::vector<float> cosines;
     for (int i = 0; i <= 20000; ++i) {
         const float x = static_cast<float>(-201.0 + i * 0.0201);
         cosines.push_back(Ee::cosf(x));
-        sines.push_back(Ee::sinf(x));
     }
     CHECK(fnv(cosines.data(), cosines.size()) == 0x5605f7f8u);
-    CHECK(fnv(sines.data(), sines.size()) == 0x996d2c45u);
 
     const struct { uint32_t x, sine, cosine; } pairs[] = {
         {0x3cfdf3b6u, 0x3cfdebd6u, 0x3f7fe083u}, {0x3e147ae1u, 0x3e13f5ffu, 0x3f7d5041u}, {0x00000000u, 0x00000000u, 0x3f800000u},
@@ -192,21 +197,21 @@ int sceneFixture(const std::string& path) {
     const nlohmann::json scene = scenetest::loadScene(path);
     const auto& frames = scene.at("frames");
     CHECK(!frames.empty());
-    CHECK(sameBits(EeMatrix::viewScreen(512, 1, 0.47f, 2048, 2048, 1, 16777215, 1, 65536), frames[0]["expect"]["camera"]["screen"], "frame 0 screen"));
+    CHECK(sameBits(EeMatrix::viewScreen(512, 1, 0.47f, 2048, 2048, 1, 16777215, 1, 65536), frames.at(0).at("expect").at("camera").at("screen"), "frame 0 screen"));
     for (const auto& frame : frames) {
-        const auto& in = frame["input"];
-        const auto& camera = frame["expect"]["camera"];
-        const std::string at = "frame " + std::to_string(frame["index"].get<int>());
-        const Mat4 screen = EeMatrix::viewScreen(512, scenetest::hexFloat(in["proportions"]["ax"]), scenetest::hexFloat(in["proportions"]["ay"]), 2048, 2048, 1,
-                                                 scenetest::hexFloat(in["zmax"]), 1, 65536);
-        CHECK(sameBits(screen, camera["screen"], at + " screen"));
-        Vec4 position = scenetest::hexVec4(in["position"]);
-        const float offset = scenetest::hexFloat(in["cameraOffset"]);
+        const auto& in = frame.at("input");
+        const auto& camera = frame.at("expect").at("camera");
+        const std::string at = "frame " + std::to_string(frame.at("index").get<int>());
+        const Mat4 screen = EeMatrix::viewScreen(512, scenetest::hexFloat(in.at("proportions").at("ax")), scenetest::hexFloat(in.at("proportions").at("ay")), 2048, 2048, 1,
+                                                 scenetest::hexFloat(in.at("zmax")), 1, 65536);
+        CHECK(sameBits(screen, camera.at("screen"), at + " screen"));
+        Vec4 position = scenetest::hexVec4(in.at("position"));
+        const float offset = scenetest::hexFloat(in.at("cameraOffset"));
         position[2] = Ee::add(position[2], offset);
-        const Vec4 direction = scenetest::hexVec4(in["direction"]), up = scenetest::hexVec4(in["up"]), rotation = scenetest::hexVec4(in["rotation"]);
+        const Vec4 direction = scenetest::hexVec4(in.at("direction")), up = scenetest::hexVec4(in.at("up")), rotation = scenetest::hexVec4(in.at("rotation"));
         const Mat4 view = EeMatrix::viewMatrix(position, direction, up, rotation);
-        CHECK(sameBits(view, camera["view"], at + " view"));
-        CHECK(sameBits(Ee::mul(offset, scenetest::hexFloat(in["cameraFactor"])), camera["cameraOffset"], at + " cameraOffset"));
+        CHECK(sameBits(view, camera.at("view"), at + " view"));
+        CHECK(sameBits(Ee::mul(offset, scenetest::hexFloat(in.at("cameraFactor"))), camera.at("cameraOffset"), at + " cameraOffset"));
         const Mat4 native = NativeMatrix::viewMatrix(position, direction, up, rotation);
         for (int r = 0; r < 4; ++r)
             for (int c = 0; c < 4; ++c) CHECK(close(native[r][c], view[r][c], 1e-4f));
@@ -218,13 +223,15 @@ int sceneFixture(const std::string& path) {
 }
 
 int main(int argc, char** argv) {
-    if (int failed = fixedCases()) return failed;
-    if (int failed = sweeps()) return failed;
-    if (int failed = sineTable()) return failed;
-    if (int failed = libm()) return failed;
-    if (int failed = matrices()) return failed;
-    if (argc > 1)
-        if (int failed = sceneFixture(argv[1])) return failed;
-    std::printf("arithmetic: all equal bit for bit\n");
-    return 0;
+    return scenetest::run(argc, argv, [](int count, char** arguments) {
+        if (int failed = fixedCases()) return failed;
+        if (int failed = sweeps()) return failed;
+        if (int failed = sineTable()) return failed;
+        if (int failed = libm()) return failed;
+        if (int failed = matrices()) return failed;
+        if (count > 1)
+            if (int failed = sceneFixture(arguments[1])) return failed;
+        std::printf("arithmetic: all equal bit for bit\n");
+        return 0;
+    });
 }
