@@ -7,6 +7,10 @@
 
 namespace {
 
+// The oracle's PCSX2 is an SSE4.1 build (_M_SSE 0x401): its scanline steps pixels in blocks of four. The fragment shader
+// receives this as specialization constant 0.
+constexpr int32_t GsBlockWidth = 4;
+
 struct DrawState { int32_t scissor[4], blend[4], misc[4], tex[4], texSize[4], addressU[4], addressV[4], flags[4]; };
 static_assert(sizeof(DrawState) == 128);
 
@@ -213,7 +217,7 @@ void expandTriangle(const scene::Vertex* corners, const scene::Pass& pass, Textu
     std::vector<Span> spans;
     SwVertex dscan;
     if (!walkTriangle(vertex, pass.scissor, spans, dscan)) return;
-    const uint64_t depthBlock = bitsOf(dscan.z * 4.0);
+    const uint64_t depthBlock = bitsOf(dscan.z * double(GsBlockWidth));
     for (const Span& span : spans) {
         GpuVertex g{};
         g.left = float(span.left);
@@ -307,9 +311,11 @@ GsParityRenderer::~GsParityRenderer() {
 }
 
 VkPipeline GsParityRenderer::createPipeline(VkPrimitiveTopology topology, VkShaderModule vertex, VkShaderModule fragment) {
+    const VkSpecializationMapEntry blockWidthEntry{0, 0, sizeof(GsBlockWidth)};
+    const VkSpecializationInfo blockWidth{1, &blockWidthEntry, sizeof(GsBlockWidth), &GsBlockWidth};
     const VkPipelineShaderStageCreateInfo stages[2] = {
         {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, nullptr, 0, VK_SHADER_STAGE_VERTEX_BIT, vertex, "main", nullptr},
-        {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, nullptr, 0, VK_SHADER_STAGE_FRAGMENT_BIT, fragment, "main", nullptr},
+        {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, nullptr, 0, VK_SHADER_STAGE_FRAGMENT_BIT, fragment, "main", &blockWidth},
     };
     const VkVertexInputBindingDescription binding{0, sizeof(GpuVertex), VK_VERTEX_INPUT_RATE_VERTEX};
     const VkVertexInputAttributeDescription attributes[11] = {

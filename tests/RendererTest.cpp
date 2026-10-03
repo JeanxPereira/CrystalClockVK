@@ -213,6 +213,36 @@ int main(int argc, char** argv) {
         image = renderer.readTarget("t");
         if (px(image, 48, 1)[0] != 165) std::fprintf(stderr, "walked: projective red %d\n", px(image, 48, 1)[0]);
         CHECK(px(image, 48, 1)[0] == 165);
+
+        // Every Q equal (2, not 1): the GS divides on the vertices, t = S / Q * (64 << 16), and steps integers with the half texel
+        // taken off the vertices. B's S 0.791015625 gives 0.3955078125 * 4194304 = 1658880 = 405 * 4096, the texel case above:
+        // at (46,1) u = 1499135, weight 13, red 195 (S / Q per pixel would read 1499146, weight 14, red 210).
+        renderer.setTarget("t", W, H, black);
+        scene::Pass equalQ = pass(scene::Primitive::Triangles, {{0, 0, 0, 128, 128, 128, 128, 0, 0, 2}, {49.8125f, 0, 0, 128, 128, 128, 128, 0.791015625f, 0, 2}, {0, 49.8125f, 0, 128, 128, 128, 128, 0, 0, 2}});
+        equalQ.texture = scene::Texture{"stripes", false, 64, 64, scene::Coordinates::Projective, {scene::AddressMode::Clamp, 0, 0}, {scene::AddressMode::Clamp, 0, 0}, scene::Filter::Bilinear, {}};
+        renderer.draw(equalQ);
+        image = renderer.readTarget("t");
+        if (px(image, 46, 1)[0] != 195) std::fprintf(stderr, "walked: equal Q red %d\n", px(image, 46, 1)[0]);
+        CHECK(px(image, 46, 1)[0] == 195);
+
+        // Colour is floored at 0 after each block, per lane. A(0,0) red 64, B(64,0) red -64 (a plane through 0; GS vertices are
+        // unsigned, so this isolates the floor), C(0,64) red 64: cross -4096, step -16384 * (1 / 64) = -256, block -1024, row 1 starts
+        // at 8192. At (37,1), lane 1 starts at 7936; eight blocks take it to -256, floored to 0; the ninth stays 0: red 0. Without the
+        // floor, 7936 - 9 * 1024 = -1280 wraps to 0xfb00, >> 7 = 502, saturated 255.
+        renderer.setTarget("t", W, H, black);
+        renderer.draw(pass(scene::Primitive::Triangles, {at(0, 0, 0, 64, 0, 0, 128), at(64, 0, 0, -64, 0, 0, 128), at(0, 64, 0, 64, 0, 0, 128)}));
+        image = renderer.readTarget("t");
+        if (px(image, 37, 1)[0] != 0 || px(image, 4, 1)[0] != 56) std::fprintf(stderr, "walked: floor red %d %d\n", px(image, 37, 1)[0], px(image, 4, 1)[0]);
+        CHECK(px(image, 37, 1)[0] == 0 && px(image, 4, 1)[0] == 56);
+
+        // Three distinct rows: v0(0,0) red 0, v1(32,16) red 64, v2(0,32) red 0. Below v1 the second section starts from v1 itself:
+        // cross -1024, dscan red = -(8192 * (32 / -1024)) = 256, dedge red 0; at row 20, dy 4, left ceil(0 + 0 * 4) = 0, prestep 0 - 32,
+        // scan 8192 + 256 * -32 = 0; at x 10 (block 2, lane 2) 512 + 2 * 1024 = 2560, red 20.
+        renderer.setTarget("t", W, H, black);
+        renderer.draw(pass(scene::Primitive::Triangles, {at(0, 0, 0, 0, 0, 0, 128), at(32, 16, 0, 64, 0, 0, 128), at(0, 32, 0, 0, 0, 0, 128)}));
+        image = renderer.readTarget("t");
+        if (px(image, 10, 20)[0] != 20) std::fprintf(stderr, "walked: lower section red %d\n", px(image, 10, 20)[0]);
+        CHECK(px(image, 10, 20)[0] == 20);
     }
 
     CHECK(context.validationErrors() == 0);

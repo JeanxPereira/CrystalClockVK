@@ -16,6 +16,9 @@ layout(push_constant) uniform DrawState {
     ivec4 scissor; ivec4 blend; ivec4 misc; ivec4 tex; ivec4 texSize; ivec4 addressU; ivec4 addressV; ivec4 flags;
 } state;
 
+// The oracle's scanline steps pixels in blocks of this width (SSE4.1 build: 4); set by the renderer.
+layout(constant_id = 0) const int BlockWidth = 4;
+
 layout(location = 0) noperspective in vec2 inDepth;
 layout(location = 1) noperspective in vec4 inColour;
 layout(location = 2) noperspective in vec3 inTexture;
@@ -53,16 +56,16 @@ ivec4 sampleTexture(ivec2 uv) {
     return mix4(top, bottom, f.y);
 }
 
-// A sprite's coordinate as the GS rasterizer (SSE4.1 build, four-pixel blocks) steps it: V adds its step once per row in
+// A sprite's coordinate as the GS rasterizer steps it in blocks: V adds its step once per row in
 // floats; U is the row's start, truncated, plus the truncated step times the lane offset inside a block, plus whole blocks.
 ivec2 steppedCoordinate(ivec2 pixel) {
     precise float v = inStepped.y;
     for (int row = inFirst.y; row < pixel.y; row++) v += inStepped.w;
-    int skip = inFirst.x & 3;
+    int skip = inFirst.x & (BlockWidth - 1);
     int offset = pixel.x - (inFirst.x - skip);
-    precise float lane = inStepped.z * float((offset & 3) - skip);
-    precise float block = inStepped.z * 4.0;
-    return ivec2(int(inStepped.x) + int(lane) + (offset >> 2) * int(block), int(v));
+    precise float lane = inStepped.z * float((offset & (BlockWidth - 1)) - skip);
+    precise float block = inStepped.z * float(BlockWidth);
+    return ivec2(int(inStepped.x) + int(lane) + (offset / BlockWidth) * int(block), int(v));
 }
 
 // Unsigned 64-bit integers as (low, high) and IEEE doubles as their bits: the GS steps depth in doubles.
@@ -175,12 +178,12 @@ void main() {
     uint depth;
     ivec2 uv = ivec2(0);
     if (state.flags.w == 1) {
-        // A triangle row, as CDrawScanline steps it from the row's first pixel in blocks of four: a value is the row start
+        // A triangle row, as CDrawScanline steps it from the row's first pixel in blocks: a value is the row start
         // plus the step times the lane offset, plus one block step per block; integers truncate each of those terms.
-        int skip = inFirst.x & 3;
+        int skip = inFirst.x & (BlockWidth - 1);
         int offset = pixel.x - (inFirst.x - skip);
-        int blocks = offset >> 2;
-        float lane = float((offset & 3) - skip);
+        int blocks = offset / BlockWidth;
+        float lane = float((offset & (BlockWidth - 1)) - skip);
 
         precise float laneDepth = inStepTexture.w * lane;
         uvec2 z = addDouble(inDepthSteps.xy, doubleOf(laneDepth));
@@ -188,7 +191,7 @@ void main() {
         depth = truncateDouble(z);
 
         precise vec4 laneColour = inStepColour * lane;
-        precise vec4 blockColour = inStepColour * 4.0;
+        precise vec4 blockColour = inStepColour * float(BlockWidth);
         ivec4 colour16 = ((ivec4(inScanColour) & 0xffff) + (ivec4(laneColour) & 0xffff)) & 0xffff;
         ivec4 colourBlock = ivec4(blockColour) & 0xffff;
         for (int i = 0; i < blocks; i++) {
@@ -200,11 +203,11 @@ void main() {
         if (state.tex.x == 1) {
             if (state.tex.y == 0) {
                 precise vec2 laneTexture = inStepTexture.xy * lane;
-                precise vec2 blockTexture = inStepTexture.xy * 4.0;
+                precise vec2 blockTexture = inStepTexture.xy * float(BlockWidth);
                 uv = ivec2(inScanTexture.xy) + ivec2(laneTexture) + blocks * ivec2(blockTexture);
             } else {
                 precise vec3 laneTexture = inStepTexture.xyz * lane;
-                precise vec3 blockTexture = inStepTexture.xyz * 4.0;
+                precise vec3 blockTexture = inStepTexture.xyz * float(BlockWidth);
                 precise vec3 stq = inScanTexture.xyz + laneTexture;
                 for (int i = 0; i < blocks; i++) stq += blockTexture;
                 uv = ivec2(int(divideFloat(stq.x, stq.z)), int(divideFloat(stq.y, stq.z)));
