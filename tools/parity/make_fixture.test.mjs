@@ -13,6 +13,8 @@ test('the clock frame becomes 188 passes lined up with the oracle', async () => 
   const frame = JSON.parse(fs.readFileSync(path.join(out, 'frame.json'), 'utf8'));
 
   assert.equal(done.passes, 188);
+  assert.equal(done.dropped, 284);
+  assert.equal(done.left, 1);
   assert.equal(frame.passes.length, 188);
   assert.deepEqual(frame.targets.map((t) => t.id).sort(), ['fb0000', 'fb1a40', 'fb2300']);
   for (const target of frame.targets) {
@@ -23,6 +25,7 @@ test('the clock frame becomes 188 passes lined up with the oracle', async () => 
 
   const skipped = frame.passes.filter((p) => p.skip);
   assert.equal(skipped.length, 26);
+  assert.ok(!frame.passes.some((p) => p.skip === 'gouraud line'), 'no clock line is smooth');
   assert.ok(skipped.every((p) => p.skip === 'texture format 0x14'), 'only the paletted text is skipped');
 
   const first = frame.passes[0];

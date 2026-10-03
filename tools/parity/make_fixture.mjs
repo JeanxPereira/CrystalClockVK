@@ -36,6 +36,7 @@ export function describeState(state, targetOfBlock) {
   const prim = fields(state, 'PRIM'), frame = fields(state, 'FRAME'), zbuf = fields(state, 'ZBUF');
   const test = fields(state, 'TEST'), alpha = fields(state, 'ALPHA'), scissor = fields(state, 'SCISSOR');
   const reasons = [];
+  if (zbuf.PSM !== 0) reasons.push(`depth format 0x${hex(0x30 | zbuf.PSM, 2)}`);
   if (frame.PSM !== 0) reasons.push(`frame format 0x${hex(frame.PSM, 2)}`);
   if (frame.FBMSK !== 0) reasons.push('frame mask');
   if (test.ATE) reasons.push('alpha test');
@@ -92,6 +93,39 @@ function oraclePrimitives(text, draw) {
   return { primitive, size, primitives: out };
 }
 
+function oracleContext(text) {
+  const out = {};
+  let section = null;
+  for (const line of text.split(/\r?\n/)) {
+    const head = /^([A-Z0-9_]+):\s*$/.exec(line);
+    if (head) { section = out[head[1]] = {}; continue; }
+    const item = /^ {4}([A-Z0-9]+):\s*(-?[\w.]+)/.exec(line);
+    if (item && section) section[item[1]] = Number(item[2]);
+  }
+  return out;
+}
+
+const COMPARED = {
+  FRAME: ['FBP', 'FBW', 'PSM', 'FBMSK'], TEST: ['ZTE', 'ZTST', 'ATE', 'DATE'], ALPHA: ['A', 'B', 'C', 'D', 'FIX'],
+  SCISSOR: ['SCAX0', 'SCAX1', 'SCAY0', 'SCAY1'], ZBUF: ['PSM', 'ZMSK'], PRIM: ['IIP', 'TME', 'ABE', 'AA1', 'FST', 'FGE'],
+};
+const COMPARED_TEXTURE = { TEX0: ['TBP0', 'TBW', 'PSM', 'TW', 'TH', 'TFX', 'TCC'], CLAMP: ['WMS', 'WMT', 'MINU', 'MAXU', 'MINV', 'MAXV'], TEX1: ['MMAG', 'MMIN'], TEXA: ['AEM', 'TA0'] };
+
+/** The first disagreement between the oracle's printed context and a stream state, or null. */
+function disagreement(context, state) {
+  const tables = { ...COMPARED, ...(context.PRIM?.TME ? COMPARED_TEXTURE : {}) };
+  for (const [name, keys] of Object.entries(tables)) {
+    const decoded = fields(state, name);
+    for (const key of keys) {
+      const wanted = context[name]?.[key];
+      const got = name === 'FRAME' && key === 'FBP' ? decoded.FBP * 32 : name === 'ZBUF' && key === 'PSM' ? 0x30 | decoded.PSM : decoded[key];
+      if (wanted === undefined) return `${name}.${key} is not in the oracle context`;
+      if (wanted !== Number(got)) return `${name}.${key} is ${wanted} in the oracle and ${got} in the dump`;
+    }
+  }
+  return null;
+}
+
 const same = (wanted, got) => wanted.length === got.length && wanted.every((p, i) => p[0] === got[i].px && p[1] === got[i].py && p[2] === got[i].z);
 
 export async function makeFixture(dump, outDir, frame = 0) {
@@ -124,16 +158,26 @@ export async function makeFixture(dump, outDir, frame = 0) {
   const matched = [];
   for (const draw of draws) {
     const wanted = oraclePrimitives(fs.readFileSync(path.join(oracleDir, `${draw}_vertex.txt`), 'utf8'), draw);
+    const context = oracleContext(fs.readFileSync(path.join(oracleDir, `${draw}_context.txt`), 'utf8'));
     const found = [];
     for (const primitive of wanted.primitives) {
-      while (cursor < stream.length && !same(primitive, stream[cursor].vertices)) { cursor++; dropped++; }
-      if (cursor === stream.length) throw new Error(`draw ${draw}: primitive ${found.length} of the oracle is not in the dump's stream after ${dropped} dropped`);
+      let why = null;
+      while (cursor < stream.length) {
+        if (same(primitive, stream[cursor].vertices)) {
+          why = disagreement(context, stream[cursor].state);
+          if (!why) break;
+        }
+        cursor++; dropped++;
+      }
+      if (cursor === stream.length) throw new Error(`draw ${draw}: primitive ${found.length} of the oracle is not in the dump's stream with its state${why ? ` (nearest geometry: ${why})` : ''}`);
       found.push(stream[cursor++]);
     }
     const key = JSON.stringify(found[0].state);
     if (!found.every((p) => JSON.stringify(p.state) === key)) throw new Error(`draw ${draw}: its primitives do not share one state`);
     matched.push({ draw, primitive: wanted.primitive, found, state: found[0].state });
   }
+
+  const left = stream.length - cursor;
 
   const blocks = new Map();
   for (const m of matched) {
@@ -149,7 +193,10 @@ export async function makeFixture(dump, outDir, frame = 0) {
   const vram = data.subarray(8 + headerSize + stateSize - STATE_TAIL - VRAM_BYTES, 8 + headerSize + stateSize - STATE_TAIL);
   const pixels = (block, pages, width, height) => {
     const out = Buffer.alloc(width * height * 4);
-    for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) vram.copy(out, (y * width + x) * 4, (word32(block, pages, x, y) % 0x100000) * 4, (word32(block, pages, x, y) % 0x100000) * 4 + 4);
+    for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+      const at = (word32(block, pages, x, y) % 0x100000) * 4;
+      vram.copy(out, (y * width + x) * 4, at, at + 4);
+    }
     return out;
   };
 
@@ -166,7 +213,8 @@ export async function makeFixture(dump, outDir, frame = 0) {
   const passes = matched.map((m) => {
     const state = describeState(m.state, targetOfBlock);
     field ||= state.field;
-    const flat = !state.smooth || m.primitive !== 'Triangles';
+    const flat = !state.smooth || m.primitive === 'Sprites';
+    if (state.smooth && m.primitive === 'Lines') state.skip ||= 'gouraud line';
     const vertices = [];
     for (const p of m.found) {
       const last = p.vertices[p.vertices.length - 1];
@@ -196,12 +244,12 @@ export async function makeFixture(dump, outDir, frame = 0) {
 
   const frameJson = { capture: path.basename(dump, '.gs'), frame, field, targets, depthStart: oracleFile(draws[0], '_rz0_'), textures: [...textures.values()], passes };
   fs.writeFileSync(path.join(outDir, 'frame.json'), JSON.stringify(frameJson));
-  return { passes: passes.length, skipped: passes.filter((p) => p.skip).length, dropped };
+  return { passes: passes.length, skipped: passes.filter((p) => p.skip).length, dropped, left };
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const [dump, outDir, frame] = process.argv.slice(2);
   if (!dump || !outDir) { console.error('usage: node tools/parity/make_fixture.mjs <dump.gs> <out dir> [frame]'); process.exit(2); }
   const done = await makeFixture(dump, outDir, Number(frame ?? 0));
-  console.log(`fixture: ${done.passes} passes (${done.skipped} skipped), ${done.dropped} primitives the oracle culled, in ${outDir}`);
+  console.log(`fixture: ${done.passes} passes (${done.skipped} skipped), ${done.dropped} primitives the oracle culled, ${done.left} left after the last draw, in ${outDir}`);
 }
