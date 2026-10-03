@@ -59,6 +59,68 @@ Image loadPngPair(const std::filesystem::path& prefix) {
     return out;
 }
 
+GsPass readPass(const nlohmann::json& p) {
+    GsPass pass{};
+    pass.index = p.at("index");
+    pass.name = p.at("name");
+    pass.target = p.at("target");
+    pass.primitive = pick<GsPrimitive>(p.at("primitive"), {{"Triangles", GsPrimitive::Triangles}, {"Sprites", GsPrimitive::Sprites}, {"Lines", GsPrimitive::Lines}}, "primitive");
+    const auto& s = p.at("scissor");
+    pass.scissor = {s[0], s[1], s[2], s[3]};
+    if (!p.at("blend").is_null()) {
+        const auto& b = p.at("blend");
+        pass.blend = GsBlend{term(b.at("a")), term(b.at("b")),
+            pick<GsBlendFactor>(b.at("c"), {{"SourceAlpha", GsBlendFactor::SourceAlpha}, {"DestinationAlpha", GsBlendFactor::DestinationAlpha}, {"Fixed", GsBlendFactor::Fixed}}, "blend factor"),
+            term(b.at("d")), b.at("fixed")};
+    }
+    pass.antialias = p.at("antialias");
+    pass.depth = {pick<GsDepthTest>(p.at("depth").at("test"), {{"Never", GsDepthTest::Never}, {"Always", GsDepthTest::Always},
+                      {"GreaterEqual", GsDepthTest::GreaterEqual}, {"Greater", GsDepthTest::Greater}}, "depth test"),
+                  p.at("depth").at("write")};
+    if (!p.at("texture").is_null()) {
+        const auto& t = p.at("texture");
+        GsTexture texture{};
+        texture.sourceIsTarget = t.at("source").contains("target");
+        texture.source = t.at("source").at(texture.sourceIsTarget ? "target" : "image");
+        texture.width = t.at("width");
+        texture.height = t.at("height");
+        texture.coordinates = pick<GsCoordinates>(t.at("coordinates"), {{"Texel", GsCoordinates::Texel}, {"Projective", GsCoordinates::Projective}}, "coordinates");
+        texture.addressU = address(t.at("addressU"));
+        texture.addressV = address(t.at("addressV"));
+        texture.filter = pick<GsFilter>(t.at("filter"), {{"Nearest", GsFilter::Nearest}, {"Bilinear", GsFilter::Bilinear}}, "filter");
+        const auto& a = t.at("alpha");
+        if (a.at("mode") == "Constant") texture.alpha = {true, a.at("value"), a.at("zeroWhenBlack")};
+        else if (a.at("mode") != "Texel") throw std::runtime_error("unknown texture alpha mode " + a.at("mode").dump());
+        pass.texture = std::move(texture);
+    }
+    if (!p.at("skip").is_null()) pass.skip = p.at("skip");
+    for (const auto& v : p.at("vertices")) pass.vertices.push_back({v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8], v[9]});
+    return pass;
+}
+
+nlohmann::json writePass(const GsPass& pass) {
+    static const char* primitives[] = {"Triangles", "Sprites", "Lines"};
+    static const char* terms[] = {"Source", "Destination", "Zero"};
+    static const char* factors[] = {"SourceAlpha", "DestinationAlpha", "Fixed"};
+    static const char* tests[] = {"Never", "Always", "GreaterEqual", "Greater"};
+    static const char* modes[] = {"Repeat", "Clamp", "RegionClamp", "RegionRepeat"};
+    const auto place = [](const GsAddress& a) { return nlohmann::json{{"mode", modes[int(a.mode)]}, {"min", a.min}, {"max", a.max}}; };
+    nlohmann::json j{{"index", pass.index}, {"name", pass.name}, {"target", pass.target}, {"primitive", primitives[int(pass.primitive)]},
+                     {"scissor", {pass.scissor.x0, pass.scissor.y0, pass.scissor.x1, pass.scissor.y1}}, {"antialias", pass.antialias},
+                     {"depth", {{"test", tests[int(pass.depth.test)]}, {"write", pass.depth.write}}}, {"blend", nullptr}, {"texture", nullptr},
+                     {"skip", pass.skip.empty() ? nlohmann::json(nullptr) : nlohmann::json(pass.skip)}, {"vertices", nlohmann::json::array()}};
+    if (pass.blend) j["blend"] = {{"a", terms[int(pass.blend->a)]}, {"b", terms[int(pass.blend->b)]}, {"c", factors[int(pass.blend->c)]}, {"d", terms[int(pass.blend->d)]}, {"fixed", pass.blend->fixed}};
+    if (pass.texture) {
+        const GsTexture& t = *pass.texture;
+        j["texture"] = {{"source", {{t.sourceIsTarget ? "target" : "image", t.source}}}, {"width", t.width}, {"height", t.height},
+                        {"coordinates", t.coordinates == GsCoordinates::Texel ? "Texel" : "Projective"}, {"addressU", place(t.addressU)}, {"addressV", place(t.addressV)},
+                        {"filter", t.filter == GsFilter::Bilinear ? "Bilinear" : "Nearest"},
+                        {"alpha", t.alpha.constant ? nlohmann::json{{"mode", "Constant"}, {"value", t.alpha.value}, {"zeroWhenBlack", t.alpha.zeroWhenBlack}} : nlohmann::json{{"mode", "Texel"}}}};
+    }
+    for (const GsVertex& v : pass.vertices) j["vertices"].push_back({v.x, v.y, v.depth, v.r, v.g, v.b, v.a, v.s, v.t, v.q});
+    return j;
+}
+
 Image Fixture::oracleColour(size_t pass) const { return loadPngPair(root / oracle.at(pass).colour); }
 DepthImage Fixture::oracleDepth(size_t pass) const { return depthFromPair(loadPngPair(root / oracle.at(pass).depth)); }
 DepthImage Fixture::startDepth() const { return depthFromPair(loadPngPair(root / depthStart)); }
@@ -87,43 +149,8 @@ Fixture loadFixture(const std::filesystem::path& directory) {
     }
 
     for (const auto& p : j.at("passes")) {
-        parity::GsPass pass{};
-        pass.index = p.at("index");
-        pass.name = p.at("name");
-        pass.target = p.at("target");
-        pass.primitive = pick<parity::GsPrimitive>(p.at("primitive"), {{"Triangles", parity::GsPrimitive::Triangles}, {"Sprites", parity::GsPrimitive::Sprites}, {"Lines", parity::GsPrimitive::Lines}}, "primitive");
-        const auto& s = p.at("scissor");
-        pass.scissor = {s[0], s[1], s[2], s[3]};
-        if (!p.at("blend").is_null()) {
-            const auto& b = p.at("blend");
-            pass.blend = parity::GsBlend{term(b.at("a")), term(b.at("b")),
-                pick<parity::GsBlendFactor>(b.at("c"), {{"SourceAlpha", parity::GsBlendFactor::SourceAlpha}, {"DestinationAlpha", parity::GsBlendFactor::DestinationAlpha}, {"Fixed", parity::GsBlendFactor::Fixed}}, "blend factor"),
-                term(b.at("d")), b.at("fixed")};
-        }
-        pass.antialias = p.at("antialias");
-        pass.depth = {pick<parity::GsDepthTest>(p.at("depth").at("test"), {{"Never", parity::GsDepthTest::Never}, {"Always", parity::GsDepthTest::Always},
-                          {"GreaterEqual", parity::GsDepthTest::GreaterEqual}, {"Greater", parity::GsDepthTest::Greater}}, "depth test"),
-                      p.at("depth").at("write")};
-        if (!p.at("texture").is_null()) {
-            const auto& t = p.at("texture");
-            parity::GsTexture texture{};
-            texture.sourceIsTarget = t.at("source").contains("target");
-            texture.source = t.at("source").at(texture.sourceIsTarget ? "target" : "image");
-            texture.width = t.at("width");
-            texture.height = t.at("height");
-            texture.coordinates = pick<parity::GsCoordinates>(t.at("coordinates"), {{"Texel", parity::GsCoordinates::Texel}, {"Projective", parity::GsCoordinates::Projective}}, "coordinates");
-            texture.addressU = address(t.at("addressU"));
-            texture.addressV = address(t.at("addressV"));
-            texture.filter = pick<parity::GsFilter>(t.at("filter"), {{"Nearest", parity::GsFilter::Nearest}, {"Bilinear", parity::GsFilter::Bilinear}}, "filter");
-            const auto& a = t.at("alpha");
-            if (a.at("mode") == "Constant") texture.alpha = {true, a.at("value"), a.at("zeroWhenBlack")};
-            else if (a.at("mode") != "Texel") throw std::runtime_error("unknown texture alpha mode " + a.at("mode").dump());
-            pass.texture = std::move(texture);
-        }
-        if (!p.at("skip").is_null()) pass.skip = p.at("skip");
-        for (const auto& v : p.at("vertices")) pass.vertices.push_back({v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8], v[9]});
+        fixture.frame.passes.push_back(readPass(p));
         fixture.oracle.push_back({p.at("oracle").at("colour"), p.at("oracle").at("depth")});
-        fixture.frame.passes.push_back(std::move(pass));
     }
     return fixture;
 }

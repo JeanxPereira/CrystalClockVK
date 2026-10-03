@@ -86,6 +86,22 @@ export function describeState(state, targetOfBlock, primitive) {
   };
 }
 
+/** A pass's vertices as frame.json holds them: a flat primitive takes its last vertex's colour, a sprite its last vertex's depth. */
+export function nativeVertices(primitive, primitives, state) {
+  const flat = !state.smooth || primitive === 'Sprites';
+  const vertices = [];
+  for (const p of primitives) {
+    const last = p[p.length - 1];
+    for (const v of p) {
+      const colour = flat ? last.rgba : v.rgba;
+      const depth = primitive === 'Sprites' ? last.z : v.z;
+      const st = state.texture?.coordinates === 'Texel' ? [v.u, v.v, 1] : [v.s, v.t, v.q];
+      vertices.push([v.px, v.py, depth, ...colour, ...st]);
+    }
+  }
+  return vertices;
+}
+
 function oraclePrimitives(text, draw) {
   const kind = /^vertex: # (\w+)/m.exec(text)?.[1];
   if (!ORACLE_KIND[kind]) throw new Error(`draw ${draw}: the oracle lists primitive ${kind}, which the fixture does not carry`);
@@ -217,18 +233,8 @@ export async function makeFixture(dump, outDir, frame = 0) {
   const passes = matched.map((m) => {
     const state = describeState(m.state, targetOfBlock, m.primitive);
     field ||= state.field;
-    const flat = !state.smooth || m.primitive === 'Sprites';
     if (state.smooth && m.primitive === 'Lines') state.skip ||= 'gouraud line';
-    const vertices = [];
-    for (const p of m.found) {
-      const last = p.vertices[p.vertices.length - 1];
-      for (const v of p.vertices) {
-        const colour = flat ? last.rgba : v.rgba;
-        const depth = m.primitive === 'Sprites' ? last.z : v.z;
-        const st = state.texture?.coordinates === 'Texel' ? [v.u, v.v, 1] : [v.s, v.t, v.q];
-        vertices.push([v.px, v.py, depth, ...colour, ...st]);
-      }
-    }
+    const vertices = nativeVertices(m.primitive, m.found.map((p) => p.vertices), state);
     let texture = null;
     if (state.texture) {
       const { block, pages, ...rest } = state.texture;

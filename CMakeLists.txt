@@ -117,6 +117,7 @@ add_library(ClockParity STATIC
     src/parity/Fixture.cpp
     src/parity/StbImage.cpp
     src/parity/Compare.cpp
+    src/parity/FromScene.cpp
 )
 add_dependencies(ClockParity Shaders)
 target_include_directories(ClockParity PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty)
@@ -157,7 +158,7 @@ else()
     target_compile_options(ClockScene PRIVATE -ffp-contract=off -fno-fast-math)
 endif()
 
-add_library(SceneTestSupport STATIC tests/scene/SceneFixture.cpp)
+add_library(SceneTestSupport STATIC tests/scene/SceneFixture.cpp tests/scene/SceneInputs.cpp)
 target_link_libraries(SceneTestSupport PUBLIC ClockScene nlohmann_json::nlohmann_json)
 
 get_filename_component(SCENE_FIXTURE ${CLOCK_FIXTURE}/../scene.json ABSOLUTE)
@@ -222,4 +223,15 @@ add_executable(StateTest tests/scene/StateTest.cpp)
 target_link_libraries(StateTest PRIVATE SceneTestSupport)
 if(EXISTS ${SCENE_FIXTURE})
     add_test(NAME StateTest COMMAND StateTest ${SCENE_FIXTURE})
+endif()
+target_sources(ClockScene PRIVATE src/scene/Clock.cpp)
+get_filename_component(SCENE_PASSES ${CLOCK_FIXTURE}/../passes.json ABSOLUTE)
+add_executable(ClockParityTest tests/scene/ClockParityTest.cpp)
+target_link_libraries(ClockParityTest PRIVATE SceneTestSupport ClockParity)
+if(EXISTS ${SCENE_FIXTURE} AND EXISTS ${SCENE_PASSES} AND EXISTS ${CLOCK_FIXTURE}/frame.json)
+    set(SCENE_PARITY_FIXTURE ${CMAKE_BINARY_DIR}/scene-fixture/whole3-clock)
+    add_test(NAME ClockParityTest COMMAND ClockParityTest ${SCENE_FIXTURE} ${CMAKE_SOURCE_DIR}/facts/data/rod-mesh.json ${SCENE_PASSES} ${CLOCK_FIXTURE} ${SCENE_PARITY_FIXTURE})
+    set_tests_properties(ClockParityTest PROPERTIES FIXTURES_SETUP ClockSceneFixture)
+    add_test(NAME ParityClockScene COMMAND ParityTool ${SCENE_PARITY_FIXTURE} ${CMAKE_BINARY_DIR}/parity-report/whole3-clock-scene ${CMAKE_SOURCE_DIR}/bin/shaders ${CMAKE_SOURCE_DIR}/tools/ParityTool/budgets/hddosd-110U-whole3-clock.json)
+    set_tests_properties(ParityClockScene PROPERTIES FIXTURES_REQUIRED ClockSceneFixture)
 endif()
