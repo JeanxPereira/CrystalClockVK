@@ -196,3 +196,11 @@ add_test(NAME DeviceTest COMMAND DeviceTest)
 
 add_executable(CrystalClock src/app/Main.cpp)
 target_link_libraries(CrystalClock PRIVATE ClockRender)
+
+target_sources(ClockScene PRIVATE src/scene/Rods.cpp)
+target_link_libraries(ClockScene PRIVATE nlohmann_json::nlohmann_json)
+add_executable(RodsTest tests/scene/RodsTest.cpp)
+target_link_libraries(RodsTest PRIVATE SceneTestSupport)
+if(EXISTS ${SCENE_FIXTURE})
+    add_test(NAME RodsTest COMMAND RodsTest ${SCENE_FIXTURE} ${CMAKE_CURRENT_SOURCE_DIR}/facts/data/rod-mesh.json)
+endif()
