@@ -1,6 +1,7 @@
 #include "Check.hpp"
 #include "core/HeadlessContext.hpp"
 #include "renderer/GsParityRenderer.hpp"
+#include <bit>
 #include <tuple>
 
 namespace {
@@ -339,6 +340,26 @@ int main(int argc, char** argv) {
         CHECK(centre[0] == 150 && centre[3] == 96 && neighbour[0] == 48 && neighbour[3] == 31);
         CHECK(px(image, 2, 10)[0] == 150 && px(image, 20, 10)[0] == 0 && px(image, 10, 9)[0] == 0);
         CHECK(depth[10 * W + 10] == 100);
+    }
+
+    // When every vertex of an STQ draw has the same Z, PCSX2 rounds the coordinates down before drawing (GSState::FlushPrim):
+    // Q loses its low 8 bits, S and T their low 9 + (exp(max(S, Q)) - exp(S)) bits. S 0.75, Q 0x3f8000ff (1.0000304) on all
+    // three vertices: Q becomes 1.0, u = 0.75 * (64 << 16) - 0x8000 = 3112960, texel 47, weight 8 between the stripes' 240 and 0:
+    // red 240 - (240 * 8 >> 4) = 120. Unrounded, u = int(3145632.5 - 32768) = 3112864, weight 7, red 135; so with C's Z
+    // different the draw keeps its bits and reads 135.
+    {
+        const float q = std::bit_cast<float>(0x3f8000ffu);
+        for (const uint32_t cz : {7u, 8u}) {
+            renderer.setTarget("t", W, H, black);
+            renderer.setDepth(W, H, depth100);
+            scene::Pass rounded = pass(scene::Primitive::Triangles, {{0, 0, 7, 128, 128, 128, 128, 0.75f, 0, q}, {40, 0, 7, 128, 128, 128, 128, 0.75f, 0, q}, {0, 30, cz, 128, 128, 128, 128, 0.75f, 0, q}});
+            rounded.texture = scene::Texture{"stripes", false, 64, 64, scene::Coordinates::Projective, {scene::AddressMode::Repeat, 0, 0}, {scene::AddressMode::Repeat, 0, 0}, scene::Filter::Bilinear, {}};
+            renderer.draw(rounded);
+            image = renderer.readTarget("t");
+            const uint8_t expected = cz == 7 ? 120 : 135;
+            if (px(image, 10, 10)[0] != expected) std::fprintf(stderr, "stq rounding (C z %u): red %d\n", cz, px(image, 10, 10)[0]);
+            CHECK(px(image, 10, 10)[0] == expected);
+        }
     }
 
     CHECK(context.validationErrors() == 0);

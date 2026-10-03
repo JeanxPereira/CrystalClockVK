@@ -1,5 +1,6 @@
 #include "renderer/GsParityRenderer.hpp"
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <cstring>
 #include <fstream>
@@ -385,6 +386,33 @@ void walkLine(const SwVertex& a, const SwVertex& b, const scene::Scissor& scisso
     }
 }
 
+// GSState::FlushPrim rounds an STQ draw's coordinates down when it is a sprite or every vertex has the same Z: Q loses its
+// low 8 bits, S and T their low 9 + (exp(max(S or T, Q)) - exp(S or T)) bits (at most 23).
+float roundedDown(float value, int bits) {
+    uint32_t u = std::bit_cast<uint32_t>(value);
+    u &= ~((1u << std::min(bits, 23)) - 1u);
+    return std::bit_cast<float>(u);
+}
+
+bool roundsCoordinates(const scene::Pass& pass) {
+    if (!pass.texture || pass.texture->coordinates != scene::Coordinates::Projective || pass.vertices.empty()) return false;
+    if (pass.primitive == scene::Primitive::Sprites) return true;
+    for (const scene::Vertex& v : pass.vertices) if (v.depth != pass.vertices.front().depth) return false;
+    return true;
+}
+
+scene::Pass withRoundedCoordinates(const scene::Pass& pass) {
+    scene::Pass rounded = pass;
+    auto exponent = [](float value) { return int((std::bit_cast<uint32_t>(value) >> 23) & 0xff); };
+    for (scene::Vertex& v : rounded.vertices) {
+        const int s = exponent(v.s), t = exponent(v.t), q = exponent(v.q);
+        v.s = roundedDown(v.s, 9 + std::max(s, q) - s);
+        v.t = roundedDown(v.t, 9 + std::max(t, q) - t);
+        v.q = roundedDown(v.q, 8);
+    }
+    return rounded;
+}
+
 uint64_t bitsOf(double value) {
     uint64_t bits;
     std::memcpy(&bits, &value, 8);
@@ -743,7 +771,9 @@ std::vector<uint32_t> GsParityRenderer::readDepth() {
     return out;
 }
 
-void GsParityRenderer::draw(const scene::Pass& pass) {
+void GsParityRenderer::draw(const scene::Pass& given) {
+    const scene::Pass rounded = roundsCoordinates(given) ? withRoundedCoordinates(given) : scene::Pass{};
+    const scene::Pass& pass = roundsCoordinates(given) ? rounded : given;
     if (!pass.skip.empty()) throw std::logic_error(pass.name + " cannot be drawn: " + pass.skip);
     const auto target = m_targets.find(pass.target);
     if (target == m_targets.end()) throw std::runtime_error(pass.name + ": no target " + pass.target);
