@@ -149,7 +149,7 @@ add_test(NAME CompareTest COMMAND CompareTest)
 add_executable(ParityTool tools/ParityTool/main.cpp)
 target_link_libraries(ParityTool PRIVATE ClockParity)
 
-add_library(ClockScene STATIC src/scene/Arithmetic.cpp)
+add_library(ClockScene STATIC src/scene/Arithmetic.cpp src/scene/ClockState.cpp src/scene/Camera.cpp)
 target_include_directories(ClockScene PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 if(MSVC)
     target_compile_options(ClockScene PRIVATE /fp:strict)
@@ -196,3 +196,9 @@ add_test(NAME DeviceTest COMMAND DeviceTest)
 
 add_executable(CrystalClock src/app/Main.cpp)
 target_link_libraries(CrystalClock PRIVATE ClockRender)
+
+add_executable(StateTest tests/scene/StateTest.cpp)
+target_link_libraries(StateTest PRIVATE SceneTestSupport)
+if(EXISTS ${SCENE_FIXTURE})
+    add_test(NAME StateTest COMMAND StateTest ${SCENE_FIXTURE})
+endif()
