@@ -7,17 +7,17 @@
 namespace {
 constexpr uint32_t W = 64, H = 32;
 
-scene::Pass pass(scene::Primitive primitive, std::vector<scene::Vertex> vertices) {
-    scene::Pass p{};
+parity::GsPass pass(parity::GsPrimitive primitive, std::vector<parity::GsVertex> vertices) {
+    parity::GsPass p{};
     p.index = 1; p.name = "test"; p.target = "t"; p.primitive = primitive;
     p.scissor = {0, 0, int32_t(W) - 1, int32_t(H) - 1};
-    p.depth = {scene::DepthTest::Always, true};
+    p.depth = {parity::GsDepthTest::Always, true};
     p.vertices = std::move(vertices);
     return p;
 }
-scene::Vertex at(float x, float y, uint32_t depth, float r, float g, float b, float a) { return {x, y, depth, r, g, b, a, 0, 0, 1}; }
+parity::GsVertex at(float x, float y, uint32_t depth, float r, float g, float b, float a) { return {x, y, depth, r, g, b, a, 0, 0, 1}; }
 const uint8_t* px(const std::vector<uint8_t>& image, uint32_t x, uint32_t y) { return &image[(y * W + x) * 4]; }
-const scene::Blend Add{scene::BlendTerm::Source, scene::BlendTerm::Zero, scene::BlendFactor::SourceAlpha, scene::BlendTerm::Destination, 0};
+const parity::GsBlend Add{parity::GsBlendTerm::Source, parity::GsBlendTerm::Zero, parity::GsBlendFactor::SourceAlpha, parity::GsBlendTerm::Destination, 0};
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -30,7 +30,7 @@ int main(int argc, char** argv) {
     // A sprite covers [x0, x1) x [y0, y1) at integer sample points; fractional corners round up.
     renderer.setTarget("t", W, H, black);
     renderer.setDepth(W, H, depth100);
-    renderer.draw(pass(scene::Primitive::Sprites, {at(10, 20, 7, 0, 0, 0, 0), at(13, 22, 7, 10, 20, 30, 128), at(20.5f, 4, 7, 0, 0, 0, 0), at(22.5f, 5, 7, 1, 2, 3, 4)}));
+    renderer.draw(pass(parity::GsPrimitive::Sprites, {at(10, 20, 7, 0, 0, 0, 0), at(13, 22, 7, 10, 20, 30, 128), at(20.5f, 4, 7, 0, 0, 0, 0), at(22.5f, 5, 7, 1, 2, 3, 4)}));
     std::vector<uint8_t> image = renderer.readTarget("t");
     uint32_t lit = 0;
     for (uint32_t y = 0; y < H; y++) for (uint32_t x = 0; x < W; x++) {
@@ -52,10 +52,10 @@ int main(int argc, char** argv) {
         constexpr uint32_t BW = 640, BH = 224;
         renderer.setTarget("big", BW, BH, std::vector<uint8_t>(BW * BH * 4, 0));
         renderer.setDepth(BW, BH, std::vector<uint32_t>(BW * BH, 100));
-        scene::Pass layers = pass(scene::Primitive::Sprites, {});
+        parity::GsPass layers = pass(parity::GsPrimitive::Sprites, {});
         layers.target = "big";
         layers.scissor = {0, 0, int32_t(BW) - 1, int32_t(BH) - 1};
-        layers.depth = {scene::DepthTest::GreaterEqual, true};
+        layers.depth = {parity::GsDepthTest::GreaterEqual, true};
         for (uint32_t i = 0; i < 200; i++) {
             layers.vertices.push_back(at(0, 0, 10000 - i, 0, 0, 0, 0));
             layers.vertices.push_back(at(float(BW), float(BH), 10000 - i, float(1 + i), 0, 0, 128));
@@ -71,7 +71,7 @@ int main(int argc, char** argv) {
 
     // Sixty-four overlapping additive sprites in one pass: each must see the one before it.
     renderer.setTarget("t", W, H, black);
-    scene::Pass stack = pass(scene::Primitive::Sprites, {});
+    parity::GsPass stack = pass(parity::GsPrimitive::Sprites, {});
     for (int i = 0; i < 64; i++) { stack.vertices.push_back(at(0, 0, 0, 0, 0, 0, 0)); stack.vertices.push_back(at(8, 8, 0, 1, 2, 3, 128)); }
     stack.blend = Add;
     renderer.draw(stack);
@@ -81,7 +81,7 @@ int main(int argc, char** argv) {
 
     // Two triangles sharing an edge cover every pixel of their square exactly once.
     renderer.setTarget("t", W, H, black);
-    scene::Pass quad = pass(scene::Primitive::Triangles, {at(3.25f, 2.5f, 0, 1, 1, 1, 128), at(40.75f, 5.125f, 0, 1, 1, 1, 128), at(9.5f, 29.0625f, 0, 1, 1, 1, 128),
+    parity::GsPass quad = pass(parity::GsPrimitive::Triangles, {at(3.25f, 2.5f, 0, 1, 1, 1, 128), at(40.75f, 5.125f, 0, 1, 1, 1, 128), at(9.5f, 29.0625f, 0, 1, 1, 1, 128),
                                                            at(40.75f, 5.125f, 0, 1, 1, 1, 128), at(9.5f, 29.0625f, 0, 1, 1, 1, 128), at(50.0f, 27.5f, 0, 1, 1, 1, 128)});
     quad.blend = Add;
     renderer.draw(quad);
@@ -91,13 +91,13 @@ int main(int argc, char** argv) {
     CHECK(covered > 500);
 
     // Depth tests against a buffer holding 100.
-    const std::tuple<scene::DepthTest, uint32_t, bool> depthCases[] = {
-        {scene::DepthTest::Greater, 100u, false}, {scene::DepthTest::Greater, 101u, true},
-        {scene::DepthTest::GreaterEqual, 100u, true}, {scene::DepthTest::GreaterEqual, 99u, false}, {scene::DepthTest::Never, 500u, false}};
+    const std::tuple<parity::GsDepthTest, uint32_t, bool> depthCases[] = {
+        {parity::GsDepthTest::Greater, 100u, false}, {parity::GsDepthTest::Greater, 101u, true},
+        {parity::GsDepthTest::GreaterEqual, 100u, true}, {parity::GsDepthTest::GreaterEqual, 99u, false}, {parity::GsDepthTest::Never, 500u, false}};
     for (const auto& [test, z, drawn] : depthCases) {
         renderer.setTarget("t", W, H, black);
         renderer.setDepth(W, H, depth100);
-        scene::Pass p = pass(scene::Primitive::Sprites, {at(0, 0, z, 0, 0, 0, 0), at(4, 4, z, 9, 9, 9, 9)});
+        parity::GsPass p = pass(parity::GsPrimitive::Sprites, {at(0, 0, z, 0, 0, 0, 0), at(4, 4, z, 9, 9, 9, 9)});
         p.depth = {test, true};
         renderer.draw(p);
         CHECK((renderer.readTarget("t")[0] == 9) == drawn);
@@ -106,8 +106,8 @@ int main(int argc, char** argv) {
 
     // Subtraction clamps at zero; a scissor cuts.
     renderer.setTarget("t", W, H, std::vector<uint8_t>(W * H * 4, 5));
-    scene::Pass sub = pass(scene::Primitive::Sprites, {at(0, 0, 0, 0, 0, 0, 0), at(8, 8, 0, 9, 3, 0, 128)});
-    sub.blend = scene::Blend{scene::BlendTerm::Zero, scene::BlendTerm::Source, scene::BlendFactor::SourceAlpha, scene::BlendTerm::Destination, 0};
+    parity::GsPass sub = pass(parity::GsPrimitive::Sprites, {at(0, 0, 0, 0, 0, 0, 0), at(8, 8, 0, 9, 3, 0, 128)});
+    sub.blend = parity::GsBlend{parity::GsBlendTerm::Zero, parity::GsBlendTerm::Source, parity::GsBlendFactor::SourceAlpha, parity::GsBlendTerm::Destination, 0};
     sub.scissor = {2, 2, 5, 5};
     renderer.draw(sub);
     image = renderer.readTarget("t");
@@ -115,8 +115,8 @@ int main(int argc, char** argv) {
     CHECK(px(image, 1, 2)[0] == 5 && px(image, 6, 5)[0] == 5);
 
     // A texture that is the pass's own target is refused.
-    scene::Pass self = pass(scene::Primitive::Sprites, {at(0, 0, 0, 0, 0, 0, 0), at(4, 4, 0, 128, 128, 128, 128)});
-    self.texture = scene::Texture{"t", true, 64, 32, scene::Coordinates::Texel, {}, {}, scene::Filter::Nearest, {}};
+    parity::GsPass self = pass(parity::GsPrimitive::Sprites, {at(0, 0, 0, 0, 0, 0, 0), at(4, 4, 0, 128, 128, 128, 128)});
+    self.texture = parity::GsTexture{"t", true, 64, 32, parity::GsCoordinates::Texel, {}, {}, parity::GsFilter::Nearest, {}};
     bool threw = false;
     try { renderer.draw(self); } catch (const std::exception&) { threw = true; }
     CHECK(threw);
@@ -124,13 +124,13 @@ int main(int argc, char** argv) {
     // Nearest and bilinear on a 2x2 texture, texel coordinates: the centre of the four texels is their mean.
     const std::vector<uint8_t> four{0, 0, 0, 128, 64, 0, 0, 128, 0, 64, 0, 128, 64, 64, 0, 128};
     renderer.setTexture("four", 2, 2, four);
-    for (const auto filter : {scene::Filter::Nearest, scene::Filter::Bilinear}) {
+    for (const auto filter : {parity::GsFilter::Nearest, parity::GsFilter::Bilinear}) {
         renderer.setTarget("t", W, H, black);
-        scene::Pass textured = pass(scene::Primitive::Sprites, {{0, 0, 0, 128, 128, 128, 128, 1.0f, 1.0f, 1}, {1, 1, 0, 128, 128, 128, 128, 1.0f, 1.0f, 1}});
-        textured.texture = scene::Texture{"four", false, 2, 2, scene::Coordinates::Texel, {scene::AddressMode::Clamp, 0, 0}, {scene::AddressMode::Clamp, 0, 0}, filter, {}};
+        parity::GsPass textured = pass(parity::GsPrimitive::Sprites, {{0, 0, 0, 128, 128, 128, 128, 1.0f, 1.0f, 1}, {1, 1, 0, 128, 128, 128, 128, 1.0f, 1.0f, 1}});
+        textured.texture = parity::GsTexture{"four", false, 2, 2, parity::GsCoordinates::Texel, {parity::GsAddressMode::Clamp, 0, 0}, {parity::GsAddressMode::Clamp, 0, 0}, filter, {}};
         renderer.draw(textured);
         const uint8_t* p = px(image = renderer.readTarget("t"), 0, 0);
-        if (filter == scene::Filter::Nearest) CHECK(p[0] == 64 && p[1] == 64);
+        if (filter == parity::GsFilter::Nearest) CHECK(p[0] == 64 && p[1] == 64);
         else CHECK(p[0] == 32 && p[1] == 32);
     }
 
@@ -146,11 +146,11 @@ int main(int argc, char** argv) {
         renderer.setTarget("copy", CW, CH, std::vector<uint8_t>(CW * CH * 4, 0));
         renderer.setDepth(CW, CH, std::vector<uint32_t>(CW * CH, 0));
         renderer.setTexture("source", CW, CH, source);
-        scene::Pass copy = pass(scene::Primitive::Sprites, {{0, 0, 0, 128, 128, 128, 128, 0.5f, 0.5f, 1}, {640, 224, 0, 128, 128, 128, 128, 640.5f, 224.5f, 1}});
+        parity::GsPass copy = pass(parity::GsPrimitive::Sprites, {{0, 0, 0, 128, 128, 128, 128, 0.5f, 0.5f, 1}, {640, 224, 0, 128, 128, 128, 128, 640.5f, 224.5f, 1}});
         copy.target = "copy";
         copy.scissor = {0, 0, 639, 223};
-        copy.texture = scene::Texture{"source", false, 1024, 256, scene::Coordinates::Texel, {scene::AddressMode::RegionClamp, 0, 639}, {scene::AddressMode::RegionClamp, 0, 223},
-                                      scene::Filter::Bilinear, {true, 127, true}};
+        copy.texture = parity::GsTexture{"source", false, 1024, 256, parity::GsCoordinates::Texel, {parity::GsAddressMode::RegionClamp, 0, 639}, {parity::GsAddressMode::RegionClamp, 0, 223},
+                                      parity::GsFilter::Bilinear, {true, 127, true}};
         renderer.draw(copy);
         const std::vector<uint8_t> copied = renderer.readTarget("copy");
         uint32_t wrong = 0;
@@ -169,10 +169,10 @@ int main(int argc, char** argv) {
         std::vector<uint8_t> ramp(64 * 64 * 4, 0);
         for (uint32_t i = 0; i < 64 * 64; i++) ramp[i * 4] = uint8_t((i % 64) * 4);
         renderer.setTexture("ramp", 64, 64, ramp);
-        scene::Pass stepped = pass(scene::Primitive::Sprites, {{278.625f, 0, 0, 128, 128, 128, 128, 0, 0, 1}, {339.4375f, 4, 0, 128, 128, 128, 128, 63, 63, 1}});
+        parity::GsPass stepped = pass(parity::GsPrimitive::Sprites, {{278.625f, 0, 0, 128, 128, 128, 128, 0, 0, 1}, {339.4375f, 4, 0, 128, 128, 128, 128, 63, 63, 1}});
         stepped.target = "copy";
         stepped.scissor = {0, 0, 639, 223};
-        stepped.texture = scene::Texture{"ramp", false, 64, 64, scene::Coordinates::Texel, {scene::AddressMode::Clamp, 0, 0}, {scene::AddressMode::Clamp, 0, 0}, scene::Filter::Bilinear, {}};
+        stepped.texture = parity::GsTexture{"ramp", false, 64, 64, parity::GsCoordinates::Texel, {parity::GsAddressMode::Clamp, 0, 0}, {parity::GsAddressMode::Clamp, 0, 0}, parity::GsFilter::Bilinear, {}};
         renderer.draw(stepped);
         const std::vector<uint8_t> steps = renderer.readTarget("copy");
         if (steps[296 * 4] != 69) std::fprintf(stderr, "stepped: x 296 red %d\n", steps[296 * 4]);
@@ -185,8 +185,8 @@ int main(int argc, char** argv) {
         const std::vector<uint8_t> white{255, 255, 255, 128};
         renderer.setTexture("white", 1, 1, white);
         renderer.setTarget("t", W, H, black);
-        scene::Pass shaded = pass(scene::Primitive::Triangles, {{0, 0, 0, 100, 0, 0, 128, 0, 0, 1}, {64, 0, 0, 132, 0, 0, 128, 0, 0, 1}, {0, 32, 0, 100, 0, 0, 128, 0, 0, 1}});
-        shaded.texture = scene::Texture{"white", false, 1, 1, scene::Coordinates::Texel, {scene::AddressMode::Clamp, 0, 0}, {scene::AddressMode::Clamp, 0, 0}, scene::Filter::Nearest, {}};
+        parity::GsPass shaded = pass(parity::GsPrimitive::Triangles, {{0, 0, 0, 100, 0, 0, 128, 0, 0, 1}, {64, 0, 0, 132, 0, 0, 128, 0, 0, 1}, {0, 32, 0, 100, 0, 0, 128, 0, 0, 1}});
+        shaded.texture = parity::GsTexture{"white", false, 1, 1, parity::GsCoordinates::Texel, {parity::GsAddressMode::Clamp, 0, 0}, {parity::GsAddressMode::Clamp, 0, 0}, parity::GsFilter::Nearest, {}};
         renderer.draw(shaded);
         image = renderer.readTarget("t");
         if (px(image, 1, 1)[0] != 200 || px(image, 3, 1)[0] != 202) std::fprintf(stderr, "gouraud: %d %d\n", px(image, 1, 1)[0], px(image, 3, 1)[0]);
@@ -199,7 +199,7 @@ int main(int argc, char** argv) {
     {
         renderer.setTarget("t", W, H, black);
         renderer.setDepth(W, H, depth100);
-        renderer.draw(pass(scene::Primitive::Triangles, {at(0, 0, 0, 0, 0, 0, 128), at(60, 0, 0, 58, 0, 0, 128), at(0, 60, 0, 0, 0, 0, 128)}));
+        renderer.draw(pass(parity::GsPrimitive::Triangles, {at(0, 0, 0, 0, 0, 0, 128), at(60, 0, 0, 58, 0, 0, 128), at(0, 60, 0, 0, 0, 0, 128)}));
         image = renderer.readTarget("t");
         if (px(image, 57, 1)[0] != 54) std::fprintf(stderr, "walked: red %d\n", px(image, 57, 1)[0]);
         CHECK(px(image, 57, 1)[0] == 54);
@@ -207,7 +207,7 @@ int main(int argc, char** argv) {
         // Depth steps in doubles from the float k3 = float(60 / -3600) = -0.01666666753590107: B's Z 2147479552 gives a step of
         // 35791327.73332977; at (40,1), block 10 lane 0, ten additions of 4 * step give 1431653109.33, truncated 1431653109 (exact: ...034.67).
         renderer.setDepth(W, H, depth100);
-        renderer.draw(pass(scene::Primitive::Triangles, {at(0, 0, 0, 0, 0, 0, 128), at(60, 0, 2147479552u, 0, 0, 0, 128), at(0, 60, 0, 0, 0, 0, 128)}));
+        renderer.draw(pass(parity::GsPrimitive::Triangles, {at(0, 0, 0, 0, 0, 0, 128), at(60, 0, 2147479552u, 0, 0, 0, 128), at(0, 60, 0, 0, 0, 0, 128)}));
         const uint32_t z = renderer.readDepth()[1 * W + 40];
         if (z != 1431653109u) std::fprintf(stderr, "walked: depth %u\n", z);
         CHECK(z == 1431653109u);
@@ -221,8 +221,8 @@ int main(int argc, char** argv) {
         // step float(-(405 * 4096 * float(49.8125 / -2481.28515625))) = 33302.484375; at (46,1): -32768 + int(33302.48 * 2) + 11 * 133209
         // = 1499135, texel 22, weight 13, red 195 (exact: 1499146.3, weight 14).
         renderer.setTarget("t", W, H, black);
-        scene::Pass texel = pass(scene::Primitive::Triangles, {{0, 0, 0, 128, 128, 128, 128, 0, 0, 1}, {49.8125f, 0, 0, 128, 128, 128, 128, 25.3125f, 0, 1}, {0, 49.8125f, 0, 128, 128, 128, 128, 0, 0, 1}});
-        texel.texture = scene::Texture{"stripes", false, 64, 64, scene::Coordinates::Texel, {scene::AddressMode::Clamp, 0, 0}, {scene::AddressMode::Clamp, 0, 0}, scene::Filter::Bilinear, {}};
+        parity::GsPass texel = pass(parity::GsPrimitive::Triangles, {{0, 0, 0, 128, 128, 128, 128, 0, 0, 1}, {49.8125f, 0, 0, 128, 128, 128, 128, 25.3125f, 0, 1}, {0, 49.8125f, 0, 128, 128, 128, 128, 0, 0, 1}});
+        texel.texture = parity::GsTexture{"stripes", false, 64, 64, parity::GsCoordinates::Texel, {parity::GsAddressMode::Clamp, 0, 0}, {parity::GsAddressMode::Clamp, 0, 0}, parity::GsFilter::Bilinear, {}};
         renderer.draw(texel);
         image = renderer.readTarget("t");
         if (px(image, 46, 1)[0] != 195) std::fprintf(stderr, "walked: texel red %d\n", px(image, 46, 1)[0]);
@@ -232,8 +232,8 @@ int main(int argc, char** argv) {
         // C(0,57.0625) S 0 Q 1, texture 64 wide. At (48,1) the GS reads u = int(s / q) - 0x8000 = 69910520: texel 1066 (42 after
         // repeat), weight 11, red 165 (exact: 69910557, weight 12).
         renderer.setTarget("t", W, H, black);
-        scene::Pass projective = pass(scene::Primitive::Triangles, {{0, 0, 0, 128, 128, 128, 128, 0, 0, 1}, {57.0625f, 0, 0, 128, 128, 128, 128, 36.5f, 0, 2}, {0, 57.0625f, 0, 128, 128, 128, 128, 0, 0, 1}});
-        projective.texture = scene::Texture{"stripes", false, 64, 64, scene::Coordinates::Projective, {scene::AddressMode::Repeat, 0, 0}, {scene::AddressMode::Repeat, 0, 0}, scene::Filter::Bilinear, {}};
+        parity::GsPass projective = pass(parity::GsPrimitive::Triangles, {{0, 0, 0, 128, 128, 128, 128, 0, 0, 1}, {57.0625f, 0, 0, 128, 128, 128, 128, 36.5f, 0, 2}, {0, 57.0625f, 0, 128, 128, 128, 128, 0, 0, 1}});
+        projective.texture = parity::GsTexture{"stripes", false, 64, 64, parity::GsCoordinates::Projective, {parity::GsAddressMode::Repeat, 0, 0}, {parity::GsAddressMode::Repeat, 0, 0}, parity::GsFilter::Bilinear, {}};
         renderer.draw(projective);
         image = renderer.readTarget("t");
         if (px(image, 48, 1)[0] != 165) std::fprintf(stderr, "walked: projective red %d\n", px(image, 48, 1)[0]);
@@ -243,8 +243,8 @@ int main(int argc, char** argv) {
         // taken off the vertices. B's S 0.791015625 gives 0.3955078125 * 4194304 = 1658880 = 405 * 4096, the texel case above:
         // at (46,1) u = 1499135, weight 13, red 195 (S / Q per pixel would read 1499146, weight 14, red 210).
         renderer.setTarget("t", W, H, black);
-        scene::Pass equalQ = pass(scene::Primitive::Triangles, {{0, 0, 0, 128, 128, 128, 128, 0, 0, 2}, {49.8125f, 0, 0, 128, 128, 128, 128, 0.791015625f, 0, 2}, {0, 49.8125f, 0, 128, 128, 128, 128, 0, 0, 2}});
-        equalQ.texture = scene::Texture{"stripes", false, 64, 64, scene::Coordinates::Projective, {scene::AddressMode::Clamp, 0, 0}, {scene::AddressMode::Clamp, 0, 0}, scene::Filter::Bilinear, {}};
+        parity::GsPass equalQ = pass(parity::GsPrimitive::Triangles, {{0, 0, 0, 128, 128, 128, 128, 0, 0, 2}, {49.8125f, 0, 0, 128, 128, 128, 128, 0.791015625f, 0, 2}, {0, 49.8125f, 0, 128, 128, 128, 128, 0, 0, 2}});
+        equalQ.texture = parity::GsTexture{"stripes", false, 64, 64, parity::GsCoordinates::Projective, {parity::GsAddressMode::Clamp, 0, 0}, {parity::GsAddressMode::Clamp, 0, 0}, parity::GsFilter::Bilinear, {}};
         renderer.draw(equalQ);
         image = renderer.readTarget("t");
         if (px(image, 46, 1)[0] != 195) std::fprintf(stderr, "walked: equal Q red %d\n", px(image, 46, 1)[0]);
@@ -255,7 +255,7 @@ int main(int argc, char** argv) {
         // at 8192. At (37,1), lane 1 starts at 7936; eight blocks take it to -256, floored to 0; the ninth stays 0: red 0. Without the
         // floor, 7936 - 9 * 1024 = -1280 wraps to 0xfb00, >> 7 = 502, saturated 255.
         renderer.setTarget("t", W, H, black);
-        renderer.draw(pass(scene::Primitive::Triangles, {at(0, 0, 0, 64, 0, 0, 128), at(64, 0, 0, -64, 0, 0, 128), at(0, 64, 0, 64, 0, 0, 128)}));
+        renderer.draw(pass(parity::GsPrimitive::Triangles, {at(0, 0, 0, 64, 0, 0, 128), at(64, 0, 0, -64, 0, 0, 128), at(0, 64, 0, 64, 0, 0, 128)}));
         image = renderer.readTarget("t");
         if (px(image, 37, 1)[0] != 0 || px(image, 4, 1)[0] != 56) std::fprintf(stderr, "walked: floor red %d %d\n", px(image, 37, 1)[0], px(image, 4, 1)[0]);
         CHECK(px(image, 37, 1)[0] == 0 && px(image, 4, 1)[0] == 56);
@@ -264,7 +264,7 @@ int main(int argc, char** argv) {
         // cross -1024, dscan red = -(8192 * (32 / -1024)) = 256, dedge red 0; at row 20, dy 4, left ceil(0 + 0 * 4) = 0, prestep 0 - 32,
         // scan 8192 + 256 * -32 = 0; at x 10 (block 2, lane 2) 512 + 2 * 1024 = 2560, red 20.
         renderer.setTarget("t", W, H, black);
-        renderer.draw(pass(scene::Primitive::Triangles, {at(0, 0, 0, 0, 0, 0, 128), at(32, 16, 0, 64, 0, 0, 128), at(0, 32, 0, 0, 0, 0, 128)}));
+        renderer.draw(pass(parity::GsPrimitive::Triangles, {at(0, 0, 0, 0, 0, 0, 128), at(32, 16, 0, 64, 0, 0, 128), at(0, 32, 0, 0, 0, 0, 128)}));
         image = renderer.readTarget("t");
         if (px(image, 10, 20)[0] != 20) std::fprintf(stderr, "walked: lower section red %d\n", px(image, 10, 20)[0]);
         CHECK(px(image, 10, 20)[0] == 20);
@@ -272,13 +272,13 @@ int main(int argc, char** argv) {
 
     // PRIM.AA1: a triangle's interior takes alpha 0x80, then each edge adds one pixel per major step on its outside, with the
     // coverage 1 - (distance from that pixel's centre to the edge) as alpha (cov16 >> 9), blended with ALPHA, depth tested, not written.
-    const scene::Blend Coverage{scene::BlendTerm::Source, scene::BlendTerm::Destination, scene::BlendFactor::SourceAlpha, scene::BlendTerm::Destination, 0};
+    const parity::GsBlend Coverage{parity::GsBlendTerm::Source, parity::GsBlendTerm::Destination, parity::GsBlendFactor::SourceAlpha, parity::GsBlendTerm::Destination, 0};
     {
         // Top edge y 2.25 (horizontal, top-left, outside is up): row 2 sits 0.25 above it, cov int(65535 * 0.75) = 49151, alpha 95;
         // red 128 * 95 >> 7 = 95 over black. Row 3 is interior: red 128, alpha 128, depth written.
         renderer.setTarget("t", W, H, black);
         renderer.setDepth(W, H, depth100);
-        scene::Pass top = pass(scene::Primitive::Triangles, {at(4.5f, 2.25f, 7, 128, 0, 0, 64), at(40.5f, 2.25f, 7, 128, 0, 0, 64), at(4.5f, 28.25f, 7, 128, 0, 0, 64)});
+        parity::GsPass top = pass(parity::GsPrimitive::Triangles, {at(4.5f, 2.25f, 7, 128, 0, 0, 64), at(40.5f, 2.25f, 7, 128, 0, 0, 64), at(4.5f, 28.25f, 7, 128, 0, 0, 64)});
         top.antialias = true;
         top.blend = Coverage;
         renderer.draw(top);
@@ -295,7 +295,7 @@ int main(int argc, char** argv) {
         // by the right interior: (11,10) is green 128, alpha 128. The right triangle's ring on x 10 blends green at 63 over red:
         // red ((0 - 128) * 63 >> 7) + 128 = 65, green 128 * 63 >> 7 = 63, alpha 63.
         renderer.setTarget("t", W, H, black);
-        scene::Pass pair = pass(scene::Primitive::Triangles, {at(2.5f, 2, 0, 128, 0, 0, 64), at(10.5f, 2, 0, 128, 0, 0, 64), at(10.5f, 20, 0, 128, 0, 0, 64),
+        parity::GsPass pair = pass(parity::GsPrimitive::Triangles, {at(2.5f, 2, 0, 128, 0, 0, 64), at(10.5f, 2, 0, 128, 0, 0, 64), at(10.5f, 20, 0, 128, 0, 0, 64),
                                                               at(10.5f, 2, 0, 0, 128, 0, 64), at(10.5f, 20, 0, 0, 128, 0, 64), at(18.5f, 20, 0, 0, 128, 0, 64)});
         pair.antialias = true;
         pair.blend = Coverage;
@@ -312,9 +312,9 @@ int main(int argc, char** argv) {
         // the left ring on x 11 wrote no Z, so the right interior (500 >= 100) still covers (11,10).
         renderer.setTarget("t", W, H, black);
         renderer.setDepth(W, H, depth100);
-        scene::Pass deep = pair;
+        parity::GsPass deep = pair;
         for (size_t i = 0; i < 6; i++) deep.vertices[i].depth = i < 3 ? 1000 : 500;
-        deep.depth = {scene::DepthTest::GreaterEqual, true};
+        deep.depth = {parity::GsDepthTest::GreaterEqual, true};
         renderer.draw(deep);
         image = renderer.readTarget("t");
         if (px(image, 10, 10)[0] != 128 || px(image, 10, 10)[3] != 128 || px(image, 11, 10)[1] != 128)
@@ -326,10 +326,10 @@ int main(int argc, char** argv) {
         // the neighbour (x, 11) 16383 >> 9 = 31. Additive red 200: 200 * 96 >> 7 = 150, 200 * 31 >> 7 = 48. No depth is written.
         renderer.setTarget("t", W, H, black);
         renderer.setDepth(W, H, depth100);
-        scene::Pass line = pass(scene::Primitive::Lines, {at(2, 10.25f, 500, 200, 0, 0, 64), at(20, 10.25f, 500, 200, 0, 0, 64)});
+        parity::GsPass line = pass(parity::GsPrimitive::Lines, {at(2, 10.25f, 500, 200, 0, 0, 64), at(20, 10.25f, 500, 200, 0, 0, 64)});
         line.antialias = true;
         line.blend = Add;
-        line.depth = {scene::DepthTest::Greater, true};
+        line.depth = {parity::GsDepthTest::Greater, true};
         renderer.draw(line);
         image = renderer.readTarget("t");
         depth = renderer.readDepth();
@@ -352,8 +352,8 @@ int main(int argc, char** argv) {
         for (const uint32_t cz : {7u, 8u}) {
             renderer.setTarget("t", W, H, black);
             renderer.setDepth(W, H, depth100);
-            scene::Pass rounded = pass(scene::Primitive::Triangles, {{0, 0, 7, 128, 128, 128, 128, 0.75f, 0, q}, {40, 0, 7, 128, 128, 128, 128, 0.75f, 0, q}, {0, 30, cz, 128, 128, 128, 128, 0.75f, 0, q}});
-            rounded.texture = scene::Texture{"stripes", false, 64, 64, scene::Coordinates::Projective, {scene::AddressMode::Repeat, 0, 0}, {scene::AddressMode::Repeat, 0, 0}, scene::Filter::Bilinear, {}};
+            parity::GsPass rounded = pass(parity::GsPrimitive::Triangles, {{0, 0, 7, 128, 128, 128, 128, 0.75f, 0, q}, {40, 0, 7, 128, 128, 128, 128, 0.75f, 0, q}, {0, 30, cz, 128, 128, 128, 128, 0.75f, 0, q}});
+            rounded.texture = parity::GsTexture{"stripes", false, 64, 64, parity::GsCoordinates::Projective, {parity::GsAddressMode::Repeat, 0, 0}, {parity::GsAddressMode::Repeat, 0, 0}, parity::GsFilter::Bilinear, {}};
             renderer.draw(rounded);
             image = renderer.readTarget("t");
             const uint8_t expected = cz == 7 ? 120 : 135;

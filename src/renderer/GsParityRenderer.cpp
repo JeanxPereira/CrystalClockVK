@@ -45,7 +45,7 @@ VkShaderModule loadShader(VkDevice device, const std::filesystem::path& path) {
     return module;
 }
 
-GpuVertex convert(const scene::Vertex& v) {
+GpuVertex convert(const parity::GsVertex& v) {
     GpuVertex g{};
     g.x = v.x; g.y = v.y; g.depthHigh = float(v.depth >> 12); g.depthLow = float(v.depth & 0xfff);
     g.r = v.r; g.g = v.g; g.b = v.b; g.a = v.a; g.s = v.s; g.t = v.t; g.q = v.q;
@@ -55,18 +55,18 @@ GpuVertex convert(const scene::Vertex& v) {
 // A sprite is two corners; colour, depth and Q are the second vertex's. Its texture coordinate follows the GS
 // rasterizer: corners sorted per axis, step = (t1 - t0) / (p1 - p0) in floats, start = t0 + step * (first pixel - p0);
 // coordinates are 1/65536 texel (UV << 12, or S/Q times 65536 << TW), less half a texel when filtering bilinearly.
-void expandSprite(const scene::Vertex& a, const scene::Vertex& b, const scene::Pass& pass, std::vector<GpuVertex>& out) {
-    const scene::Texture* texture = pass.texture ? &*pass.texture : nullptr;
+void expandSprite(const parity::GsVertex& a, const parity::GsVertex& b, const parity::GsPass& pass, std::vector<GpuVertex>& out) {
+    const parity::GsTexture* texture = pass.texture ? &*pass.texture : nullptr;
     float ta[2] = {0, 0}, tb[2] = {0, 0};
     if (texture) {
-        if (texture->coordinates == scene::Coordinates::Projective) {
+        if (texture->coordinates == parity::GsCoordinates::Projective) {
             ta[0] = a.s / b.q * float(texture->width << 16); ta[1] = a.t / b.q * float(texture->height << 16);
             tb[0] = b.s / b.q * float(texture->width << 16); tb[1] = b.t / b.q * float(texture->height << 16);
         } else {
             ta[0] = a.s * 65536.0f; ta[1] = a.t * 65536.0f;
             tb[0] = b.s * 65536.0f; tb[1] = b.t * 65536.0f;
         }
-        if (texture->filter == scene::Filter::Bilinear) for (int i = 0; i < 2; i++) { ta[i] -= 32768.0f; tb[i] -= 32768.0f; }
+        if (texture->filter == parity::GsFilter::Bilinear) for (int i = 0; i < 2; i++) { ta[i] -= 32768.0f; tb[i] -= 32768.0f; }
     }
     const float pa[2] = {a.x, a.y}, pb[2] = {b.x, b.y};
     const int32_t scissorLow[2] = {pass.scissor.x0, pass.scissor.y0};
@@ -83,7 +83,7 @@ void expandSprite(const scene::Vertex& a, const scene::Vertex& b, const scene::P
         start[i] = t0 + moved;
     }
     auto corner = [&](float x, float y) {
-        scene::Vertex v = b;
+        parity::GsVertex v = b;
         v.x = x; v.y = y;
         GpuVertex g = convert(v);
         g.steppedU = start[0]; g.steppedV = start[1]; g.stepU = step[0]; g.stepV = step[1];
@@ -135,19 +135,19 @@ struct Span { int32_t left, top, pixels; SwVertex scan; };
 // How a pass's texture coordinates are stepped: integers (FST, or every Q equal), or S T Q floats divided per pixel.
 struct TextureSteps { bool integer; bool halfShift; };
 
-TextureSteps textureSteps(const scene::Pass& pass) {
+TextureSteps textureSteps(const parity::GsPass& pass) {
     if (!pass.texture) return {true, false};
     bool equalQ = true;
-    for (const scene::Vertex& v : pass.vertices) equalQ = equalQ && v.q == pass.vertices.front().q;
-    const bool integer = pass.texture->coordinates == scene::Coordinates::Texel || equalQ;
-    return {integer, integer && pass.texture->filter == scene::Filter::Bilinear};
+    for (const parity::GsVertex& v : pass.vertices) equalQ = equalQ && v.q == pass.vertices.front().q;
+    const bool integer = pass.texture->coordinates == parity::GsCoordinates::Texel || equalQ;
+    return {integer, integer && pass.texture->filter == parity::GsFilter::Bilinear};
 }
 
-SwVertex swVertex(const scene::Vertex& v, const scene::Pass& pass, TextureSteps steps) {
+SwVertex swVertex(const parity::GsVertex& v, const parity::GsPass& pass, TextureSteps steps) {
     SwVertex out{v.x, v.y, double(v.depth), {0, 0, 0}, {v.r * 128.0f, v.g * 128.0f, v.b * 128.0f, v.a * 128.0f}};
     if (!pass.texture) return out;
     const float width = float(pass.texture->width << 16), height = float(pass.texture->height << 16);
-    if (pass.texture->coordinates == scene::Coordinates::Texel) {
+    if (pass.texture->coordinates == parity::GsCoordinates::Texel) {
         out.t[0] = v.s * 65536.0f; out.t[1] = v.t * 65536.0f;
     } else if (steps.integer) {
         out.t[0] = v.s / v.q * width; out.t[1] = v.t / v.q * height; out.t[2] = 1.0f;
@@ -161,7 +161,7 @@ SwVertex swVertex(const scene::Vertex& v, const scene::Pass& pass, TextureSteps 
 // One section of a triangle: per row the edges give [ceil(left), ceil(right)) inside the scissor, and the row's values are
 // edge + dedge * dy + dscan * prestep, in that order, with dy and prestep measured from p0.
 void walkSection(int32_t top, int32_t bottom, const SwVertex& edge, float edgeRight, const SwVertex& dedge, float dedgeRight, const SwVertex& dscan,
-                 float p0x, float p0y, const scene::Scissor& scissor, std::vector<Span>& spans) {
+                 float p0x, float p0y, const parity::GsScissor& scissor, std::vector<Span>& spans) {
     for (int32_t y = top; y < bottom; y++) {
         const float dy = float(y) - p0y;
         const float left = std::max(std::ceil(edge.x + dedge.x * dy), float(scissor.x0));
@@ -178,7 +178,7 @@ void walkSection(int32_t top, int32_t bottom, const SwVertex& edge, float edgeRi
 
 // GSRasterizer::DrawTriangle (SSE4.1 build): sort by y, step per pixel (dscan) and per row (dedge) from the negated cross
 // product, then one or two sections between the rows of the vertices.
-bool walkTriangle(const SwVertex* vertex, const scene::Scissor& scissor, std::vector<Span>& spans, SwVertex& dscan) {
+bool walkTriangle(const SwVertex* vertex, const parity::GsScissor& scissor, std::vector<Span>& spans, SwVertex& dscan) {
     static const int order[8][3] = {{0, 1, 2}, {1, 0, 2}, {0, 0, 0}, {1, 2, 0}, {0, 2, 1}, {0, 0, 0}, {2, 0, 1}, {2, 1, 0}};
     int m1 = (vertex[0].y > vertex[1].y ? 1 : 0) | (vertex[0].y > vertex[2].y ? 2 : 0) | (vertex[1].y > vertex[2].y ? 4 : 0);
     const SwVertex v[3] = {vertex[order[m1][0]], vertex[order[m1][1]], vertex[order[m1][2]]};
@@ -290,7 +290,7 @@ EdgeWalk edgeWalk(const SwVertex& dv) {
 // GSRasterizer.cpp DrawEdgeTriangle: one pixel per major step from one pixel before a to one past b, the first pixel outside the
 // edge on the minor axis, kept if inside the two other edges, the scissor and the edge's box (x not widened, y widened by 1).
 // Coverage is 0xffff times 1 - (that pixel's distance to the edge), in doubles.
-void walkTriangleEdge(const SwVertex& a, const SwVertex& b, const EdgeFunction& f1, const EdgeFunction& f2, bool tl, const scene::Scissor& scissor, std::vector<EdgePixel>& out) {
+void walkTriangleEdge(const SwVertex& a, const SwVertex& b, const EdgeFunction& f1, const EdgeFunction& f2, bool tl, const parity::GsScissor& scissor, std::vector<EdgePixel>& out) {
     const SwVertex dv = b - a;
     if (dv.x == 0.0f && dv.y == 0.0f) return;
     EdgeWalk walk = edgeWalk(dv);
@@ -328,7 +328,7 @@ void walkTriangleEdge(const SwVertex& a, const SwVertex& b, const EdgeFunction& 
 
 // GSRasterizer.cpp DrawTriangle (edges): the y-sorted vertices' integer edge functions, negated when clockwise, +1 on top-left
 // edges, then the edges v0v1, v0v2, v1v2 in that order.
-void walkTriangleEdges(const SwVertex* vertex, const scene::Scissor& scissor, std::vector<EdgePixel>& out) {
+void walkTriangleEdges(const SwVertex* vertex, const parity::GsScissor& scissor, std::vector<EdgePixel>& out) {
     static const int order[8][3] = {{0, 1, 2}, {1, 0, 2}, {0, 0, 0}, {1, 2, 0}, {0, 2, 1}, {0, 0, 0}, {2, 0, 1}, {2, 1, 0}};
     const int m1 = (vertex[0].y > vertex[1].y ? 1 : 0) | (vertex[0].y > vertex[2].y ? 2 : 0) | (vertex[1].y > vertex[2].y ? 4 : 0);
     const SwVertex v[3] = {vertex[order[m1][0]], vertex[order[m1][1]], vertex[order[m1][2]]};
@@ -355,7 +355,7 @@ void walkTriangleEdges(const SwVertex* vertex, const scene::Scissor& scissor, st
 // GSRasterizer.cpp DrawEdgeLine with AA1: endpoints round to the nearest pixel and the diamond rule decides the first and last;
 // per major step the pixel on the line takes 0xffff - cov and its minor neighbour toward the line cov, cov = 0xffff * |D / scaleD|
 // in floats.
-void walkLine(const SwVertex& a, const SwVertex& b, const scene::Scissor& scissor, std::vector<EdgePixel>& out) {
+void walkLine(const SwVertex& a, const SwVertex& b, const parity::GsScissor& scissor, std::vector<EdgePixel>& out) {
     const SwVertex dv = b - a;
     EdgeWalk walk = edgeWalk(dv);
     float rx0 = std::floor(a.x + 0.5f), ry0 = std::floor(a.y + 0.5f), rx1 = std::floor(b.x + 0.5f), ry1 = std::floor(b.y + 0.5f);
@@ -394,17 +394,17 @@ float roundedDown(float value, int bits) {
     return std::bit_cast<float>(u);
 }
 
-bool roundsCoordinates(const scene::Pass& pass) {
-    if (!pass.texture || pass.texture->coordinates != scene::Coordinates::Projective || pass.vertices.empty()) return false;
-    if (pass.primitive == scene::Primitive::Sprites) return true;
-    for (const scene::Vertex& v : pass.vertices) if (v.depth != pass.vertices.front().depth) return false;
+bool roundsCoordinates(const parity::GsPass& pass) {
+    if (!pass.texture || pass.texture->coordinates != parity::GsCoordinates::Projective || pass.vertices.empty()) return false;
+    if (pass.primitive == parity::GsPrimitive::Sprites) return true;
+    for (const parity::GsVertex& v : pass.vertices) if (v.depth != pass.vertices.front().depth) return false;
     return true;
 }
 
-scene::Pass withRoundedCoordinates(const scene::Pass& pass) {
-    scene::Pass rounded = pass;
+parity::GsPass withRoundedCoordinates(const parity::GsPass& pass) {
+    parity::GsPass rounded = pass;
     auto exponent = [](float value) { return int((std::bit_cast<uint32_t>(value) >> 23) & 0xff); };
-    for (scene::Vertex& v : rounded.vertices) {
+    for (parity::GsVertex& v : rounded.vertices) {
         const int s = exponent(v.s), t = exponent(v.t), q = exponent(v.q);
         v.s = roundedDown(v.s, 9 + std::max(s, q) - s);
         v.t = roundedDown(v.t, 9 + std::max(t, q) - t);
@@ -443,7 +443,7 @@ void pushEdges(const std::vector<EdgePixel>& pixels, std::vector<GpuVertex>& out
 
 // Each row becomes a rectangle over exactly its pixels, carrying the row's start and the triangle's steps. With AA1 the
 // triangle's edge pixels follow its rows, before the next triangle.
-void expandTriangle(const scene::Vertex* corners, const scene::Pass& pass, TextureSteps steps, std::vector<GpuVertex>& out) {
+void expandTriangle(const parity::GsVertex* corners, const parity::GsPass& pass, TextureSteps steps, std::vector<GpuVertex>& out) {
     const SwVertex vertex[3] = {swVertex(corners[0], pass, steps), swVertex(corners[1], pass, steps), swVertex(corners[2], pass, steps)};
     std::vector<Span> spans;
     SwVertex dscan;
@@ -468,7 +468,7 @@ void expandTriangle(const scene::Vertex* corners, const scene::Pass& pass, Textu
 }
 
 // An AA1 line is all edge pixels, segment by segment.
-void expandLine(const scene::Vertex& a, const scene::Vertex& b, const scene::Pass& pass, TextureSteps steps, std::vector<GpuVertex>& out) {
+void expandLine(const parity::GsVertex& a, const parity::GsVertex& b, const parity::GsPass& pass, TextureSteps steps, std::vector<GpuVertex>& out) {
     std::vector<EdgePixel> pixels;
     walkLine(swVertex(a, pass, steps), swVertex(b, pass, steps), pass.scissor, pixels);
     pushEdges(pixels, out);
@@ -771,9 +771,9 @@ std::vector<uint32_t> GsParityRenderer::readDepth() {
     return out;
 }
 
-void GsParityRenderer::draw(const scene::Pass& given) {
-    const scene::Pass rounded = roundsCoordinates(given) ? withRoundedCoordinates(given) : scene::Pass{};
-    const scene::Pass& pass = roundsCoordinates(given) ? rounded : given;
+void GsParityRenderer::draw(const parity::GsPass& given) {
+    const parity::GsPass rounded = roundsCoordinates(given) ? withRoundedCoordinates(given) : parity::GsPass{};
+    const parity::GsPass& pass = roundsCoordinates(given) ? rounded : given;
     if (!pass.skip.empty()) throw std::logic_error(pass.name + " cannot be drawn: " + pass.skip);
     const auto target = m_targets.find(pass.target);
     if (target == m_targets.end()) throw std::runtime_error(pass.name + ": no target " + pass.target);
@@ -788,10 +788,10 @@ void GsParityRenderer::draw(const scene::Pass& given) {
         texture = &found->second;
     }
 
-    const bool sprites = pass.primitive == scene::Primitive::Sprites;
-    const bool triangles = pass.primitive == scene::Primitive::Triangles;
-    const bool antialiasedLines = pass.primitive == scene::Primitive::Lines && pass.antialias;
-    const bool projective = pass.texture && pass.texture->coordinates == scene::Coordinates::Projective;
+    const bool sprites = pass.primitive == parity::GsPrimitive::Sprites;
+    const bool triangles = pass.primitive == parity::GsPrimitive::Triangles;
+    const bool antialiasedLines = pass.primitive == parity::GsPrimitive::Lines && pass.antialias;
+    const bool projective = pass.texture && pass.texture->coordinates == parity::GsCoordinates::Projective;
     const TextureSteps steps = textureSteps(pass);
     std::vector<GpuVertex> vertices;
     if (sprites) {
@@ -804,7 +804,7 @@ void GsParityRenderer::draw(const scene::Pass& given) {
         if (pass.vertices.size() % 2) throw std::runtime_error(pass.name + ": odd number of line ends");
         for (size_t i = 0; i < pass.vertices.size(); i += 2) expandLine(pass.vertices[i], pass.vertices[i + 1], pass, steps, vertices);
     } else {
-        for (const scene::Vertex& v : pass.vertices) vertices.push_back(convert(v));
+        for (const parity::GsVertex& v : pass.vertices) vertices.push_back(convert(v));
     }
     if (vertices.empty()) return;
 
@@ -818,7 +818,7 @@ void GsParityRenderer::draw(const scene::Pass& given) {
     state.misc[2] = int(pass.depth.test);
     state.misc[3] = pass.depth.write ? 1 : 0;
     if (pass.texture) {
-        const scene::Texture& t = *pass.texture;
+        const parity::GsTexture& t = *pass.texture;
         state.tex[0] = 1;
         state.tex[1] = sprites ? 2 : (triangles || antialiasedLines) ? (steps.integer ? 0 : 1) : projective ? 1 : 0;
         state.tex[2] = int(t.filter);
@@ -858,7 +858,7 @@ void GsParityRenderer::draw(const scene::Pass& given) {
         rendering.renderArea = {{0, 0}, extent};
         rendering.layerCount = 1;
         vkCmdBeginRendering(cmd, &rendering);
-        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pass.primitive == scene::Primitive::Lines && !antialiasedLines ? m_lines : m_triangles);
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pass.primitive == parity::GsPrimitive::Lines && !antialiasedLines ? m_lines : m_triangles);
         const VkViewport viewport{0, 0, float(extent.width), float(extent.height), 0, 1};
         const VkRect2D scissor{{0, 0}, extent};
         vkCmdSetViewport(cmd, 0, 1, &viewport);

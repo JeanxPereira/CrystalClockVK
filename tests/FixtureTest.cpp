@@ -16,17 +16,17 @@ int main(int argc, char** argv) {
         CHECK(fixture.targetStart.at(target.id).rgba.size() == 640u * 224u * 4u);
     }
 
-    const scene::Pass& copy = frame.passes[2];
-    CHECK(copy.primitive == scene::Primitive::Sprites);
+    const parity::GsPass& copy = frame.passes[2];
+    CHECK(copy.primitive == parity::GsPrimitive::Sprites);
     CHECK(copy.target == "fb1a40");
     CHECK(copy.texture && copy.texture->sourceIsTarget && copy.texture->source == "fb0000");
     CHECK(copy.texture->alpha.constant && copy.texture->alpha.value == 127 && copy.texture->alpha.zeroWhenBlack);
-    CHECK(copy.texture->addressU.mode == scene::AddressMode::RegionClamp && copy.texture->addressU.max == 639);
-    CHECK(copy.texture->filter == scene::Filter::Bilinear);
+    CHECK(copy.texture->addressU.mode == parity::GsAddressMode::RegionClamp && copy.texture->addressU.max == 639);
+    CHECK(copy.texture->filter == parity::GsFilter::Bilinear);
     CHECK(!copy.blend);
     CHECK(copy.vertices.size() == 2 && copy.vertices[1].x == 640.0f && copy.vertices[1].y == 224.0f);
 
-    CHECK(std::count_if(frame.passes.begin(), frame.passes.end(), [](const scene::Pass& p) { return !p.skip.empty(); }) == 26);
+    CHECK(std::count_if(frame.passes.begin(), frame.passes.end(), [](const parity::GsPass& p) { return !p.skip.empty(); }) == 26);
 
     const parity::Image afterCopy = fixture.oracleColour(2);
     CHECK(afterCopy.width == 640 && afterCopy.height == 224);

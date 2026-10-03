@@ -19,13 +19,13 @@ std::vector<uint8_t> readFile(const std::filesystem::path& path) {
     return std::vector<uint8_t>(std::istreambuf_iterator<char>(in), {});
 }
 
-scene::BlendTerm term(const std::string& v) {
-    return pick<scene::BlendTerm>(v, {{"Source", scene::BlendTerm::Source}, {"Destination", scene::BlendTerm::Destination}, {"Zero", scene::BlendTerm::Zero}}, "blend term");
+parity::GsBlendTerm term(const std::string& v) {
+    return pick<parity::GsBlendTerm>(v, {{"Source", parity::GsBlendTerm::Source}, {"Destination", parity::GsBlendTerm::Destination}, {"Zero", parity::GsBlendTerm::Zero}}, "blend term");
 }
 
-scene::Address address(const nlohmann::json& j) {
-    return {pick<scene::AddressMode>(j.at("mode"), {{"Repeat", scene::AddressMode::Repeat}, {"Clamp", scene::AddressMode::Clamp},
-                {"RegionClamp", scene::AddressMode::RegionClamp}, {"RegionRepeat", scene::AddressMode::RegionRepeat}}, "address mode"),
+parity::GsAddress address(const nlohmann::json& j) {
+    return {pick<parity::GsAddressMode>(j.at("mode"), {{"Repeat", parity::GsAddressMode::Repeat}, {"Clamp", parity::GsAddressMode::Clamp},
+                {"RegionClamp", parity::GsAddressMode::RegionClamp}, {"RegionRepeat", parity::GsAddressMode::RegionRepeat}}, "address mode"),
             j.at("min"), j.at("max")};
 }
 
@@ -74,7 +74,7 @@ Fixture loadFixture(const std::filesystem::path& directory) {
     fixture.depthStart = j.at("depthStart");
 
     for (const auto& t : j.at("targets")) {
-        scene::Target target{t.at("id"), t.at("width"), t.at("height")};
+        parity::GsTarget target{t.at("id"), t.at("width"), t.at("height")};
         Image start{target.width, target.height, readFile(directory / t.at("start").get<std::string>())};
         if (start.rgba.size() != size_t(target.width) * target.height * 4) throw std::runtime_error("start buffer of " + target.id + " has the wrong size");
         fixture.targetStart.emplace(target.id, std::move(start));
@@ -87,34 +87,34 @@ Fixture loadFixture(const std::filesystem::path& directory) {
     }
 
     for (const auto& p : j.at("passes")) {
-        scene::Pass pass{};
+        parity::GsPass pass{};
         pass.index = p.at("index");
         pass.name = p.at("name");
         pass.target = p.at("target");
-        pass.primitive = pick<scene::Primitive>(p.at("primitive"), {{"Triangles", scene::Primitive::Triangles}, {"Sprites", scene::Primitive::Sprites}, {"Lines", scene::Primitive::Lines}}, "primitive");
+        pass.primitive = pick<parity::GsPrimitive>(p.at("primitive"), {{"Triangles", parity::GsPrimitive::Triangles}, {"Sprites", parity::GsPrimitive::Sprites}, {"Lines", parity::GsPrimitive::Lines}}, "primitive");
         const auto& s = p.at("scissor");
         pass.scissor = {s[0], s[1], s[2], s[3]};
         if (!p.at("blend").is_null()) {
             const auto& b = p.at("blend");
-            pass.blend = scene::Blend{term(b.at("a")), term(b.at("b")),
-                pick<scene::BlendFactor>(b.at("c"), {{"SourceAlpha", scene::BlendFactor::SourceAlpha}, {"DestinationAlpha", scene::BlendFactor::DestinationAlpha}, {"Fixed", scene::BlendFactor::Fixed}}, "blend factor"),
+            pass.blend = parity::GsBlend{term(b.at("a")), term(b.at("b")),
+                pick<parity::GsBlendFactor>(b.at("c"), {{"SourceAlpha", parity::GsBlendFactor::SourceAlpha}, {"DestinationAlpha", parity::GsBlendFactor::DestinationAlpha}, {"Fixed", parity::GsBlendFactor::Fixed}}, "blend factor"),
                 term(b.at("d")), b.at("fixed")};
         }
         pass.antialias = p.at("antialias");
-        pass.depth = {pick<scene::DepthTest>(p.at("depth").at("test"), {{"Never", scene::DepthTest::Never}, {"Always", scene::DepthTest::Always},
-                          {"GreaterEqual", scene::DepthTest::GreaterEqual}, {"Greater", scene::DepthTest::Greater}}, "depth test"),
+        pass.depth = {pick<parity::GsDepthTest>(p.at("depth").at("test"), {{"Never", parity::GsDepthTest::Never}, {"Always", parity::GsDepthTest::Always},
+                          {"GreaterEqual", parity::GsDepthTest::GreaterEqual}, {"Greater", parity::GsDepthTest::Greater}}, "depth test"),
                       p.at("depth").at("write")};
         if (!p.at("texture").is_null()) {
             const auto& t = p.at("texture");
-            scene::Texture texture{};
+            parity::GsTexture texture{};
             texture.sourceIsTarget = t.at("source").contains("target");
             texture.source = t.at("source").at(texture.sourceIsTarget ? "target" : "image");
             texture.width = t.at("width");
             texture.height = t.at("height");
-            texture.coordinates = pick<scene::Coordinates>(t.at("coordinates"), {{"Texel", scene::Coordinates::Texel}, {"Projective", scene::Coordinates::Projective}}, "coordinates");
+            texture.coordinates = pick<parity::GsCoordinates>(t.at("coordinates"), {{"Texel", parity::GsCoordinates::Texel}, {"Projective", parity::GsCoordinates::Projective}}, "coordinates");
             texture.addressU = address(t.at("addressU"));
             texture.addressV = address(t.at("addressV"));
-            texture.filter = pick<scene::Filter>(t.at("filter"), {{"Nearest", scene::Filter::Nearest}, {"Bilinear", scene::Filter::Bilinear}}, "filter");
+            texture.filter = pick<parity::GsFilter>(t.at("filter"), {{"Nearest", parity::GsFilter::Nearest}, {"Bilinear", parity::GsFilter::Bilinear}}, "filter");
             const auto& a = t.at("alpha");
             if (a.at("mode") == "Constant") texture.alpha = {true, a.at("value"), a.at("zeroWhenBlack")};
             pass.texture = std::move(texture);

@@ -1,5 +1,5 @@
 #pragma once
-#include "scene/FrameDescription.hpp"
+#include "parity/GsFrame.hpp"
 #include <filesystem>
 #include <map>
 
@@ -9,7 +9,7 @@ struct DepthImage { uint32_t width{0}, height{0}; std::vector<uint32_t> depth; }
 struct OracleStep { std::string colour, depth; };
 struct Fixture {
     std::filesystem::path root;
-    scene::FrameDescription frame;
+    parity::GsFrame frame;
     std::map<std::string, Image> targetStart, textures;
     std::vector<OracleStep> oracle;
     std::string depthStart;

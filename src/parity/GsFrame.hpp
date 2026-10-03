@@ -4,22 +4,22 @@
 #include <string>
 #include <vector>
 
-namespace scene {
-enum class Primitive { Triangles, Sprites, Lines };
-enum class BlendTerm { Source, Destination, Zero };
-enum class BlendFactor { SourceAlpha, DestinationAlpha, Fixed };
-enum class DepthTest { Never, Always, GreaterEqual, Greater };
-enum class AddressMode { Repeat, Clamp, RegionClamp, RegionRepeat };
-enum class Filter { Nearest, Bilinear };
-enum class Coordinates { Texel, Projective };
-struct Blend { BlendTerm a, b; BlendFactor c; BlendTerm d; uint8_t fixed; };
-struct Depth { DepthTest test; bool write; };
-struct Address { AddressMode mode; int32_t min, max; };
-struct TextureAlpha { bool constant; uint8_t value; bool zeroWhenBlack; };
-struct Texture { std::string source; bool sourceIsTarget; uint32_t width, height; Coordinates coordinates; Address addressU, addressV; Filter filter; TextureAlpha alpha; };
-struct Scissor { int32_t x0, y0, x1, y1; };
-struct Vertex { float x, y; uint32_t depth; float r, g, b, a; float s, t, q; };
-struct Pass { uint32_t index; std::string name, target; Primitive primitive; Scissor scissor; std::optional<Blend> blend; bool antialias; Depth depth; std::optional<Texture> texture; std::string skip; std::vector<Vertex> vertices; };
-struct Target { std::string id; uint32_t width, height; };
-struct FrameDescription { uint32_t field; std::vector<Target> targets; std::vector<Pass> passes; };
+namespace parity {
+enum class GsPrimitive { Triangles, Sprites, Lines };
+enum class GsBlendTerm { Source, Destination, Zero };
+enum class GsBlendFactor { SourceAlpha, DestinationAlpha, Fixed };
+enum class GsDepthTest { Never, Always, GreaterEqual, Greater };
+enum class GsAddressMode { Repeat, Clamp, RegionClamp, RegionRepeat };
+enum class GsFilter { Nearest, Bilinear };
+enum class GsCoordinates { Texel, Projective };
+struct GsBlend { GsBlendTerm a, b; GsBlendFactor c; GsBlendTerm d; uint8_t fixed; };
+struct GsDepth { GsDepthTest test; bool write; };
+struct GsAddress { GsAddressMode mode; int32_t min, max; };
+struct GsTextureAlpha { bool constant; uint8_t value; bool zeroWhenBlack; };
+struct GsTexture { std::string source; bool sourceIsTarget; uint32_t width, height; GsCoordinates coordinates; GsAddress addressU, addressV; GsFilter filter; GsTextureAlpha alpha; };
+struct GsScissor { int32_t x0, y0, x1, y1; };
+struct GsVertex { float x, y; uint32_t depth; float r, g, b, a; float s, t, q; };
+struct GsPass { uint32_t index; std::string name, target; GsPrimitive primitive; GsScissor scissor; std::optional<GsBlend> blend; bool antialias; GsDepth depth; std::optional<GsTexture> texture; std::string skip; std::vector<GsVertex> vertices; };
+struct GsTarget { std::string id; uint32_t width, height; };
+struct GsFrame { uint32_t field; std::vector<GsTarget> targets; std::vector<GsPass> passes; };
 }

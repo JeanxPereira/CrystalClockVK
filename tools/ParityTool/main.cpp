@@ -13,7 +13,7 @@
 
 namespace {
 
-std::string groupOf(const scene::Pass& pass) {
+std::string groupOf(const parity::GsPass& pass) {
     static const char* primitives[] = {"triangles", "sprites", "lines"};
     static const char* tests[] = {"never", "always", "gequal", "greater"};
     static const char* terms[] = {"Cs", "Cd", "0"};
@@ -21,8 +21,8 @@ std::string groupOf(const scene::Pass& pass) {
     static const char* modes[] = {"repeat", "clamp", "region-clamp", "region-repeat"};
     std::string group = primitives[int(pass.primitive)];
     if (pass.texture) {
-        group += std::string(" tex(") + (pass.texture->sourceIsTarget ? "target" : "image") + "," + (pass.texture->coordinates == scene::Coordinates::Texel ? "texel" : "projective") + "," +
-                 modes[int(pass.texture->addressU.mode)] + "," + (pass.texture->filter == scene::Filter::Bilinear ? "bilinear" : "nearest") + ")";
+        group += std::string(" tex(") + (pass.texture->sourceIsTarget ? "target" : "image") + "," + (pass.texture->coordinates == parity::GsCoordinates::Texel ? "texel" : "projective") + "," +
+                 modes[int(pass.texture->addressU.mode)] + "," + (pass.texture->filter == parity::GsFilter::Bilinear ? "bilinear" : "nearest") + ")";
     } else {
         group += " flat";
     }
@@ -106,7 +106,7 @@ int main(int argc, char** argv) {
         size_t worst = 0;
         uint64_t worstDiffering = 0;
         for (size_t i = 0; i < fixture.frame.passes.size(); i++) {
-            const scene::Pass& pass = fixture.frame.passes[i];
+            const parity::GsPass& pass = fixture.frame.passes[i];
             const parity::Image oracle = fixture.oracleColour(i);
             const parity::DepthImage oracleDepth = fixture.oracleDepth(i);
             nlohmann::json entry{{"index", pass.index}, {"name", pass.name}, {"group", groupOf(pass)}, {"skipped", pass.skip}};
@@ -136,7 +136,7 @@ int main(int argc, char** argv) {
         for (const auto& [name, group] : groups) report["groups"].push_back({{"group", name}, {"passes", group.passes}, {"colour", toJson(group.colour)}, {"depth", toJson(group.depth)}});
 
         if (worstDiffering) {
-            const scene::Pass& pass = fixture.frame.passes[worst];
+            const parity::GsPass& pass = fixture.frame.passes[worst];
             std::map<std::string, parity::Image> before = fixture.targetStart;
             parity::DepthImage depthBefore = fixture.startDepth();
             for (size_t i = 0; i < worst; i++) { paste(before.at(fixture.frame.passes[i].target), fixture.oracleColour(i)); paste(depthBefore, fixture.oracleDepth(i)); }
@@ -153,7 +153,7 @@ int main(int argc, char** argv) {
         renderer.setDepth(startDepth.width, startDepth.height, startDepth.depth);
         uint32_t skipped = 0;
         for (size_t i = 0; i < fixture.frame.passes.size(); i++) {
-            const scene::Pass& pass = fixture.frame.passes[i];
+            const parity::GsPass& pass = fixture.frame.passes[i];
             if (pass.skip.empty()) { renderer.draw(pass); continue; }
             const parity::Image oracle = fixture.oracleColour(i);
             const parity::DepthImage oracleDepth = fixture.oracleDepth(i);

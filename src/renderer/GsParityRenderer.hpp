@@ -1,6 +1,6 @@
 #pragma once
 #include "core/GpuDevice.hpp"
-#include "scene/FrameDescription.hpp"
+#include "parity/GsFrame.hpp"
 #include <filesystem>
 #include <functional>
 #include <map>
@@ -20,7 +20,7 @@ public:
     void setTarget(const std::string& id, uint32_t width, uint32_t height, std::span<const uint8_t> rgba);
     void setDepth(uint32_t width, uint32_t height, std::span<const uint32_t> depth);
     void setTexture(const std::string& id, uint32_t width, uint32_t height, std::span<const uint8_t> rgba);
-    void draw(const scene::Pass& pass);
+    void draw(const parity::GsPass& pass);
     std::vector<uint8_t> readTarget(const std::string& id);
     std::vector<uint32_t> readDepth();
 
