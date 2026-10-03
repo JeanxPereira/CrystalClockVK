@@ -56,7 +56,7 @@ Cost of the per-pixel walk (Step 7): the frame's 2377 triangles become 44236 row
 
 ## Edge antialiasing (PRIM.AA1)
 
-Measured with edges ignored (Step 1, at 2b8cdc1): `lines flat opaque aa z-greater` 6671 / 255, depth 3374; `triangles ... opaque aa z-always` 7901 / 200, depth 0; `triangles ... opaque aa z-gequal` 10708 / 237, depth 0; chained fb0000 7252, fb1a40 10418, fb2300 0. Per pass the buckets were almost all in the top one (for example draw-054: 876 differing, 836 of them above 16), and every one of those pixels lies outside the interiors this renderer already drew: after the change below the interiors are unchanged (`0x44` with alpha 0x80 writes `Cs`, as before) and the same passes reach 0, so every differing pixel was an edge pixel. The rings and the trails are visible at 1:1, so the rule is implemented (controller ruling), not recorded.
+Measured with edges ignored (Step 1, at 2b8cdc1): `lines flat opaque aa z-greater` 6671 / 255, depth 3374; `triangles ... opaque aa z-always` 7901 / 200, depth 0; `triangles ... opaque aa z-gequal` 10708 / 237, depth 0; chained fb0000 7252, fb1a40 10418, fb2300 0. Per pass the buckets were almost all in the top one (for example draw-054: 876 differing, 836 of them by 16 or more), and every one of those pixels lies outside the interiors this renderer already drew: after the change below the interiors are unchanged (`0x44` with alpha 0x80 writes `Cs`, as before) and the same passes reach 0, so every differing pixel was an edge pixel. The rings and the trails are visible at 1:1, so the rule is implemented (controller ruling), not recorded.
 
 The rule (PCSX2 v2.9.94 `pcsx2/GS/`, read for this table; the full reading is `.superpowers/sdd/2026-10-03-native-renderer-slices-0-1/aa1-rule.md`):
 
