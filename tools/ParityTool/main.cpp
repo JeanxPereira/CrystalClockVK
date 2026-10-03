@@ -207,7 +207,10 @@ int main(int argc, char** argv) {
             if (!in) throw std::runtime_error(std::string("no budget at ") + argv[4]);
             const nlohmann::json budget = nlohmann::json::parse(in);
             std::map<std::tuple<std::string, std::string, uint32_t, uint32_t>, uint32_t> allowed;
-            for (const auto& e : budget.at("differences")) allowed[{e.at("scope").get<std::string>(), e.at("target").get<std::string>(), e.at("x").get<uint32_t>(), e.at("y").get<uint32_t>()}] = e.at("delta").get<uint32_t>();
+            for (const auto& e : budget.at("differences")) {
+                const auto key = std::make_tuple(e.at("scope").get<std::string>(), e.at("target").get<std::string>(), e.at("x").get<uint32_t>(), e.at("y").get<uint32_t>());
+                if (!allowed.emplace(key, e.at("delta").get<uint32_t>()).second) throw std::runtime_error("duplicate budget entry");
+            }
             uint32_t breaches = 0;
             for (const auto& o : observed) {
                 const auto found = allowed.find({o.scope, o.target, o.x, o.y});
