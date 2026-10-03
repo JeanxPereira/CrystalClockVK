@@ -7,7 +7,11 @@ bin/
 .vscode/
 .idea/
 .cache/
-.claude/
+.claude/*
+!.claude/settings.json
+!.claude/agents/
+!.claude/skills/
+!.claude/workflows/
 *.swp
 *.swo
 *~

@@ -5,7 +5,7 @@ Recreation of the PlayStation 2 OSDSYS "Crystal Clock" visual effect.
 **NOTE:** This project recently underwent a massive architectural pivot! We have dropped Raylib and OpenGL completely in favor of a **Native Vulkan 1.4 C++** architecture. The goal remains a **1:1 match** with the original GS render pipeline, using modern GPU techniques to legally and accurately emulate the PS2 Graphics Synthesizer (GS) behavior.
 
 ## Core Architectural Directives
-Read `MEMORY.md` and `CrystalClockVK-ImplPlan.md` in this directory immediately upon entering the project.
+Read `facts/README.md` first: it is what the PS2 OSD does, verified, and the list of what is left.
 The codebase is structured into four strict layers:
 1. `core/`: Vulkan Bootstrap via vk-bootstrap, SDL3.
 2. `renderer/`: Lean Vulkan 1.4 Wrapper (VMA, PassRecorder, Dynamic Rendering).
@@ -18,31 +18,19 @@ The codebase is structured into four strict layers:
 - Target Environment: Windows (AMD RDNA2 / RX 6750 XT baseline) + macOS (Apple Silicon via MoltenVK/KosmicKrisp)
 - **CI**: GitHub Actions auto-builds Windows + macOS on every push (`.github/workflows/build.yml`)
 
-## Documentation Reference
-To guarantee a 1:1 cleanroom port of the OSDSYS effects, rely on these resources:
-- **`MEMORY.md`**: Contains the complete historical context, architectural decisions, and Vulkan strategies established during the planning phase.
-- **US Patent 6,693,606 (`docs/clock_patent/US6693606.pdf`)**: Proves the exact method of refraction (rendering framebuffer background, sampling it distorted across transparent blocks).
+## Source of truth and method
+- **`facts/` is the only trusted store** (`facts/README.md` first; `facts/verification.md` is the verifier × build matrix). `docs/`, `context/` and `MEMORY.md` predate it and mix builds: never cite them as fact. The old "5 passes" table, the Raylib reference and the old docs' addresses are superseded by `facts/`.
+- **Two builds**: HDD OSD 1.10U (canon, `hddosd.elf`, SHA-1 `e932f350…`) and ROM 2.30 (second witness). Every address names its build.
+- **A fact is a verifier passing**: a script in `References/scripts/` recomputes a function's output from probed inputs, bit for bit, on both builds, survives mutation (`mutate.mjs`) and is in the regression suite (`run_all.mjs`). Skills: `measure` (the method), `capture` (the emulator), `facts-page` (writing a page), `campaign` (many items), `commit`.
+- **Instruments**: Watson (`D:\CodingProjects\Watson`, MCP `watson_*`: an instrumented PCSX2 with probes, fast captures, GS traces and GS memory reads); HDD OSD disassembly in `D:\CodingProjects\CrystalOSD\asm\`; Ghidra/IDA MCP when the disassembly is not enough.
+- **Agents** (`.claude/agents/`, mid tier by default): `re-scout` (one question, read-only), `verifier-writer` (one verifier), `re-refuter` (adversarial check of a claim or a page), `doc-writer` (one facts page). Prefer them, briefed by file path, over forks of the session.
+- **Hooks**: the git rules are refused at the call (`tools/hooks/guard-git.py`); every edit to `facts/` is linted (`tools/hooks/lint-facts.py`).
+
+## Vulkan references
+- **US Patent 6,693,606 (`docs/clock_patent/US6693606.pdf`)**: the intent of the effect (refraction of the framebuffer through transparent blocks); it holds no numbers.
 - **Vulkan-Docs & Vulkan-Guide**: Local repositories at `/Users/jeanxpereira/CodingProjects/Vulkan-Guide/chapters/` specifically `memory_allocation.adoc` (VMA setup) and `tile_based_rendering_best_practices.adoc` (VK_KHR_dynamic_rendering_local_read for GS FBO feedback loop equivalence). Note: `VK_EXT_attachment_feedback_loop_layout` is largely unsupported on macOS MoltenVK—we therefore explicitly rely on `subpassLoad()` without throwing layout validation errors in `VulkanContext`.
-- **`ghidra-mcp`**: MANDATORY server for disassembling logic directly from `OSDSYS.elf` to construct the `gs/` logic correctly.
-- **`pcsx2-mcp`**: Live PCSX2 DebugServer bridge (`.mcp.json`). Use to read live EE registers (esp. GP for resolving `fGpffff*` globals), set conditional BPs inside OSDSYS code, and trace GIF/VIF DMA packets during real frames. PC always reads as `0x00081fc0` (BIOS idle) when paused without a BP — set BP inside OSDSYS code to capture true context.
-- **CrystalOSD decomp**: `D:\CodingProjects\CrystalOSD\asm\clock\` contains spimdisasm output of clock module. **`clock_orb_rendering_func.s`** is the master per-frame render at `0x00225E80`, not `0x00223f78` as earlier docs claimed.
-
-**WARNING — known-bad docs**: `docs/ghidra_analysis/rod_analysis.md` and `docs/ANALYSIS-Raylib-vs-Vulkan-vs-OSDSYS.md` contain errors corrected in `MEMORY.md §7`:
-- `DAT_002973a0` / `DAT_002973c0` are Shift-JIS text pointers, NOT GS primitives.
-- `fGpffff8c28` is the `"Reset"` ASCII string, NOT FOV.
-- Per-pass angle step is `0.26 rad` / `0.33 rad`, NOT 30° / rod.
-- Master clock render entry is `0x00225E80`, NOT `0x00223f78`.
-Ignore Raylib `crystal.fs` as a visual reference — pixel-accurate parity must come from PCSX2 live trace, not Raylib port.
-
-## Shader Pipeline & GS Blending Setup
-The PS2 GS renders the clock in 5 distinct passes using the same `DAT_002973*` primitives with different `ALPHA` register values. We emulate this by binding different prebuilt Vulkan Pipelines:
-| Pass | PS2 Alpha / Purpose | Vulkan Blend Mode |
-|---|---|---|
-| **1** | `(1,0,1)` - Base Glass FB Refraction | `VK_BLEND_FACTOR_SRC_ALPHA` / `DST_ALPHA` + `VK_KHR_dynamic_rendering_local_read` (read tile memory) |
-| **2** | `(2,1,2)` - Additive Edge Highlight | `VK_BLEND_FACTOR_ONE` / `ONE` |
-| **3** | `(0,2)` - Additive Angular Offset | `VK_BLEND_FACTOR_ONE` / `ONE` (with normal offsets pushed via push constants) |
-| **4** | `(1,0,1)` - Active Rod Base Refract | Same as Pass 1 |
-| **5** | `(0,1,1)` - Active Rod Slider Fill | `VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA` / `SRC_ALPHA` (Reverse Alpha fill) |
+## Rendering
+The GS work of every frame (draws, buffers, blends, depth tests, texture state) is in `facts/clock-frame.md`, `facts/clock-rod-draw.md`, `facts/clock-gs-state.md` and the pages they link; the Vulkan design follows those pages, with the verifiers and `References/model/clock_frame.mjs` as its tests.
 
 *Always follow PascalCase boundaries, explicit RHI-less lean wrappers, and strictly isolated GS testability.*
 
