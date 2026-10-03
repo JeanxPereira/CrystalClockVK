@@ -268,6 +268,78 @@ int main(int argc, char** argv) {
         CHECK(px(image, 10, 20)[0] == 20);
     }
 
+    // PRIM.AA1: a triangle's interior takes alpha 0x80, then each edge adds one pixel per major step on its outside, with the
+    // coverage 1 - (distance from that pixel's centre to the edge) as alpha (cov16 >> 9), blended with ALPHA, depth tested, not written.
+    const scene::Blend Coverage{scene::BlendTerm::Source, scene::BlendTerm::Destination, scene::BlendFactor::SourceAlpha, scene::BlendTerm::Destination, 0};
+    {
+        // Top edge y 2.25 (horizontal, top-left, outside is up): row 2 sits 0.25 above it, cov int(65535 * 0.75) = 49151, alpha 95;
+        // red 128 * 95 >> 7 = 95 over black. Row 3 is interior: red 128, alpha 128, depth written.
+        renderer.setTarget("t", W, H, black);
+        renderer.setDepth(W, H, depth100);
+        scene::Pass top = pass(scene::Primitive::Triangles, {at(4.5f, 2.25f, 7, 128, 0, 0, 64), at(40.5f, 2.25f, 7, 128, 0, 0, 64), at(4.5f, 28.25f, 7, 128, 0, 0, 64)});
+        top.antialias = true;
+        top.blend = Coverage;
+        renderer.draw(top);
+        image = renderer.readTarget("t");
+        depth = renderer.readDepth();
+        const uint8_t* edge = px(image, 20, 2);
+        const uint8_t* inside = px(image, 20, 3);
+        if (edge[0] != 95 || edge[3] != 95 || inside[0] != 128 || inside[3] != 128) std::fprintf(stderr, "aa top edge: %d/%d inside %d/%d\n", edge[0], edge[3], inside[0], inside[3]);
+        CHECK(edge[0] == 95 && edge[3] == 95 && inside[0] == 128 && inside[3] == 128);
+        CHECK(depth[2 * W + 20] == 100 && depth[3 * W + 20] == 7);
+
+        // Two triangles sharing the vertical edge x 10.5, red on the left, green on the right, drawn as the GS orders them: the left
+        // triangle's interior, its edges, then the right one. The left triangle's ring on x 11 (d = -0.5, cov 0.5, alpha 63) is covered
+        // by the right interior: (11,10) is green 128, alpha 128. The right triangle's ring on x 10 blends green at 63 over red:
+        // red ((0 - 128) * 63 >> 7) + 128 = 65, green 128 * 63 >> 7 = 63, alpha 63.
+        renderer.setTarget("t", W, H, black);
+        scene::Pass pair = pass(scene::Primitive::Triangles, {at(2.5f, 2, 0, 128, 0, 0, 64), at(10.5f, 2, 0, 128, 0, 0, 64), at(10.5f, 20, 0, 128, 0, 0, 64),
+                                                              at(10.5f, 2, 0, 0, 128, 0, 64), at(10.5f, 20, 0, 0, 128, 0, 64), at(18.5f, 20, 0, 0, 128, 0, 64)});
+        pair.antialias = true;
+        pair.blend = Coverage;
+        renderer.draw(pair);
+        image = renderer.readTarget("t");
+        const uint8_t* right = px(image, 11, 10);
+        const uint8_t* left = px(image, 10, 10);
+        if (right[0] != 0 || right[1] != 128 || right[3] != 128 || left[0] != 65 || left[1] != 63 || left[3] != 63)
+            std::fprintf(stderr, "aa shared edge: right %d %d %d left %d %d %d\n", right[0], right[1], right[3], left[0], left[1], left[3]);
+        CHECK(right[0] == 0 && right[1] == 128 && right[3] == 128 && left[0] == 65 && left[1] == 63 && left[3] == 63);
+
+        // Edge pixels are depth tested with the edge's Z. The same pair with Z >= against 100, the left triangle at Z 1000 and the
+        // right at 500: the right ring on x 10 (Z 500) fails against the left interior's 1000, so (10,10) stays red 128, alpha 128;
+        // the left ring on x 11 wrote no Z, so the right interior (500 >= 100) still covers (11,10).
+        renderer.setTarget("t", W, H, black);
+        renderer.setDepth(W, H, depth100);
+        scene::Pass deep = pair;
+        for (size_t i = 0; i < 6; i++) deep.vertices[i].depth = i < 3 ? 1000 : 500;
+        deep.depth = {scene::DepthTest::GreaterEqual, true};
+        renderer.draw(deep);
+        image = renderer.readTarget("t");
+        if (px(image, 10, 10)[0] != 128 || px(image, 10, 10)[3] != 128 || px(image, 11, 10)[1] != 128)
+            std::fprintf(stderr, "aa edge depth: (10,10) %d/%d (11,10) green %d\n", px(image, 10, 10)[0], px(image, 10, 10)[3], px(image, 11, 10)[1]);
+        CHECK(px(image, 10, 10)[0] == 128 && px(image, 10, 10)[3] == 128 && px(image, 11, 10)[1] == 128 && px(image, 11, 10)[3] == 128);
+
+        // A line is all edge: x 2..20 at y 10.25. The start (distance 0.25 inside the diamond) is drawn, the end is not: x 2..19.
+        // D = 9216 * 0.25 = 2304 of scaleD 9216, cov int(65535 * 0.25) = 16383: the main pixel (x, 10) takes 65535 - 16383 >> 9 = 96,
+        // the neighbour (x, 11) 16383 >> 9 = 31. Additive red 200: 200 * 96 >> 7 = 150, 200 * 31 >> 7 = 48. No depth is written.
+        renderer.setTarget("t", W, H, black);
+        renderer.setDepth(W, H, depth100);
+        scene::Pass line = pass(scene::Primitive::Lines, {at(2, 10.25f, 500, 200, 0, 0, 64), at(20, 10.25f, 500, 200, 0, 0, 64)});
+        line.antialias = true;
+        line.blend = Add;
+        line.depth = {scene::DepthTest::Greater, true};
+        renderer.draw(line);
+        image = renderer.readTarget("t");
+        depth = renderer.readDepth();
+        const uint8_t* centre = px(image, 10, 10);
+        const uint8_t* neighbour = px(image, 10, 11);
+        if (centre[0] != 150 || centre[3] != 96 || neighbour[0] != 48 || neighbour[3] != 31 || px(image, 2, 10)[0] != 150 || px(image, 20, 10)[0] != 0)
+            std::fprintf(stderr, "aa line: %d/%d %d/%d first %d after %d\n", centre[0], centre[3], neighbour[0], neighbour[3], px(image, 2, 10)[0], px(image, 20, 10)[0]);
+        CHECK(centre[0] == 150 && centre[3] == 96 && neighbour[0] == 48 && neighbour[3] == 31);
+        CHECK(px(image, 2, 10)[0] == 150 && px(image, 20, 10)[0] == 0 && px(image, 10, 9)[0] == 0);
+        CHECK(depth[10 * W + 10] == 100);
+    }
+
     CHECK(context.validationErrors() == 0);
     return 0;
 }

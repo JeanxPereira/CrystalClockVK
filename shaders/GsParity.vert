@@ -11,6 +11,7 @@ layout(location = 7) in vec4 inScanColour;
 layout(location = 8) in vec4 inStepTexture;
 layout(location = 9) in vec4 inStepColour;
 layout(location = 10) in uvec4 inDepthSteps;
+layout(location = 11) in float inEdge;
 
 layout(push_constant) uniform DrawState {
     ivec4 scissor; ivec4 blend; ivec4 misc; ivec4 tex; ivec4 texSize; ivec4 addressU; ivec4 addressV; ivec4 flags;
@@ -26,6 +27,7 @@ layout(location = 6) flat out vec4 outScanColour;
 layout(location = 7) flat out vec4 outStepTexture;
 layout(location = 8) flat out vec4 outStepColour;
 layout(location = 9) flat out uvec4 outDepthSteps;
+layout(location = 10) flat out int outEdge;
 
 void main() {
     // The GS samples a pixel at its integer coordinate; Vulkan samples at the centre.
@@ -40,4 +42,5 @@ void main() {
     outStepTexture = inStepTexture;
     outStepColour = inStepColour;
     outDepthSteps = inDepthSteps;
+    outEdge = int(inEdge);
 }

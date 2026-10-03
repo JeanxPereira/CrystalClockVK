@@ -12,7 +12,7 @@ layout(set = 0, binding = 2) uniform usampler2D textureImage;
 // misc: blend on, fixed, depth test (0 never 1 always 2 >= 3 >), depth write
 // tex: on, coordinates (0 texel 1 projective 2 sprite steps), filter (0 nearest 1 bilinear), alpha (0 texel 1 constant)
 // texSize: width, height, constant alpha, zero when black      address: mode (0 repeat 1 clamp 2 region clamp 3 region repeat), min, max
-// flags: antialias, target width, target height, triangle rows (walked by the GS rasterizer: texel 0 is integer steps, 1 is S T Q)
+// flags: antialias (lines and triangles), target width, target height, rows walked by the GS rasterizer (triangles, AA1 lines)
 layout(push_constant) uniform DrawState {
     ivec4 scissor; ivec4 blend; ivec4 misc; ivec4 tex; ivec4 texSize; ivec4 addressU; ivec4 addressV; ivec4 flags;
 } state;
@@ -30,6 +30,8 @@ layout(location = 6) flat in vec4 inScanColour;
 layout(location = 7) flat in vec4 inStepTexture;
 layout(location = 8) flat in vec4 inStepColour;
 layout(location = 9) flat in uvec4 inDepthSteps;
+// 0 on a filled pixel; on an antialiased edge pixel, 1 + its coverage alpha (cov16 >> 9).
+layout(location = 10) flat in int inEdge;
 
 int address(int value, ivec4 mode, int size) {
     if (mode.x == 0) return value & (size - 1);
@@ -231,7 +233,8 @@ void main() {
 
     ivec4 colour = min((shade & 0xffff) >> 7, ivec4(255));
     if (state.tex.x == 1) colour = clamp((sampleTexture(uv) * 4 * shade) >> 16, ivec4(0), ivec4(255));
-    if (state.flags.x == 1) colour.a = 0x80;
+    // AA1 replaces the source alpha: 0x80 inside, the coverage on an edge pixel; the blend then uses it and it is what is written.
+    if (state.flags.x == 1) colour.a = inEdge > 0 ? inEdge - 1 : 0x80;
 
     beginInvocationInterlockARB();
     uint stored = imageLoad(depthImage, pixel).r;
@@ -247,7 +250,7 @@ void main() {
             result.rgb = clamp((((a - b) * factor) >> 7) + d, ivec3(0), ivec3(255));
         }
         imageStore(targetImage, pixel, uvec4(result));
-        if (state.misc.w == 1) imageStore(depthImage, pixel, uvec4(depth, 0u, 0u, 0u));
+        if (state.misc.w == 1 && inEdge == 0) imageStore(depthImage, pixel, uvec4(depth, 0u, 0u, 0u));
     }
     endInvocationInterlockARB();
 }
