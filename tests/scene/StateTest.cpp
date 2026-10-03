@@ -147,8 +147,11 @@ int isolated(const json& frames) {
         const json& expect = frame.at("expect");
         ClockState state = fromInput(frame.at("input"));
         if (checkCamera(state, expect, at)) return 1;
+        state.spin = static_cast<uint16_t>(0xfff0 + frame.at("index").get<int>());
+        const uint16_t spinBefore = *state.spin;
         ClockLogic<Ee>::step(state);
         CHECK(sameState(state, expect.at("after"), at + " after"));
+        CHECK(*state.spin == static_cast<uint16_t>(spinBefore + 0x1e));
     }
     std::printf("isolated: %zu frames equal bit for bit\n", frames.size());
     return 0;
@@ -156,6 +159,7 @@ int isolated(const json& frames) {
 
 int carried(const json& frames) {
     ClockState state = fromInput(frames.at(0).at("input"));
+    state.spin = 0xffe0;
     for (const json& frame : frames) {
         const std::string at = "carried frame " + std::to_string(frame.at("index").get<int>());
         const json& expect = frame.at("expect");
@@ -165,6 +169,7 @@ int carried(const json& frames) {
         if (checkCamera(state, expect, at)) return 1;
         ClockLogic<Ee>::step(state);
         CHECK(sameState(state, expect.at("after"), at + " after"));
+        CHECK(*state.spin == static_cast<uint16_t>(0xffe0 + 0x1e * (frame.at("index").get<int>() + 1)));
     }
     std::printf("carried: %zu frames equal bit for bit\n", frames.size());
     return 0;

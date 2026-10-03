@@ -120,6 +120,7 @@ void ClockLogic<A>::logic(ClockState& clock) {
 // facts/clock-state.md: first half of HDD func_00232640, the scene scale eases toward its target.
 template <class A>
 void ClockLogic<A>::scale(ClockState& clock) {
+    if (clock.spin) clock.spin = static_cast<uint16_t>((*clock.spin + 0x1e) & 0xffff);
     const float old = clock.scene.scale;
     const bool filled = clock.timeFilled != 0;
     clock.scene.scale = filled ? A::add(A::mul(A::sub(clock.scaleTarget, old), clock.scaleFactor), old) : 0.0f;

@@ -1,6 +1,7 @@
 #pragma once
 #include <array>
 #include <cstdint>
+#include <optional>
 
 #include "scene/Arithmetic.hpp"
 #include "scene/Matrix.hpp"
@@ -100,6 +101,7 @@ struct ClockState {
     float scaleTarget = 0;
     float scaleFactor = 0;
     int32_t timeFilled = 0;
+    std::optional<uint16_t> spin;
 
     int32_t mode = 0;
     int32_t level = 0;
@@ -120,6 +122,13 @@ struct ClockState {
     float cameraFactor = 0;
 };
 
+// Per-frame state the frame touches outside step(), in the model's order (clock_frame.mjs frame):
+//   1. menuStep (clock_rest.mjs, menus) ticks menuRamp; blurLevel reads menuRamp.counter, so it runs before step.
+//   2. Camera::matrices, then the head: the background draw ticks greyRamp (clock_rest.mjs background()).
+//   3. The overlay draw ticks vignetteRamp (tickRamp) before step; overlayStep reads its state.
+//   4. step().
+// between/endOfFrame belong to the menus and are not part of the clock screen.
+// spin (the cubes' angle) is present only when the capture has it; step() advances it by 0x1e.
 // What the frame function does to the state after everything is drawn: logic, scale, blurLevel,
 // the frame counter, overlayStep (HDD build).
 template <class A>
