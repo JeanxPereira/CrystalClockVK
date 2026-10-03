@@ -74,10 +74,37 @@ std::string passLabel(const parity::GsPass& pass) {
     return pass.name + " " + primitives[int(pass.primitive)] + " " + (pass.texture ? pass.texture->source : std::string("flat"));
 }
 
+// The passes of the date, time and button hint the scene does not draw: 26 font draws (triangles of the
+// paletted font texture t2f04, PSM 0x14) and the hint's panel sprite (clock texture 9, t2ec0).
+enum class TextKind { None, Font, Hint };
+TextKind textKind(const parity::GsPass& pass) {
+    if (!pass.texture || pass.texture->sourceIsTarget) return TextKind::None;
+    const std::string& source = pass.texture->source;
+    if (pass.primitive == parity::GsPrimitive::Triangles && source.starts_with("t2f04-") && source.ends_with("-20-9x9") && pass.skip == "texture format 0x14") return TextKind::Font;
+    if (pass.primitive == parity::GsPrimitive::Sprites && source == "t2ec0-1-0-6x6" && pass.skip.empty()) return TextKind::Hint;
+    return TextKind::None;
+}
+
+struct TextCount {
+    size_t font = 0, hint = 0;
+    bool take(const parity::GsPass& pass, const std::string& at) {
+        const TextKind kind = textKind(pass);
+        if (kind == TextKind::None) { std::fprintf(stderr, "%s: dump pass %s where the text goes is not text\n", at.c_str(), passLabel(pass).c_str()); return false; }
+        (kind == TextKind::Font ? font : hint) += 1;
+        return true;
+    }
+    bool complete(const std::string& at) const {
+        if (font == 26 && hint == 1) return true;
+        std::fprintf(stderr, "%s: %zu font passes and %zu hint passes where the text goes (26 and 1 expected)\n", at.c_str(), font, hint);
+        return false;
+    }
+};
+
 // The scene's passes against the dump's, in order: every scene pass equal to a dump pass; the dump passes the
 // scene does not produce must all stand where the text goes.
 int compareFrame(const parity::GsFrame& ours, const json& dump, size_t textAt, std::vector<std::string>& text, const std::string& at) {
     size_t j = 0;
+    TextCount count;
     for (const json& p : dump.at("passes")) {
         const parity::GsPass theirs = parity::readPass(p);
         if (j < ours.passes.size()) {
@@ -91,8 +118,10 @@ int compareFrame(const parity::GsFrame& ours, const json& dump, size_t textAt, s
             std::fprintf(stderr, "%s: dump %s after the last scene pass\n", at.c_str(), passLabel(theirs).c_str());
             return 1;
         }
+        if (!count.take(theirs, at)) return 1;
         text.push_back(passLabel(theirs));
     }
+    if (!count.complete(at)) return 1;
     if (j != ours.passes.size()) {
         std::fprintf(stderr, "%s: scene pass %zu (%s) is not in the dump\n", at.c_str(), j, ours.passes[j].name.c_str());
         return 1;
@@ -177,6 +206,7 @@ int writeSceneFixture(const parity::GsFrame& ours, size_t textAt, const std::fil
     std::map<std::string, json> lastColour;
     json lastDepth;
     size_t i = 0, j = 0, culled = 0;
+    TextCount count;
     const auto matchesLater = [&](const parity::GsPass& pass) {
         for (size_t k = i; k < theirs.size(); ++k)
             if (primitivesMatch(pass, parity::readPass(theirs[k]))) return true;
@@ -199,6 +229,7 @@ int writeSceneFixture(const parity::GsFrame& ours, size_t textAt, const std::fil
             p["oracle"] = {{"colour", absolute(oracle->at("oracle").at("colour"))}, {"depth", absolute(oracle->at("oracle").at("depth"))}};
             lastColour[p.at("target").get<std::string>()] = p["oracle"]["colour"];
             lastDepth = p["oracle"]["depth"];
+            if (!count.take(parity::readPass(*oracle), "frame 0 oracle")) return 1;
             text.push_back(passLabel(parity::readPass(*oracle)));
             passes.push_back(std::move(p));
             ++i;
@@ -215,6 +246,7 @@ int writeSceneFixture(const parity::GsFrame& ours, size_t textAt, const std::fil
             return 1;
         }
     }
+    if (!count.complete("frame 0 oracle")) return 1;
     // The oracle's frame ends with its last draw: what the scene draws after it has no result to compare.
     std::string beyond;
     for (; j < ours.passes.size(); ++j) beyond += (beyond.empty() ? "" : ", ") + ours.passes[j].name;
@@ -224,14 +256,6 @@ int writeSceneFixture(const parity::GsFrame& ours, size_t textAt, const std::fil
     std::printf("scene fixture: %zu scene passes (%zu culled whole by the oracle; after the oracle's last draw: %s), %zu text passes from the oracle, in %s\n",
                 ours.passes.size(), culled, beyond.empty() ? "none" : beyond.c_str(), text.size(), out.string().c_str());
     return 0;
-}
-
-// scene.json does not hold the display environments (clock_memory.mjs `display`). Environment 0's clear RGBAQ
-// is 0 in every snapshot of the whole3-clock trace (display +0x100); environment 1's is the clock's colour.
-scene::ClockInputs clockInputs(const json& input, const scene::RodMesh& mesh) {
-    scene::ClockInputs inputs = scenetest::clockInputs(input, mesh);
-    inputs.firstDisplayClear = {0, 0, 0, 0};
-    return inputs;
 }
 
 }
@@ -249,7 +273,7 @@ int main(int argc, char** argv) {
         const json& dumpFrames = dump.at("frames");
         CHECK(!frames.empty());
 
-        EeClock clock(clockInputs(frames.at(0).at("input"), mesh));
+        EeClock clock(scenetest::clockInputs(frames.at(0).at("input"), mesh));
         size_t compared = 0, passes = 0;
         for (const json& frame : frames) {
             const int index = frame.at("index");
@@ -277,19 +301,19 @@ int main(int argc, char** argv) {
         }
         std::printf("geometry: %zu frames carried, %zu scene passes equal to the dump\n", compared, passes);
 
-        EeClock first(clockInputs(frames.at(0).at("input"), mesh));
+        EeClock first(scenetest::clockInputs(frames.at(0).at("input"), mesh));
         const scene::Frame zero = first.frame(scenetest::frameInputs(frames.at(0).at("input")));
         std::vector<std::string> text;
         if (writeSceneFixture(parity::fromScene(zero, parity::clockLayout(zero.width, zero.height, zero.displayIndex)), zero.textAt, argv[4], argv[5], text)) return 1;
 
-        scene::Clock<scene::NativeArithmetic> native(clockInputs(frames.at(0).at("input"), mesh));
+        scene::Clock<scene::NativeArithmetic> native(scenetest::clockInputs(frames.at(0).at("input"), mesh));
         const scene::Frame plain = native.frame(scenetest::frameInputs(frames.at(0).at("input")));
         CHECK(!plain.passes.empty());
         std::printf("native: frame 0 has %zu passes (Ee %zu)\n", plain.passes.size(), zero.passes.size());
 
         // The ramps this capture holds still, rising: each frame ticks the grey ramp once (background) and the
         // vignette ramp once (overlay), and the vignette is drawn.
-        scene::ClockInputs rising = clockInputs(frames.at(0).at("input"), mesh);
+        scene::ClockInputs rising = scenetest::clockInputs(frames.at(0).at("input"), mesh);
         rising.head.greyRamp = {40, 10, 0, 1};
         rising.state.vignetteRamp = {80, 10, 0, 1};
         EeClock ramps(rising);

@@ -145,6 +145,7 @@ ClockInputs clockInputs(const json& in, const RodMesh& mesh) {
     c.orbs = orbState(in);
     c.mesh = mesh;
     c.clearColour = colour(in.at("clearColour"));
+    c.firstDisplayClear = colour(in.at("display").at("firstClear"));
     const json& t = in.at("tubeConstants");
     c.tube = {f(t.at("near")), f(t.at("turn")), f(t.at("scroll")), f(t.at("ripple")), f(t.at("scrollEnd")), f(t.at("turnEnd")), f(t.at("far")), f(t.at("radius"))};
     c.minuteFactor = f(in.at("orbConstants").at("minuteFactor"));

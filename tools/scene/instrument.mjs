@@ -119,6 +119,11 @@ export const PIECES = {
   bars: rectangle,
   column: rectangle,
   menuRamp: ramp,
+  // Display environment 0's clear colour: the R, G, B, A bytes of the RGBAQ (GS register 0x01) of its clear
+  // packet at +0x100. Written once, colour 0, by sceGsSetDefClear (HDD 0x00288E28) on env + 0xE0, called by
+  // sceGsSetDefDBuff (0x00289018), called by InitDraw (0x0020BD58) with env 0x1F0A70 and the clear flag. The
+  // clock's display function (func_002341C8) writes its clear colour into environment 1's clear (+0x1F0) only.
+  display: (b) => ({ firstClear: [0, 1, 2, 3].map((i) => b[0x100 + i]) }),
   tail: int,
   body: int,
   cubeRamp: ramp,
