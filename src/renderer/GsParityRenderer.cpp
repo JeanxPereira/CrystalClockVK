@@ -778,6 +778,7 @@ void GsParityRenderer::draw(const parity::GsPass& given) {
     const auto target = m_targets.find(pass.target);
     if (target == m_targets.end()) throw std::runtime_error(pass.name + ": no target " + pass.target);
     if (!m_depth.image) throw std::runtime_error(pass.name + ": no depth buffer set");
+    if (target->second.width > m_depth.width || target->second.height > m_depth.height) throw std::runtime_error(pass.name + ": the target is larger than the depth buffer");
 
     const Image* texture = &m_blank;
     if (pass.texture) {

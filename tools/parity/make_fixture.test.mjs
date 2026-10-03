@@ -74,3 +74,12 @@ test('antialiasing with alpha blending is refused on lines and triangles', async
   assert.equal(describeState(state(1 << 7), new Map(), 'Triangles').skip, null);
   assert.equal(describeState(state(1 << 6), new Map(), 'Triangles').skip, null);
 });
+
+test('lines without antialiasing are refused', async () => {
+  const { describeState } = await import('./make_fixture.mjs');
+  const zero = Object.fromEntries(['FRAME', 'ZBUF', 'TEST', 'ALPHA', 'SCISSOR', 'FBA', 'PABE', 'DTHE', 'XYOFFSET'].map((n) => [n, '0']));
+  const state = (prim) => ({ ...zero, COLCLAMP: '1', PRIM: String(prim) });
+  assert.match(describeState(state(0), new Map(), 'Lines').skip ?? '', /line without antialiasing/);
+  assert.equal(describeState(state(1 << 7), new Map(), 'Lines').skip, null);
+  assert.equal(describeState(state(0), new Map(), 'Triangles').skip, null);
+});

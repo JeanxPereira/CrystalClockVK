@@ -117,6 +117,7 @@ Fixture loadFixture(const std::filesystem::path& directory) {
             texture.filter = pick<parity::GsFilter>(t.at("filter"), {{"Nearest", parity::GsFilter::Nearest}, {"Bilinear", parity::GsFilter::Bilinear}}, "filter");
             const auto& a = t.at("alpha");
             if (a.at("mode") == "Constant") texture.alpha = {true, a.at("value"), a.at("zeroWhenBlack")};
+            else if (a.at("mode") != "Texel") throw std::runtime_error("unknown texture alpha mode " + a.at("mode").dump());
             pass.texture = std::move(texture);
         }
         if (!p.at("skip").is_null()) pass.skip = p.at("skip");

@@ -121,6 +121,14 @@ int main(int argc, char** argv) {
     try { renderer.draw(self); } catch (const std::exception&) { threw = true; }
     CHECK(threw);
 
+    // A target larger than the depth image is refused.
+    renderer.setTarget("t", W, H, black);
+    renderer.setDepth(W / 2, H / 2, std::vector<uint32_t>(size_t(W / 2) * (H / 2), 0));
+    threw = false;
+    try { renderer.draw(pass(parity::GsPrimitive::Sprites, {at(0, 0, 0, 0, 0, 0, 0), at(4, 4, 0, 9, 9, 9, 9)})); } catch (const std::exception&) { threw = true; }
+    CHECK(threw);
+    renderer.setDepth(W, H, depth100);
+
     // Nearest and bilinear on a 2x2 texture, texel coordinates: the centre of the four texels is their mean.
     const std::vector<uint8_t> four{0, 0, 0, 128, 64, 0, 0, 128, 0, 64, 0, 128, 64, 64, 0, 128};
     renderer.setTexture("four", 2, 2, four);

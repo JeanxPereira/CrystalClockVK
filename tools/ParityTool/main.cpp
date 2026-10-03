@@ -42,7 +42,7 @@ void writeRaw(const std::filesystem::path& path, const std::vector<uint8_t>& byt
     out.write(reinterpret_cast<const char*>(bytes.data()), std::streamsize(bytes.size()));
 }
 
-// The oracle dumps the top-left w x h corner of each buffer (the draw's bounding box); the rest of the buffer is untouched by the draw.
+// The oracle dumps the top-left w x h corner of each buffer ((0,0) to the bottom-right of the bounding box clipped to the scissor); the rest of the buffer is untouched by the draw.
 parity::Image cropOf(const parity::Image& full, uint32_t w, uint32_t h) {
     if (w > full.width || h > full.height) throw std::runtime_error("the oracle rectangle does not fit the buffer");
     parity::Image out{w, h, std::vector<uint8_t>(size_t(w) * h * 4)};

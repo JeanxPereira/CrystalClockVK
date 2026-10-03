@@ -1,6 +1,9 @@
 #include "Check.hpp"
 #include "parity/Fixture.hpp"
+#include <nlohmann/json.hpp>
 #include <algorithm>
+#include <filesystem>
+#include <fstream>
 #include <set>
 
 int main(int argc, char** argv) {
@@ -38,5 +41,20 @@ int main(int argc, char** argv) {
     CHECK(depth.depth.size() == 640u * 224u);
     const uint32_t deepest = *std::max_element(depth.depth.begin(), depth.depth.end());
     CHECK(deepest > 0 && deepest < (1u << 24));
+
+    const std::filesystem::path scratch = std::filesystem::temp_directory_path() / "fixture-alpha-mode";
+    std::filesystem::create_directories(scratch);
+    nlohmann::json pass = {{"index", 1}, {"name", "draw-001"}, {"target", "t"}, {"primitive", "Sprites"}, {"scissor", {0, 0, 1, 1}}, {"blend", nullptr}, {"antialias", false},
+        {"depth", {{"test", "Always"}, {"write", true}}}, {"skip", nullptr}, {"vertices", nlohmann::json::array()}, {"oracle", {{"colour", "c"}, {"depth", "d"}}},
+        {"texture", {{"source", {{"image", "x"}}}, {"width", 1}, {"height", 1}, {"coordinates", "Texel"}, {"addressU", {{"mode", "Clamp"}, {"min", 0}, {"max", 0}}},
+            {"addressV", {{"mode", "Clamp"}, {"min", 0}, {"max", 0}}}, {"filter", "Nearest"}, {"alpha", {{"mode", "Palette"}}}}}};
+    std::ofstream(scratch / "frame.json") << nlohmann::json{{"field", 0}, {"depthStart", "d"}, {"targets", nlohmann::json::array()}, {"textures", nlohmann::json::array()}, {"passes", {pass}}}.dump();
+    bool threw = false;
+    try { parity::loadFixture(scratch); } catch (const std::exception&) { threw = true; }
+    CHECK(threw);
+    pass["texture"]["alpha"] = {{"mode", "Texel"}};
+    std::ofstream(scratch / "frame.json") << nlohmann::json{{"field", 0}, {"depthStart", "d"}, {"targets", nlohmann::json::array()}, {"textures", nlohmann::json::array()}, {"passes", {pass}}}.dump();
+    CHECK(parity::loadFixture(scratch).frame.passes.size() == 1);
+    std::filesystem::remove_all(scratch);
     return 0;
 }
