@@ -39,6 +39,27 @@ Difference compare(const DepthImage& ours, const DepthImage& oracle) {
     return d;
 }
 
+std::vector<PixelDifference> differingPixels(const Image& ours, const Image& oracle) {
+    if (ours.width != oracle.width || ours.height != oracle.height || ours.rgba.size() != oracle.rgba.size()) throw std::runtime_error("images of different sizes cannot be compared");
+    std::vector<PixelDifference> out;
+    for (size_t i = 0; i < ours.rgba.size(); i += 4) {
+        uint32_t delta = 0;
+        for (size_t c = 0; c < 4; c++) delta = std::max(delta, uint32_t(std::abs(int(ours.rgba[i + c]) - int(oracle.rgba[i + c]))));
+        if (delta) out.push_back({uint32_t((i / 4) % ours.width), uint32_t((i / 4) / ours.width), delta});
+    }
+    return out;
+}
+
+std::vector<PixelDifference> differingPixels(const DepthImage& ours, const DepthImage& oracle) {
+    if (ours.width != oracle.width || ours.height != oracle.height || ours.depth.size() != oracle.depth.size()) throw std::runtime_error("depth images of different sizes cannot be compared");
+    std::vector<PixelDifference> out;
+    for (size_t i = 0; i < ours.depth.size(); i++) {
+        const uint32_t delta = ours.depth[i] > oracle.depth[i] ? ours.depth[i] - oracle.depth[i] : oracle.depth[i] - ours.depth[i];
+        if (delta) out.push_back({uint32_t(i % ours.width), uint32_t(i / ours.width), delta});
+    }
+    return out;
+}
+
 Image differenceImage(const Image& ours, const Image& oracle, uint32_t gain) {
     if (ours.rgba.size() != oracle.rgba.size()) throw std::runtime_error("images of different sizes cannot be compared");
     Image out{ours.width, ours.height, std::vector<uint8_t>(ours.rgba.size())};

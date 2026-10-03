@@ -21,6 +21,13 @@ int main() {
     const parity::Difference z = parity::compare(za, zb);
     CHECK(z.pixels == 2 && z.differing == 1 && z.largest == 3);
 
+    const auto pixels = parity::differingPixels(a, b);
+    CHECK(pixels.size() == 3 && pixels[0].x == 0 && pixels[0].y == 0 && pixels[0].delta == 1);
+    CHECK(pixels[1].x == 1 && pixels[1].y == 0 && pixels[1].delta == 3);
+    CHECK(pixels[2].x == 0 && pixels[2].y == 1 && pixels[2].delta == 20);
+    const auto zpixels = parity::differingPixels(za, zb);
+    CHECK(zpixels.size() == 1 && zpixels[0].x == 1 && zpixels[0].y == 0 && zpixels[0].delta == 3);
+
     bool threw = false;
     try { parity::compare(a, parity::Image{1, 1, std::vector<uint8_t>(4)}); } catch (const std::exception&) { threw = true; }
     CHECK(threw);

@@ -8,6 +8,8 @@
 #include <fstream>
 #include <map>
 #include <stdexcept>
+#include <tuple>
+#include <vector>
 
 namespace {
 
@@ -65,6 +67,15 @@ void paste(parity::DepthImage& full, const parity::DepthImage& part) {
     for (uint32_t y = 0; y < part.height; y++) std::copy_n(&part.depth[size_t(y) * part.width], part.width, &full.depth[size_t(y) * full.width]);
 }
 
+struct Observed {
+    std::string scope, target;
+    uint32_t x, y, delta;
+};
+
+void observe(std::vector<Observed>& list, const std::string& scope, const std::string& target, const std::vector<parity::PixelDifference>& pixels) {
+    for (const auto& p : pixels) list.push_back({scope, target, p.x, p.y, p.delta});
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -91,6 +102,7 @@ int main(int argc, char** argv) {
         parity::DepthImage depth = fixture.startDepth();
         struct Group { uint32_t passes{0}; parity::Difference colour, depth; };
         std::map<std::string, Group> groups;
+        std::vector<Observed> observed;
         size_t worst = 0;
         uint64_t worstDiffering = 0;
         for (size_t i = 0; i < fixture.frame.passes.size(); i++) {
@@ -108,6 +120,8 @@ int main(int argc, char** argv) {
                 const parity::Difference colour = parity::compare(ours, oracle), z = parity::compare(oursDepth, oracleDepth);
                 entry["colour"] = toJson(colour);
                 entry["depth"] = toJson(z);
+                observe(observed, pass.name, pass.target, parity::differingPixels(ours, oracle));
+                observe(observed, pass.name, "depth", parity::differingPixels(oursDepth, oracleDepth));
                 Group& group = groups[groupOf(pass)];
                 group.passes++;
                 group.colour += colour;
@@ -156,9 +170,12 @@ int main(int argc, char** argv) {
         for (const auto& [id, oracle] : state) {
             const parity::Image ours{oracle.width, oracle.height, renderer.readTarget(id)};
             report["chained"].push_back({{"target", id}, {"colour", toJson(parity::compare(ours, oracle))}});
+            observe(observed, "chained", id, parity::differingPixels(ours, oracle));
             keep("chained-" + id, ours, oracle);
         }
-        report["chainedDepth"] = toJson(parity::compare(parity::DepthImage{depth.width, depth.height, renderer.readDepth()}, depth));
+        const parity::DepthImage chainedDepth{depth.width, depth.height, renderer.readDepth()};
+        report["chainedDepth"] = toJson(parity::compare(chainedDepth, depth));
+        observe(observed, "chained", "depth", parity::differingPixels(chainedDepth, depth));
         {
             std::ifstream frameFile(std::filesystem::path(argv[1]) / "frame.json");
             const nlohmann::json frameJson = nlohmann::json::parse(frameFile);
@@ -180,26 +197,29 @@ int main(int argc, char** argv) {
         }
         std::printf("skipped passes taken from the oracle: %u; validation errors: %u\n", skipped, context.validationErrors());
 
+        nlohmann::json observedJson = nlohmann::json::array();
+        for (const auto& o : observed) observedJson.push_back({{"scope", o.scope}, {"target", o.target}, {"x", o.x}, {"y", o.y}, {"delta", o.delta}});
+        std::ofstream(out / "observed.json") << nlohmann::json{{"differences", observedJson}}.dump(1);
+
         if (argc == 5) {
             std::ifstream in(argv[4]);
-            if (!in) throw std::runtime_error(std::string("no budgets at ") + argv[4]);
-            const nlohmann::json budgets = nlohmann::json::parse(in);
+            if (!in) throw std::runtime_error(std::string("no budget at ") + argv[4]);
+            const nlohmann::json budget = nlohmann::json::parse(in);
+            std::map<std::tuple<std::string, std::string, uint32_t, uint32_t>, uint32_t> allowed;
+            for (const auto& e : budget.at("differences")) allowed[{e.at("scope").get<std::string>(), e.at("target").get<std::string>(), e.at("x").get<uint32_t>(), e.at("y").get<uint32_t>()}] = e.at("delta").get<uint32_t>();
             uint32_t breaches = 0;
-            auto within = [&](const std::string& what, const parity::Difference& d, const nlohmann::json& budget) {
-                const double share = d.pixels ? double(d.differing) / double(d.pixels) : 0.0;
-                if (share > budget.at("differingShare").get<double>() || d.largest > budget.at("largest").get<uint32_t>()) {
-                    std::printf("over budget: %s differs on %.6f of its pixels, largest %u\n", what.c_str(), share, d.largest);
+            for (const auto& o : observed) {
+                const auto found = allowed.find({o.scope, o.target, o.x, o.y});
+                if (found == allowed.end()) {
+                    std::printf("unexpected difference: %s %s (%u,%u) delta %u\n", o.scope.c_str(), o.target.c_str(), o.x, o.y, o.delta);
+                    breaches++;
+                } else if (o.delta > found->second) {
+                    std::printf("larger difference: %s %s (%u,%u) delta %u, budget %u\n", o.scope.c_str(), o.target.c_str(), o.x, o.y, o.delta, found->second);
                     breaches++;
                 }
-            };
-            for (const auto& [name, group] : groups) {
-                if (!budgets.at("groups").contains(name)) { std::printf("no budget for group: %s\n", name.c_str()); breaches++; continue; }
-                within(name, group.colour, budgets.at("groups").at(name));
-                within(name + " (depth)", group.depth, budgets.at("depth"));
             }
-            for (const auto& [id, oracle] : state) within("chained " + id, parity::compare(parity::Image{oracle.width, oracle.height, renderer.readTarget(id)}, oracle), budgets.at("chained"));
-            within("chained depth", parity::compare(parity::DepthImage{depth.width, depth.height, renderer.readDepth()}, depth), budgets.at("depth"));
             if (context.validationErrors()) { std::printf("validation errors: %u\n", context.validationErrors()); breaches++; }
+            std::printf("budget: %zu differing pixels observed, %zu budgeted, %u breaches\n", observed.size(), allowed.size(), breaches);
             if (breaches) return 1;
         }
         return 0;
