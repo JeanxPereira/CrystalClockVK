@@ -166,7 +166,9 @@ FetchContent_MakeAvailable(json)
 add_library(ClockRenderer STATIC
     src/core/HeadlessContext.cpp
     src/core/VmaUsage.cpp
+    src/renderer/GsParityRenderer.cpp
 )
+add_dependencies(ClockRenderer Shaders)
 target_include_directories(ClockRenderer PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty)
 target_link_libraries(ClockRenderer PUBLIC nlohmann_json::nlohmann_json vk-bootstrap VulkanMemoryAllocator Vulkan::Vulkan)
 
@@ -177,3 +179,7 @@ enable_testing()
 add_executable(HeadlessTest tests/HeadlessTest.cpp)
 target_link_libraries(HeadlessTest PRIVATE ClockRenderer)
 add_test(NAME HeadlessTest COMMAND HeadlessTest)
+
+add_executable(RendererTest tests/RendererTest.cpp)
+target_link_libraries(RendererTest PRIVATE ClockRenderer)
+add_test(NAME RendererTest COMMAND RendererTest ${CMAKE_SOURCE_DIR}/bin/shaders)
