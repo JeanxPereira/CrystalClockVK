@@ -30,8 +30,6 @@ public:
     VkFormat swapchainFormat() const { return m_swapchain.image_format; }
     VkExtent2D swapchainExtent() const { return m_swapchain.extent; }
     uint32_t swapchainImageCount() const { return static_cast<uint32_t>(m_images.size()); }
-    bool wideLines() const { return m_wideLines; }
-    float maxLineWidth() const { return m_maxLineWidth; }
     VkSampleCountFlags sampleCounts() const { return m_sampleCounts; }
 
     struct FrameContext {
@@ -71,8 +69,6 @@ private:
     std::array<Frame, kFramesInFlight> m_frames{};
     uint32_t m_frameSlot{0};
     bool m_hasSwapchain{false};
-    bool m_wideLines{false};
-    float m_maxLineWidth{1.0f};
     VkSampleCountFlags m_sampleCounts{VK_SAMPLE_COUNT_1_BIT};
     std::atomic<uint32_t> m_errors{0};
 };

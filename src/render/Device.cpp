@@ -52,11 +52,7 @@ Device::Device(SDL_Window* window, const DeviceOptions& options) : m_window(wind
     if (!physical) throw std::runtime_error("physical device: " + physical.error().message());
 
     vkb::PhysicalDevice chosen = physical.value();
-    VkPhysicalDeviceFeatures wanted{};
-    wanted.wideLines = VK_TRUE;
-    m_wideLines = chosen.enable_features_if_present(wanted);
     const VkPhysicalDeviceLimits& limits = chosen.properties.limits;
-    m_maxLineWidth = m_wideLines ? limits.lineWidthRange[1] : 1.0f;
     m_sampleCounts = limits.framebufferColorSampleCounts & limits.framebufferDepthSampleCounts;
 
     auto device = vkb::DeviceBuilder{chosen}.build();

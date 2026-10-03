@@ -110,11 +110,30 @@ VkCompareOp compareOf(scene::DepthTest test) {
     return VK_COMPARE_OP_ALWAYS;
 }
 
-// Scene vertices as the GPU draws them: a sprite's two corners become two triangles, z / 2^24 the depth.
+// Scene vertices as the GPU draws them, all as triangles; z / 2^24 the depth. A sprite's two corners become two
+// triangles. A line becomes the band the GS covers: one pixel across its minor axis (a row for an x-major line,
+// a column for a y-major one), so consecutive segments of a strip meet edge to edge. Wide lines (square across
+// the line) overlapped at the joints and covered two GS pixels across steep segments at the window's scale, and
+// the trail's additive blend showed both as bright patches.
 void appendVertices(std::vector<GpuVertex>& out, const scene::Pass& pass) {
     const auto put = [&](const scene::Vertex& v, float x, float y, float u, float t, uint32_t z, float q) {
         out.push_back({x, y, static_cast<float>(z) / 16777216.0f, u, t, q, v.r, v.g, v.b, v.a});
     };
+    if (pass.topology == scene::PassTopology::Lines) {
+        for (size_t i = 0; i + 1 < pass.vertices.size(); i += 2) {
+            const scene::Vertex& a = pass.vertices[i];
+            const scene::Vertex& b = pass.vertices[i + 1];
+            const bool xMajor = std::fabs(b.x - a.x) >= std::fabs(b.y - a.y);
+            const float ox = xMajor ? 0.0f : 0.5f, oy = xMajor ? 0.5f : 0.0f;
+            put(a, a.x - ox, a.y - oy, a.u, a.v, a.z, a.q);
+            put(a, a.x + ox, a.y + oy, a.u, a.v, a.z, a.q);
+            put(b, b.x - ox, b.y - oy, b.u, b.v, b.z, b.q);
+            put(a, a.x + ox, a.y + oy, a.u, a.v, a.z, a.q);
+            put(b, b.x + ox, b.y + oy, b.u, b.v, b.z, b.q);
+            put(b, b.x - ox, b.y - oy, b.u, b.v, b.z, b.q);
+        }
+        return;
+    }
     if (pass.topology != scene::PassTopology::Sprites) {
         for (const scene::Vertex& v : pass.vertices) put(v, v.x, v.y, v.u, v.v, v.z, v.q);
         return;
@@ -375,10 +394,9 @@ void NativeRenderer::configure(const NativeOutput& output) {
 
 VkPipeline NativeRenderer::pipeline(const scene::Pass& pass) {
     const scene::Material& m = pass.material;
-    const bool lines = pass.topology == scene::PassTopology::Lines;
     // AA1 writes no depth on an edge pixel, and every pixel of an AA1 line is an edge pixel (shaders/GsParity.frag).
-    const bool depthWrite = m.depthWrite && !(lines && pass.edgeSmoothing);
-    const PipelineKey key{static_cast<int>(m.blend), static_cast<int>(m.depthTest), depthWrite, lines, m_output.samples};
+    const bool depthWrite = m.depthWrite && !(pass.topology == scene::PassTopology::Lines && pass.edgeSmoothing);
+    const PipelineKey key{static_cast<int>(m.blend), static_cast<int>(m.depthTest), depthWrite, m_output.samples};
     if (auto found = m_pipelines.find(key); found != m_pipelines.end()) return found->second;
 
     VkPipelineShaderStageCreateInfo stages[2]{};
@@ -396,7 +414,7 @@ VkPipeline NativeRenderer::pipeline(const scene::Pass& pass) {
     input.vertexAttributeDescriptionCount = 3;
     input.pVertexAttributeDescriptions = attributes;
     VkPipelineInputAssemblyStateCreateInfo assembly{VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
-    assembly.topology = lines ? VK_PRIMITIVE_TOPOLOGY_LINE_LIST : VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    assembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
     VkPipelineViewportStateCreateInfo viewport{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
     viewport.viewportCount = 1;
     viewport.scissorCount = 1;
@@ -415,9 +433,9 @@ VkPipeline NativeRenderer::pipeline(const scene::Pass& pass) {
     VkPipelineColorBlendStateCreateInfo blend{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
     blend.attachmentCount = 1;
     blend.pAttachments = &attachment;
-    const VkDynamicState dynamics[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR, VK_DYNAMIC_STATE_BLEND_CONSTANTS, VK_DYNAMIC_STATE_LINE_WIDTH};
+    const VkDynamicState dynamics[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR, VK_DYNAMIC_STATE_BLEND_CONSTANTS};
     VkPipelineDynamicStateCreateInfo dynamic{VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};
-    dynamic.dynamicStateCount = 4;
+    dynamic.dynamicStateCount = 3;
     dynamic.pDynamicStates = dynamics;
     VkPipelineRenderingCreateInfo rendering{VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO};
     rendering.colorAttachmentCount = 1;
@@ -551,8 +569,6 @@ void NativeRenderer::record(VkCommandBuffer cmd, const scene::Frame& frame) {
     const VkDeviceSize offset = 0;
     vkCmdBindVertexBuffers(cmd, 0, 1, &buffer.buffer, &offset);
 
-    const float scale = float(m_output.height) / float(frame.height);
-    const float lineWidth = m_device.wideLines() ? std::clamp(scale, 1.0f, m_device.maxLineWidth()) : 1.0f;
     Target* open = nullptr;
     VkPipeline bound = VK_NULL_HANDLE;
     for (size_t i = 0; i < frame.passes.size(); ++i) {
@@ -622,7 +638,6 @@ void NativeRenderer::record(VkCommandBuffer cmd, const scene::Frame& frame) {
         const float constant = float(m.blendConstant) / 128.0f;
         const float constants[4] = {constant, constant, constant, constant};
         vkCmdSetBlendConstants(cmd, constants);
-        vkCmdSetLineWidth(cmd, pass.topology == scene::PassTopology::Lines ? lineWidth : 1.0f);
         vkCmdDraw(cmd, ranges[i].second, 1, ranges[i].first, 0);
     }
     if (open) vkCmdEndRendering(cmd);

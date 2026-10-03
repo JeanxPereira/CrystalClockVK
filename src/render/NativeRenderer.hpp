@@ -81,7 +81,7 @@ private:
         Image image;
         uint8_t largestAlpha{0};
     };
-    using PipelineKey = std::tuple<int, int, bool, bool, uint32_t>;
+    using PipelineKey = std::tuple<int, int, bool, uint32_t>;
 
     Image createImage(uint32_t width, uint32_t height, VkFormat format, VkImageUsageFlags usage, VkSampleCountFlagBits samples, VkImageAspectFlags aspect);
     void destroyImage(Image& image);

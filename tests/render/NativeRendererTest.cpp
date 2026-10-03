@@ -191,6 +191,47 @@ int copies(render::NativeRenderer& renderer) {
     return 0;
 }
 
+// An additive line strip (the orb trail: AA1, so alpha 0x80) at 1280 x 896 (scale 2 across, 4 down) covers what
+// the GS covers, one pixel across its minor axis: a row (4 output rows) for a gentle strip, a column (2 output
+// columns) for a steep one, each pixel once. Returns the pixels lit once and more than once.
+std::pair<size_t, size_t> stripCoverage(render::NativeRenderer& renderer, bool steep) {
+    renderer.configure({1280, 896, 1});
+    Pass strip;
+    strip.name = "trail";
+    strip.topology = scene::PassTopology::Lines;
+    strip.edgeSmoothing = true;
+    strip.material.blend = BlendOp::Add;
+    strip.material.depthTest = scene::DepthTest::Always;
+    std::vector<scene::Vertex> points;
+    for (int i = 0; i <= 44; ++i) {
+        const float along = 10.0f + 4.0f * float(i), across = 20.0f * std::sin(along / 30.0f);
+        const float x = steep ? 300.0f + across * 0.4f : 100.0f + 2.5f * along, y = steep ? along : 112.0f + across;
+        points.push_back({x, y, 0, 0, 0, 1, 0, 0, 200, 0x80});
+    }
+    for (size_t i = 0; i + 1 < points.size(); ++i) {
+        strip.vertices.push_back(points[i]);
+        strip.vertices.push_back(points[i + 1]);
+    }
+    renderer.draw(frameOf({sprite(BlendOp::Opaque, 0, 0, 0, 0x80), strip}));
+    const auto rgba = renderer.readTarget(TargetName::Display);
+    size_t once = 0, twice = 0;
+    for (size_t i = 0; i < rgba.size(); i += 4) {
+        once += rgba[i + 2] >= 199 && rgba[i + 2] <= 201;
+        twice += rgba[i + 2] > 201;
+    }
+    return {once, twice};
+}
+
+int strips(render::NativeRenderer& renderer) {
+    const auto [gentle, gentleTwice] = stripCoverage(renderer, false);
+    const auto [steep, steepTwice] = stripCoverage(renderer, true);
+    std::printf("additive strips at 1280x896: gentle %zu pixels lit once, %zu more; steep %zu once, %zu more\n", gentle, gentleTwice, steep, steepTwice);
+    // Gentle: 440 scene columns (880 output) by 4 rows. Steep: 176 scene rows (704 output) by 2 columns.
+    CHECK(gentle > 880 * 4 * 9 / 10 && gentle < 880 * 4 * 11 / 10 && gentleTwice == 0);
+    CHECK(steep > 704 * 2 * 9 / 10 && steep < 704 * 2 * 11 / 10 && steepTwice == 0);
+    return 0;
+}
+
 int edgeLevels(render::NativeRenderer& renderer, uint32_t samples, uint32_t& intermediate) {
     renderer.configure({kWidth, kHeight, samples});
     Pass triangle;
@@ -356,6 +397,7 @@ int main(int argc, char** argv) {
         CHECK(sampling(renderer) == 0);
         CHECK(alphaBounds(renderer) == 0);
         CHECK(copies(renderer) == 0);
+        CHECK(strips(renderer) == 0);
         CHECK(msaa(renderer) == 0);
         if (argc >= 5) CHECK(clockFrames(renderer, argv[2], argv[3], argv[4]) == 0);
         if (argc == 6) CHECK(startFile(argv[2], argv[3], argv[5]) == 0);
