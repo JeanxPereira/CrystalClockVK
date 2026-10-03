@@ -142,7 +142,7 @@ step:     if speed >= |left|:  move = left;  speed = 0
           left -= move;  position = (position + move) mod 180000;  pulse *= 0.95
 ```
 
-`rate` is 59.94, or 50 when the video mode is PAL (*read; PAL not measured*). With 59.94:
+`rate` is 59.94, or 50 when the video mode is PAL (*read*; in PAL the move and the ramp are verified by `verify_cubes.mjs`, `pal.md` section 3). With 59.94:
 `half` 29, speed 206, slowing 7, and **a move of one place takes 24 frames**, fast first:
 206, 199, 192, … (*measured: 25 positions, each equal*). In PAL by the same rule: 19 frames.
 
@@ -356,7 +356,6 @@ and 0.95, spin 30 a frame and 7000 a place, the order of the sends, the emitters
 
 ## Not known, not verified
 
-- PAL: the rate of 50, hence 19 frames a move, and the ramp length there are read only.
 - What each send does to the pixels (the role of the alphas, what buffer 0 holds before the
   cubes) is a reading; no picture was compared.
 - The blur chain `func_00236350(n)` between the layer and the display runs only while the

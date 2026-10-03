@@ -18,9 +18,9 @@ same (section 7).
 |---|---|---|
 | Glyph packets, byte for byte | 7 929 of 7 929 (624 bytes each) | 3 098 of 3 098 (96 bytes each) |
 | Other packets of a string (opening state, texture set-up or page binding, pictures uploaded, colour table) | 1 636 openings, 1 216 texture set-ups, 11 pictures uploaded, 1 colour table: all equal | 810 openings, 522 page bindings: all equal |
-| String level: every character asked for, with pen, colour and matrix | 41 575 of 41 575 characters, in 1 636 strings drawn and 3 542 measured; 175 distinct characters | pen chain only: 2 576 of 2 576 characters that follow another start where its advance left the pen |
-| Place level (date, time, menu items, hints, title and selected entry of System Configuration) | 312 of 312 strings | not done |
-| Button pictures beside the hints | 157 of 157 | not done |
+| String level: every character asked for, with pen, colour and matrix | 41 575 of 41 575 characters, in 1 636 strings drawn and 3 542 measured; 175 distinct characters (first seven captures); `text2-close`: 22 963 of 22 963 | set, index, fixed width and pen: six NTSC captures equal (section 6) |
+| Place level (date, time, menu items, hints, title and selected entry of System Configuration) | 312 of 312 strings (first five captures); `text2-close`: 1 186 of 1 186 | equal on six NTSC and five PAL captures (section 6) |
+| Button pictures beside the hints | 157 of 157; `text2-close`: 88 of 88 | not compared (section 6) |
 | Glyph pictures in GS memory against the font file | 242 loaded cells in 6 dumps, 327 426 pixels, all equal; colour table equal | four pages, 942 080 pixels, all equal to `FNTIMAGE` |
 
 Captures (`Watson/Runtime/captures/`): `hddosd-110U-text-` `clock`, `menu`, `config` (the list of
@@ -225,14 +225,16 @@ table at start-up), with 175 distinct characters, so the filter was run over eve
 string of the menu, including the escapes `c`, `p`, `r` and `o`. 119 characters were given up
 for want of room in the packet and asked for again, as modelled.
 
-*Read* (closed from the code, no capture needed): the escapes `y`, `s`, `a`, the decorations and
-the clip. Static strings use only `r`, `o`, `p` and, in the Browser's CD-player labels only (not
-the clock module), `y`; `a` and `s` appear in no string; `c` appears only through a Browser
-format string. The decoration flag (`own+0x1C`, set only by `func_002129D8`) and the clip
+*Read* (closed from the code, no capture needed): the escapes `s`, `a`, the decorations and
+the clip. In the English table static strings use only `r`, `o`, `p` and, in the Browser's
+CD-player labels only (not the clock module), `y`; `a` and `s` appear in no string; `c` appears
+only through a Browser format string. The tables of other languages use `y` in clock strings
+(section 5, languages). The decoration flag (`own+0x1C`, set only by `func_002129D8`) and the clip
 (`own+0x20`, `func_00212808/18`) are written only by `func_00263070`, `func_0026AC40` and
 `func_0026B458` (software keyboard and text entry, called from the Browser); the clock module
 never sets them. No string drawn in any capture holds a line break. Not exercised: the
-decorations' drawing (`func_00213448`, `func_002136F8`, `func_00213878`) and blocks other than 0.
+decorations' drawing (`func_00213448`, `func_002136F8`, `func_00213878`). Blocks 2 and 4 of the
+font are exercised by the Japanese table (section 5, languages).
 
 **The library context carried across frames** (*verified* by `verify_text_frame.mjs --carry`
 with `References/model/clock_text.mjs`): the model carries the cache's most-recently-used list
@@ -243,6 +245,33 @@ captures `hddosd-110U-text2-` `menu` 770 of 770 packets, `boot` 3 599 of 3 599, 
 10 552, `down` 4 710 of 4 710, `adjust` 1 386 of 1 386, `version` 1 488 of 1 488, `clock` 384 of
 384; the carried list equals the library's at every string (99 to 4 799 checks per capture).
 The strings' own font state is taken from each string's probe.
+
+The capture `hddosd-110U-text2-close` (System Configuration back to the menu, 105 frames): 8 078
+of 8 078 packets equal, 105 frames, 3 893 strings run through the model, carried cache list equal
+to the library's 3 788 of 3 788 (*verified*, `verify_text_frame.mjs --carry`, `CLOCK_BUILD=hdd`;
+registered in `run_all.manifest.json` for `verify_text_frame.mjs`, `verify_text.mjs` and
+`verify_text2.mjs`).
+
+**The model builds each string from the language table** (*verified* by `verify_text_frame.mjs --carry`
+with `clock_text.mjs`, HDD OSD 1.10U): language = bits 4 to 8 of the word at `0x00371818` (1 when
+0), table = `langtblptrs[language]` (`0x002AD200`), text = the ELF's bytes at the pointer that
+`get_lang_string` (`0x002081B8`) returns (`D_002AD220 + 4 x id`). The language word is read once, at
+the capture's first `Font_PutsPackets`. For each string the model resolves the pointer the caller
+passed to an id of the active table (or to a fixed ELF address outside the table, such as the
+clock template pieces at `0x00370178..`) and takes the text from the ELF; the text equals the
+drawn string every time. `hddosd-110U-text2-fr-config`: 12 frames, 2 364 of 2 364 packets, 324
+strings from the table equal of 324, 240 of 240 at fixed ELF addresses, 108 in RAM buffers filled
+by the caller (date and time, taken from the probe; language word `0x07000020`).
+`hddosd-110U-text2-jatable-boot` with `--table=0x00348c30`: 85 frames, 3 649 of 3 649 packets, 237
+of 237 table strings, 255 RAM-buffer strings. A pointer found in another language's table and not
+in the active one is a problem. Mutants run by hand on `fr-config` (`mutate.mjs` finds no computing
+line in this verifier, the computing is in the model): language shift `>>> 4` to `>>> 5`, table
+index `+ 1`, string end `+ 1` give PARTIAL; restricting `tablePointers` to one language and
+changing the id value survive. The captures reach only the language words `0x07000010`
+(English), `0x07000020` and `0x07000040`; the Japanese table is reached by `--table`, not through
+the word. The model reads the word the way `config_get_osd_language` (`0x00203DD8`) does when the
+video mode is not 0 and the field is 0 to 7 (read); the video-mode-0 path (returns whether the
+field is 1) and fields of 8 or more (return 1) are not modelled.
 
 ## 5. Where the strings go (*verified for the callers below; NTSC*)
 
@@ -309,12 +338,81 @@ captures above):
   `get_lang_string` `0x002081B8`; ids 0x55 and 0x56 (Back, Enter) are swapped by the video
   mode. English: 0x55 Back, 0x56 Enter, 0x57 Options, 0x5E Display, 0x5F Version.
 
-**PAL, HDD OSD** (`verify_text2.mjs`, captures `hddosd-110U-text2-pal-menu` and `-pal-clock`):
-every string, place and alpha equal. The button picture (`DrawIcon`) is not: in PAL its
-bottom is scaled by the branch of `DrawIcon` (`0x00226618`) through `litodp` from `0x00226630`
-(not read); the capture shows +1.75 px for a 12-pixel picture.
+`hddosd-110U-text2-close` (HDD OSD, NTSC; *verified* by `verify_text2.mjs`, `CLOCK_BUILD=hdd`): 2 194
+strings, 4 698 glyphs, alpha 2 194 of 2 194, place 1 186 of 1 186, button pictures 88 of 88,
+panels 105 of 105, list entries 105 of 105, string level 22 963 of 22 963, 3 093 792 bytes
+equal. The two checks that compare pictures uploaded to the cache and the colour table compare 0
+items in it (the cache is warm).
 
-## 6. ROM 2.30 (*verified at the glyph level; string level partly*)
+**Languages, HDD OSD 1.10U NTSC.** The writers (*read*): `config_set_jpn_language` (`0x00203E58`)
+writes `(v & 0x1F) << 4` into bits 4 to 8 of `var_mechacon_config_param_1` (`0x00371818`; mask
+`0xFFFFFE0F`), conditionally (with the video mode 0 it writes when the old field is below 2, or
+else when `v` is not 0; with the video mode not 0, when the old field is below 8, or else unless `v`
+is 1). `config_set_langtbl` (`0x00208170`) calls it, then copies `langtblptrs[v]` (`0x002AD200`,
+eight 4-byte pointers `0x348c30, 0x34c7f8, 0x34f288, 0x35dec0, 0x3550c0, 0x357e90, 0x352250,
+0x35aec8`: Japanese, English, French, Spanish, German, Italian, Dutch, Portuguese) into
+`D_002AD220`, which `get_lang_string` reads on every call. A write of the field alone changes
+only the layout row (hint slots `D_002B2470` + language x 16), so the stimulus writes both words
+after the code is loaded (`0x00371818` = `0x07000000 | lang << 4`, `0x002AD220` = the table
+pointer); the language entry's own save path (`config_save_clock_osd`) was not driven.
+`config_get_osd_language` (`0x00203DD8`, *read*): with video mode 0 it returns whether the
+field is 1; with video mode not 0 and field 0 it writes 1 and returns it, and a field of 8 or more
+returns 1.
+
+*Verified* (`verify_text2.mjs`, `CLOCK_BUILD=hdd`; every packet, pen, place, alpha, panel and entry
+equal), captures `hddosd-110U-text2-`:
+
+| Capture | Strings | Glyphs |
+|---|---|---|
+| `fr-menu` | 72 | 792 |
+| `fr-config` | 408 | 1 692 |
+| `fr-boot` | 326 | 3 349 |
+| `de-menu` | 72 | 816 |
+| `de-config` | 374 | 1 320 |
+| `de-boot` | 342 | 3 703 |
+| `es-config` | 374 | 1 408 |
+| `pt-config` | 374 | 1 452 |
+| `it-config` | 374 | 1 606 |
+| `nl-config` | 442 | 1 625 |
+
+The language word probed is `0x07000020` (French), `0x07000040` (German). Strings are UTF-8 and
+the accented letters are in block 0 of `FNTOSD`. Spanish, Portuguese, Italian and Dutch were
+captured in the System Configuration state only, French and German also at the menu and at boot.
+The French and German `boot` captures upload accented glyphs to the cache inside the trace. The Italian and Dutch tables hold the `y` escape
+in the static clock string id `0x5E` (Italian: `07 r0.94 07 y+08 "Visualizzazione" 07 y+00 07
+r0.00`; Dutch: the same with "Weergeven"), so `y` and `r` are verified in `it-config` and `nl-config`; id `0x54` also carries a
+`y` escape in the French, Italian, Dutch and other tables (read from the ELF).
+
+Japanese. On a non-Japanese console the field is never 0 (forced to 1), so the layout row stays
+English. Writing the Japanese table pointer alone (`0x002AD220` = `0x00348C30`) on the E BIOS
+(`hddosd-110U-text2-jatable-boot`, boot, advance 230) draws Japanese strings through blocks 2
+(kanji) and 4 (kana) of `FNTOSD`, 26 x 26, 4 bits: 308 strings, 2 149 glyphs, string, place and
+alpha equal, FOUND (*verified*). The 13 680 picture bytes the code leaves unwritten for these
+glyphs are not compared. `text_blocks.mjs` over the eight tables (*read* from the tables, not
+captured): table 0 uses blocks 0, 2 and 4, tables 1 to 7 block 0 only; blocks 1, 3 and 5 are
+reached by no clock string. The capture `hddosd-110U-text2-ja-boot` on the Japanese BIOS
+`ps2-0210j-20040917.bin` holds 0 packets (verifier verdict PARTIAL): HDD OSD does not reach text
+there (the cause is under Open).
+
+**PAL, HDD OSD** (`verify_text2.mjs`, `CLOCK_BUILD=hdd CLOCK_VIDEO=pal`, captures
+`hddosd-110U-text2-pal-` `menu`, `clock`, `version`, `config`, `adjust`, `down`): FOUND on all six
+(72 strings 696 glyphs, 33 and 286, 156 and 1 176, 408 and 1 356, 308 and 902, 643 and 3 544);
+`verify_text_frame.mjs --carry` FOUND on the six (12, 11, 12, 12, 11, 46 frames) (*verified*).
+`DrawIcon` (`0x00226618..0x00226684`, *read* in `DrawIcon.s`): `is_pal_vmode` = 1 runs the body,
+NTSC skips it. It replaces the picture's bottom `b` (field `+0x24`, sixteenths) by `bottom =
+trunc(top + (float)(b - top) x 0.5405d / 0.47d)` (`litodp`, `fptodp`, `dpmul` by the double at
+`0x365580`, `dpdiv` by the double at `0x365588`, `dpadd`, `dptoli`), `top` = `+0x14`. The verifier
+reads the constants from the ELF (`0x3FE14BC6A7333333` and `0x3FDE147AE0000000`). Pictures equal:
+menu 24 of 24, clock 11 of 11, version 48 of 48, config 84 of 84, adjust 22 of 22, down 138 of 138.
+Mutants on `pal-down`: `trunc` to `round`, `+1` on the top, multiply and divide swapped, the sign
+flipped, each 0 of 138 (killed); removing `Math.fround` leaves 138 of 138 (the operand is an
+integer count of sixteenths). The low mantissa bit of each constant is not distinguishable (the
+results 220.8 and 257.6 of a sixteenth are far from an integer). The soft-double routines `dpmul`,
+`dpdiv`, `dpadd` are modelled as IEEE round-to-nearest; their rounding code was not traced bit by
+bit. The ratio 1.15 of the TV and the scaling `0.5405 / 0.47` of positions are checked only by the
+captures' equality.
+
+## 6. ROM 2.30 (*verified at glyph, string, place and alpha level*)
 
 Its own code, about a tenth of the size. Four pages are in GS memory from start-up, from the
 ROM file `FNTIMAGE` (a directory of files expanded on load):
@@ -356,19 +454,52 @@ moves the pen by `advance × 16` after each character.
 equal; the pen of 2 576 characters equal to the pen before plus the advance computed; the four
 pages in GS memory equal to `FNTIMAGE` expanded (942 080 pixels) in every dump.
 
-*Verified, string level* (`verifyRom2` in `verify_text2.mjs`, probes `ROM_PROBES`, captures
-`rom-0230A-text2-` `config`, `clock`, `open`): the openings, page bindings, glyphs and the
-string level (set, index, fixed width, pen: 1 164, 286 and 4 792 equal of as many); the colour
-block equals the setters (1 811 of 1 812 in `open`); the alpha of date, menu, title and hint
-panels (`open`: 660 of 660, panels 106 of 106). Rules per caller (ROM addresses: menu
-`0x0022E3E0`, hints `0x00221E48`, list `0x0022D728`, clock value `0x00222830`; ramps `0x0028B00C`,
-`0x0028B070`, `0x0028B110`, `0x00293BA8`, `0x002953F0`, `0x00296740`; gp `0x002CFEF0`) are
-written in `verify_text2.mjs` and not yet passing at the place level (see Open).
+*Verified, string, place and alpha level* (`verifyRom2` in `verify_text2.mjs`, probes `ROM_PROBES`,
+`CLOCK_BUILD=rom`, captures `rom-0230A-text2-`; the six verdicts are FOUND, "every byte,
+character, width, place and alpha equal"): opening, page binding, glyph, string level (set,
+index, fixed width, pen), colour block, measured width, place, alpha and panels.
 
-*Read, differing from HDD OSD* (not measured): ROM panels drop an alpha under 128 where HDD
-caps at 128; ROM panel 8 returns without panels 1 to 6; the menu line is 18 in PAL and the top
-`H/2 - 17.25` in PAL (HDD 16 and 14); the hint y has no +1; ROM measures the clock template
-every frame (HDD caches it) and advances the fields by their measured width.
+| Capture | Strings | Glyphs |
+|---|---|---|
+| `config` | 372 | 1 164 |
+| `clock` | 36 | 312 |
+| `open` | 1 812 | 4 792 |
+| `menu` | 72 | 696 |
+| `adjust` | 336 | 984 |
+| `down` (list crossfade) | 643 | 3 544 |
+
+Rules per caller (ROM addresses: menu `0x0022E3E0`, hints `0x00221E48`, list `0x0022D728`, clock
+value `0x00222830`; ramps `0x0028B00C`, `0x0028B070`, `0x0028B110`, `0x00293BA8`, `0x002953F0`,
+`0x00296740`; gp `0x002CFEF0`) are written in `verify_text2.mjs` (`romPlace`) and pass on those
+captures. The colour block equals the setters in every string: the context is seeded from the
+`Font_SetColor` and `Font_SetRatio` probes that precede the capture's first string, so the string
+drawn before the first `Font_SetColor` of the capture is covered. List entries' alpha: entry
+alpha at `0x00296B90 + 0x30 i + 0x24` times the list's; entry strings drawn where it is 16 or
+more, values where it is not 0, the clock value's alpha is entry 0's.
+
+*Read, differing from HDD OSD*: ROM panels drop an alpha under 128 where HDD caps at 128; ROM
+panel 8 returns without panels 1 to 6; the menu line is 18 in PAL and the top `H/2 - 17.25` in
+PAL (HDD 16 and 14); the hint y has no +1; ROM measures the clock template every frame (HDD
+caches it) and advances the fields by their measured width.
+
+*Width and the trimming branch.* The measure model `romWidth` computes widths in all six captures
+and throws if the last code of a string is a double-byte code (code 0x8141 or above) while
+`settings+0x14` is not 0. The branch it guards is the trimming branch of `0x0020CBA0` at `0x0020CE44`;
+its body (width minus `2 s0 / 3` or `2 s0 / 5`) is not modelled and `romWalk` rejects bytes of
+0x81 and above. The codes of the strings drawn in the captures (ASCII, escape results at most 999,
+or `0x16`, `0x18`, `0x19`) are below 0x8141, so the guard does not fire. Which languages reach the
+branch and what `settings+0x14` and `0x00205830` hold are under Open.
+
+*Mutation* (`mutate.mjs verify_text2.mjs --capture rom-0230A-text2-down`): 30 of 150 mutants
+killed in a full run; `--limit 20` kills 3 of 20. The survivors are in code the ROM capture
+does not run (HDD-only code, PAL constants) and the throw guard of `romWidth` and the colour
+seeding, which the mutator skips.
+
+**ROM 2.30, PAL** (E BIOS, `verify_text2.mjs`, `CLOCK_BUILD=rom CLOCK_VIDEO=pal`, captures
+`rom-0230E-text2-pal-` `menu`, `config`, `clock`, `adjust`, `down`): FOUND on all five (72 strings
+696 glyphs; 372 and 1 164; 33 and 286; 336 and 984; 643 and 3 544): opening, binding, glyph, string
+level, colour, width, place, alpha and panels equal (*verified*). The ROM's button pictures are
+not compared, only the panels' id and alpha.
 
 ## 7. Where the builds differ (*measured on both*)
 
@@ -385,29 +516,42 @@ every frame (HDD caches it) and advances the fields by their measured width.
 
 ## 8. Open
 
-- ROM 2.30 place level: the measure model `romWidth` throws when `settings+0x14` is not 0 (the
-  trimming branch of `0x0020CBA0` at `0x0020CE44`, taken for the languages `0x00205830` returns
-  0, 3 or 6); the language is not in the probes, so widths are not computed and the place level
-  does not pass (48 of 216, 22 of 33, 172 of 1010). Settled by a probe range on `0x00205830`
-  (calls `0x002053A0`) or by taking English, then `verify_text2.mjs` on `rom-0230A-text2-config`,
-  `-clock`, `-open`.
-- ROM 2.30 list entries' alpha: values draw where alpha is not 0, entry strings where it is 16
-  or more (`draw_menu_item`); the clock value's alpha is entry 0's. Not written in `romPlace`.
-- ROM 2.30 colour block: 1 mismatch of 1 812 in `rom-0230A-text2-open`, not examined.
-- ROM 2.30 captures not taken: `text2-menu`, `-adjust`, `-down`; the pages' load at start-up
-  (GS memory holds them equal to the file; the upload was not traced).
-- PAL: `DrawIcon`'s PAL branch (`0x00226630`) unread; `hddosd-110U-text2-pal-version` makes
-  `verify_text2.mjs` crash (not diagnosed); no PAL capture of config, adjust or down; no ROM PAL
-  capture (`rom-0230E`). Positions are scaled by `0.5405 / 0.47` and the TV ratio is 1.15 by
-  reading.
-- Languages other than English: a European language is set by writing the language field (bits 4
-  to 8 of `var_mechacon_config_param_1`, `0x00371818`); on a non-Japanese console field 0 is
-  forced to 1 by `config_get_osd_language` (`0x00203DD8`), so Japanese needs a J BIOS (whether HDD
-  OSD boots on it is untested).
-- Building the frame's string list (texts and places) inside `clock_text.mjs`: needs the
-  language table (`D_002AD220`, entries are pointers into the ELF).
-- Decorations' drawing, a line break, blocks 1 to 5 of the font (kana, kanji, the wide mark):
-  the model takes only 4-bit blocks and ran on block 0.
+- ROM 2.30 trimming branch (`0x0020CBA0`, `0x0020CE44`): reported, not reproduced, that
+  `settings+0x14` is 1 in every ROM capture, that `0x00205830` returns 1 (probe block
+  `0x0027B388`), and that language 0 trims only on last codes `0x8141`/`0x8142`, language 3 on
+  `0xA3BF`/`0xA1A3`/`0xA1A2`, language 6 on `0xF240`/`0xF3F8`/`0xF3F9`. Reason: there is no ROM
+  disassembly of those addresses on disk and the HDD asm has no equivalent, and the docstring of
+  `romWidth` says "No trimming". The six captures' widths are equal either way. Settled by
+  `disasm_rom.py` over `0x0020CBA0..0x0020CE60` and `0x00205830`, or by a ROM capture in a
+  language that returns 0, 3 or 6 (not taken).
+- ROM 2.30 PAL constants in `romPlace` (menu line 18, top 17.25, list top `0x65`): the five
+  `rom-0230E-text2-pal-` captures pass, but mutants of them were not run on those captures (the
+  `rom-0230A-text2-down` run cannot reach them). Settled by `mutate.mjs verify_text2.mjs --capture
+  rom-0230E-text2-pal-down`.
+- ROM 2.30 button pictures (position, NTSC and PAL): not compared by any verifier; the ROM's
+  draw path for the picture is unread.
+- ROM 2.30 pages' load at start-up: GS memory holds them equal to the file; the upload was not
+  traced.
+- HDD OSD on the Japanese BIOS `ps2-0210j-20040917.bin`: the capture `hddosd-110U-text2-ja-boot` is
+  empty. A hang of the EE kernel at `0x8000E160..0x8000E174` (a loop polling halfword
+  `0x1A000006` bit 1, which reads 0 in the emulator) with no EE thread, and 16 IOP modules
+  loaded, is reported; the same with a `nop` over the `beqz` at `0x8000E174` giving 24 modules and an
+  idle kernel at `0x800110AC`. Reason: reported by one run, not reproduced (needs Watson and the
+  J BIOS). Settled by `text_jprobe.mjs` on that BIOS. Until then a Japanese console's layout row 0
+  (hint slots) is not verified: `jatable-boot` runs the English layout row with Japanese strings.
+- Font blocks 1, 3 and 5: no clock string of the eight tables reaches them, so no capture can;
+  `JISUCS` (`References/dumps/hddosd-host/JISUCS`) was not examined. Decorations' drawing and a
+  line break: no captured string uses them.
+- Languages: the video-mode-0 path of `config_get_osd_language` and field values of 8 or more are
+  not modelled in `clock_text.mjs`; the language entry's own save path is not driven; Spanish,
+  Portuguese, Italian and Dutch have no menu or boot capture (accented uploads inside a trace
+  are verified for French and German only).
+- `clock_text.mjs` takes the date and time strings from the probe: the buffers at `0x00397B30`,
+  `0x00400750`, `0x00400870` are filled by `sprintf` from the console's RTC, not probed as state
+  (108 of 672 strings in `fr-config`). It does not derive the caller's string id from the caller's
+  rules. ROM 2.30 has no frame model of text (different string path).
+- Soft-double rounding (`dpmul`, `dpdiv`, `dpadd`) in `DrawIcon`'s PAL branch and the last
+  mantissa bit of its two constants: not distinguishable by any capture.
 - The Browser's text (outside the clock module).
 
 ## 9. Files
@@ -417,6 +561,9 @@ every frame (HDD caches it) and advances the fields by their measured width.
   `.gs` beside the trace for the GS memory check).
 - `References/scripts/verify_text2.mjs` (extends `verify_text.mjs`: alpha, remaining places, ROM string level, PAL),
   `References/scripts/verify_text_frame.mjs` (`--carry`), `References/model/clock_text.mjs`.
+- `References/scripts/text_capture.mjs` (capture with `CLOCK_BIOS`), `text_jprobe.mjs` (where the
+  EE is), `text_lang_word.mjs` (the language word of a capture), `text_blocks.mjs` (the font block
+  of each character of the language tables).
 - `References/scripts/extract_font.mjs` (HDD OSD's file; `--rom` for the ROM's pages).
 - `References/model/font-osd.json`, `References/model/font-rom.json`.
 - `References/textures/font-osd-block*.png`, `font-rom-*.png` (git-ignored).

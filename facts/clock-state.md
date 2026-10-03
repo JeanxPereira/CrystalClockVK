@@ -154,8 +154,13 @@ console's time; otherwise each frame takes `(|drift| × frame + 9999) / 10000` m
 off it. When the milliseconds pass 1000 the whole seconds are added to the date and time.
 *Measured: the milliseconds advance 16.7 per frame.*
 
+The hour turning while the clock runs freely (seconds not held at 0) is *verified*: a record
+written to hh:59:59.9 runs on by itself and turns the hour, and `verify_clock_state.mjs` is
+FOUND on `hddosd-110U-stim-hour-free` and `rom-0230A-stim-hour-free` (86 frames each,
+`verification.md`); in PAL on `hddosd-110U-flow-pal-hour-free` (97 frames) and, with the record
+written to hour 5, 59 min, 59 s, on `rom-0230E-pal-clock-written` (72 frames; `pal.md`).
+
 ## Not settled
 
-- A change of hour while the clock runs freely (seconds not held at 0).
 - The time keeper, by recomputation.
 - Who reads the hour-hand and second-hand globals, if anyone.

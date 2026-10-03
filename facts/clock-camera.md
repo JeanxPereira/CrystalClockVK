@@ -198,7 +198,9 @@ equal.
 
 - Which menu event calls each of the three configuration callbacks (their roles are inferred from
   what they do and from the measured values).
-- The orb drawing function's modes 2 and 3 (`func_00234B80`): they move the orbs toward
+- The orb drawing function's modes 2 and 3 (`func_00234B80`): the position and colour rules are
+  *verified* by `verify_transitions.mjs` (`clock-transitions.md` section 3); the function's code is
+  read only as far as the targets and the colours. They move the orbs toward
   per-orb targets and blend per-orb colours `(0, 0, 128)`, `(0, 128, 0)`, `(0, 128, 128)`,
   `(128, 0, 0)`, `(128, 0, 68)`, `(128, 68, 0)`, `(128, 128, 128)`; read only as far as that.
 

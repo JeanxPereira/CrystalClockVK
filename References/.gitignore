@@ -9,3 +9,4 @@
 !model/**
 !lib/
 !lib/**
+scripts/.mutant-*

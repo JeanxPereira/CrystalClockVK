@@ -32,15 +32,34 @@ input is read anywhere in the module (*read*: all 70 files of the module's disas
   `rom-0230A-opening-towers-full.p2s` (21 entries, every mask 0x3F, counts 1 .. 255, 126 towers).
 - The disc state (HDD OSD `0x001F000C`, ROM `0x001F0010`) does not hold when written: the
   program rewrites it (HDD OSD writer `0x00211FD4`, ROM writer `0x0020F740`, `sw s1, 0x10(v0)`).
-  It holds when that store is replaced by a nop. A code patch written at frame 1 is lost because
-  the OSD's code loads afterwards: patch after the advance. What does hold without a patch is the
-  hand-off's snapshot `D_003700A0`, written during the dive (section 8).
+  It holds when that store is replaced by a nop. A code patch or a write made at emulator frame 1
+  is lost (the OSD's code loads afterwards, and the module's start rewrites the disc state, for
+  `BootIllegal` too): the stimulated captures patch and write at emulator frame 135 (HDD OSD;
+  module counter = frame - 127) or 60 (ROM; module counter = frame - 61), after the advance.
+  What does hold without a patch is the hand-off's snapshot `D_003700A0`, written during the dive
+  (section 8). A held disc state is occasionally not taken: each capture's branch listing in the
+  verifier's output shows whether it was.
 - The clock is forced when the word `0x002AD22C` is 0 (`enter_clock_module_208378` returns
-  `word == 0`; ROM `0x0027B394`); `main` writes 0 there through `enable_enter_clock_module_208398`
-  when there is no configuration or a first run is forced. In the captured HDD OSD runs it is
-  not forced: `enter_clock_module` returns 0 at `0x0021AEFC` in both hand-off captures, and the
-  word holds 1 in all 717 samples of `hddosd-110U-opening3-illdraw`. The hard-disk words are
-  `0x002AD230`, `0x002AD234`.
+  `word == 0`; ROM `0x0027B394`, read by `0x002058E0`); `main` writes 0 there through
+  `enable_enter_clock_module_208398` when there is no configuration or a first run is forced.
+  HDD OSD with `BootOpening` or `BootIllegal`: not forced (the word holds 1 in all 717 samples of
+  `hddosd-110U-opening3-illdraw`; `enter_clock_module` returns 0 at `0x0021AEFC` in both hand-off
+  captures; `verify_opening3_handoff.mjs` on `hddosd-110U-opening3-illegal` takes the table branch,
+  "first-boot result 0"). Forced: written 0 at emulator frame 135 (`hddosd-110U-opening3-forced`).
+  ROM 2.30: a plain power-on is forced (`rom-0230A-opening3-forced`, no stimulus).
+- The hard-disk words (HDD OSD): ready `0x002AD230`, exec `0x002AD234`. While ready is non-zero
+  `pad_handler_hddboot_check_20CC50` (`0x0020CC50`) rewrites exec every frame from the mailbox
+  word `0x0038AD00`: mailbox 1 sets exec 1, mailbox -1 clears ready and sets exec -1, mailbox 0
+  sets exec 0, and past `20 x fps` vblanks (1 200) it clears ready and sets exec -1 (*measured*,
+  `verify_opening3_stages.mjs`, captures `-ready-a`, `-ready-b`, `-readyneg`). A write to exec is
+  lost: the stimulus is the mailbox. ROM: ready `0x0027B398` (`0x00205910`), exec `0x0027B39C`
+  (`0x00205920`).
+- The CDDA count (HDD OSD `0x001F0D58`) is rewritten every frame by `sound_handler_2150D0` (store
+  at `0x002151E4`, `sw v1, 0xC(s0)`); holding it needs that store nopped. ROM `0x001F0CF8` is
+  stored by two copies of the sound-status snapshot, `0x002129D8` (function `0x002128E8`) and
+  `0x0020FDB0` (function `0x0020FC90`, found with a write watchpoint on the recompiler build);
+  both are nopped to hold it, one alone did not (*measured*; the second store is not resolved from
+  the disassembly: its base is `s1`).
 - A probe takes at most 8 ranges and a capture at most 32 probes. A probe armed before the trace
   carries state and no packets. Probes cannot be armed at a given frame inside a trace. Two
   verifiers that probe the same address (`0x0021D990`: camera and overlays) cannot share a
@@ -127,13 +146,21 @@ B+0x08 = 4e-7                                      (z acceleration)
 if discState is one of {0x64, 0x6A..0x70, 0x72..0x74} and counter > 2 x fps (120): go = 1, stage++
 ```
 
-States 0x65..0x69 and 0x71 hold the stage until the camera crosses threshold 1 by itself.
+States 0x65..0x69 and 0x71 hold the stage until the camera crosses threshold 1 by itself (*verified*,
+`verify_opening3_stages.mjs`: `hddosd-110U-opening3-disc65-b` holds stage 1 until z > 56 at module
+counter 617 and then dives, 135 frames; `-disc69` 173 frames; `-disc71` 166 frames; hand-off module
+2 in each).
 Booting from the hard disk (`is_hdd_boot_ready` non-zero; *read* `0x0021EFAC..0x0021F078`):
 `B+0x48 = 0.0004`; `B+0x18 = -0.00014` while the counter is below `20 x fps / 6` (200), else
 2.5e-5; when `get_hddboot_exec` is non-zero `B+0x18 = 0.003`, go = 1, stage++; else past
-`20 x fps` frames the ready flag is cleared.
+`20 x fps` frames the ready flag is cleared. *Verified* (`verify_opening3_stages.mjs`, ready word
+written 1 at frame 135): `-ready-a` (exec 0, waiting, 86 frames), `-readymid` (counter 171..209,
+across the `20 x fps / 6` switch of `B+0x18`, 106 frames), `-ready-b` (mailbox 1: exec set, go,
+`B+0x18` = 0.003; 101 frames), `-readyneg` (mailbox -1: ready cleared, exec -1; 210 frames),
+`-readyclear` (pad handler `0x0020CC50` replaced by `jr ra`, because its own clear comes first at
+vblank 1 200: stage 1's own clear of the ready flag at counter 1 201; 134 frames).
 
-**Stage 2** (*verified*, same capture; the first-time branch by the table is *read*,
+**Stage 2** (*verified*, `hddosd-110U-opening3-intro` and the stimulated captures below; code
 `0x0021F0F8..0x0021F258`):
 
 ```
@@ -149,6 +176,22 @@ if go:
      not hard-disk: B+0x18 = 0.0099 (z velocity), B+0x38 = 0.000195 (roll acceleration)
      hard-disk:     B+0x08 = 4e-4, B+0x38 = 8e-5
 ```
+
+Every branch of stage 2 is *verified* by `verify_opening3_stages.mjs`, which compares each sound
+command the handler sends (`sound_handler_queue_cmd` `0x00200C00` and `sceSdRemote` `0x00294738`,
+told apart by the return address) with the computed command, argument registers and call site, in
+captures that write the state after the advance (section 1):
+
+| Capture | Stimulus | Branch reached | Frames |
+|---|---|---|---|
+| `-enter` | disc state 0x64 held | the table's default: `0x6140,1` from `0x0021F200`; hand-off module 2 | 229 |
+| `-disc6c`, `-disc6d`, `-disc6e` | that disc state | `0x6140,7` then `0x6150,0x11`, both sends equal; hand-off execute 1, 1, 0 | 229 .. 239 |
+| `-disc6a`, `-disc6b`, `-disc73` | that disc state | `0x6150,0xF`; hand-off execute 2, 2, 3 | 229 .. 239 |
+| `-disc6f`, `-disc70` | that disc state | `0x6140,1`; hand-off execute 5, 4 | 229 .. 239 |
+| `-ready-b` | ready 1, mailbox 1 | `0x6150,0xF`, snapshot untouched; hard-disk velocities; hand-off module 0, execute 6 | 101 |
+| `-forced` | `0x002AD22C` = 0 | `0x6140,1` from `0x0021F158`, snapshot left 0; plain velocities; hand-off forced-clock exit | 238 |
+
+In every row the stage handlers, integrator and result are equal in every probed frame.
 
 **Integrator** (`0x0021F37C..0x0021F508`), every operation single precision cut toward zero,
 `k` = 1 (NTSC; 1.2 in PAL), in this order (the order matters for the bits):
@@ -544,9 +587,9 @@ cube draw `0x0021BB48`, face emitter `0x00220B88`, per-vertex callback `0x0021B5
   frame to become 1 (stage 0 starts the scene, it sets pending = 1), so stages are one higher
   than HDD OSD's and stage n's threshold is entry n - 1 of the same table. Disc-state tables
   have 18 entries including 0x75. Stage 3 (HDD OSD's 2) has a countdown HDD OSD lacks (two
-  variables at `0x002C8694`; set only for one disc state, not met) and a hard-disk hold HDD OSD
-  lacks. Where HDD OSD reads `0x002AD22C` to know the clock is forced, the ROM calls
-  `0x002058E0`; a power-on in the emulator is a first boot, and the disc state is then not kept.
+  variables at `0x002C8694`) and stage 2 a hard-disk hold HDD OSD lacks (below). Where HDD OSD
+  reads `0x002AD22C` to know the clock is forced, the ROM calls `0x002058E0`; a power-on in the
+  emulator is a first boot (forced clock), and the disc state is then not kept.
   `verify_opening_camera_rom.mjs` on `rom-0230A-opening2-camera-as-hdd` and
   `verify_opening_stages_rom.mjs` (handlers read at `0x0021A510..0x0021AA70`) on
   `rom-0230A-opening3-intro`: **359 frames** (the whole intro), stage handlers, integrator and
@@ -574,10 +617,68 @@ cube draw `0x0021BB48`, face emitter `0x00220B88`, per-vertex callback `0x0021B5
 
 Every verdict above is `FOUND`.
 
+**Fade and bars counts.** `verify_opening_flat.mjs` (`OPENING_BUILD=rom`) counts fade 31 and
+bars 359 on `rom-0230A-opening3-intro-as-hdd` and on `rom-0230A-opening2-flat-as-hdd` (the whole
+intro; the fade records are at frames 63 and 391..420, the bars records at 63..420), and fade 30
+and bars 348 on `rom-0230A-opening2-scene-as-hdd`, whose trace starts at frame 72: it misses the
+frame-63 fade, the bars of frames 63..72 and the bars record at frame 73, which is a pre-armed
+record (state only, no packets, skipped by the verifier). The code is the same and the verdict is
+`FOUND` in all three; `verify_opening_stages_rom.mjs` on `rom-0230A-opening3-intro` counts 31 fade
+alphas equal. The ROM intro has 31 fades and 359 bars.
+
+**The stage machine and hand-off, stimulated** (`verify_opening3_stages_rom.mjs`,
+`verify_opening3_handoff_rom.mjs`; captures `rom-0230A-opening3-<name>`, `rom-0230E-opening3-pal-<name>`;
+the writes are made at emulator frame 60, section 1). Sound commands go through `queue_cmd`
+`0x00200BE8`, told apart by the return address (eight call sites from `0x0021A7E0` to `0x0021AA24`),
+including the illegal scene's end wait (`0x5015,6,0,0xF` from `0x0021AA24`, where HDD OSD calls
+`sceSdRemote`). Every row below is `FOUND` (stages and hand-off); sounds are compared in command,
+argument registers and call site:
+
+| Capture | Stimulus | Branch reached | Result |
+|---|---|---|---|
+| `-forced` | none | stage 3 forced clock: `0x5014,1` from `0x0021A7E0`; hand-off forced-clock exit (execute -1, module 2, previous 1) | 359 frames |
+| `-forcedsnap` | snapshot 0x6C | the forced exit wins over the table (execute -1, module 2) | hand-off equal |
+| `-forcedexecsnap` | exec 1, snapshot 0x6C | exec 1 turns the exit off: table, execute 1, module 1 | hand-off equal |
+| `-d6a`, `-d6b`, `-d6d`, `-d6e`, `-d6f`, `-d70`, `-d72`, `-d73`, `-d75` | that disc state | the table; hand-off execute 2, 2, 1, 0, 5, 4, -1 (module 2), 3, 3 | equal |
+| `-count`, `-d6d` | disc 0x6C, 0x6D | stage 3: `0x5014,7`, `0x5015,10`, a countdown of 58 frames, `0x5015,7,11` (3 sends equal) | 236, 238 frames |
+| `-d71` | disc 0x71 held | the table; hand-off module 2 | equal |
+| `-d71z` | 0x71 held, z written 60 | stage 3 first time by the table, `0x5014,1`, plain velocities | 67 frames |
+| `-readyexec` | ready 1, exec 1 | hand-off: hard-disk ready, exec 1: execute 6, module 2 | equal |
+| `-readyexecsnap` | ready, exec 1, snapshot 0x6C | execute 1, module 0 | equal |
+| `-readyneg`, `-readynegsnap` | ready, exec -1 (snapshot 0x6C) | the table: module 2 (execute 1) | equal |
+| `-readyexec2` | ready, exec 2 | exec 2 is not exec 1: module 2, execute -1 | equal |
+| `-ready-b` | ready, exec 1 | stage 2 leaves when the drive count `0x0027C5D4` reaches 0x7C; `0x5015,f`; hard-disk velocities | 196 frames |
+| `-ill72-c` | disc 0x72, CDDA count 1 | stage 7: `0x5015,6`, end after 0x80 frames; hand-off module 5 | 130 frames |
+| `-ill74-c` | disc 0x74, end flag 2 written | stage 7 ends only once the flag is set (flag 2) | 60 frames |
+| `-ill-a` | disc 0x74 held through the intro | hand-off table: module 4 | equal |
+| PAL `-count` | disc 0x6C | countdown 69 frames | 190 frames |
+| PAL `-readyexec` | ready, exec 1 | stage 2 leaves at the drive-count limit; `0x5015,f` | 184 frames |
+| PAL `-intro` | none | the whole intro | 291 frames |
+| PAL `-d71z` | 0x71 held, z written | stage 3 by the table | 68 frames |
+
+The hard-disk hold's limit is the drive-count word `0x0027C5D4` at 0x7C (0x67 in PAL); the
+stage-3 countdown is 58 frames (69 in PAL, `(int)(1.2 x 58)`). The hand-off's table, every entry
+(section 8), is reached.
+
+**The illegal-disc scene and the towers on ROM 2.30** (HDD OSD verifiers on the capture rewritten
+to `*-as-hdd` by `extract_opening_rom_trace.mjs back`, `CLOCK_BUILD=rom OPENING_BUILD=rom`;
+`CLOCK_VIDEO=pal` for PAL):
+
+| Capture | Verifier | Result |
+|---|---|---|
+| `rom-0230A-opening3-ill-a-as-hdd` | `verify_opening3_illegal_v2.mjs` | `FOUND` 2 604 fans, 930 glows, 23 668 boxes, 76 banners |
+| `rom-0230E-opening3-pal-ill-a-as-hdd` | `verify_opening3_illegal_v2.mjs` | `FOUND` 3 234 fans, 1 155 glows, 29 368 boxes, 139 banners |
+| `rom-0230A-opening3-towers-late-as-hdd` (state `rom-0230A-opening-towers-full.p2s`, frames 59..426) | `verify_opening_towers_ee.mjs`, `verify_opening_vu1_v2.mjs` | `FOUND` 19 278 chains; 19 278 towers, 134 946 packets, 1 542 240 writes, 507 vertices sent without drawing |
+
+The illegal-disc scene, its cubes, the flat draws, the ghost and the towers are the same code
+and tables on ROM 2.30. On a ROM trace `verify_opening_overlays_v2.mjs` says `PARTIAL`: its ghost
+half models HDD OSD's `CLAMP_1`.
+
 ## 7. PAL
 
-HDD OSD only (BIOS 2.30 E, `hddosd-110U-opening3-pal-intro`, every opening verifier with
-`CLOCK_VIDEO=pal`; see [pal.md](pal.md)):
+HDD OSD (BIOS 2.30 E, `hddosd-110U-opening3-pal-intro`, every opening verifier with
+`CLOCK_VIDEO=pal`; see [pal.md](pal.md)); the ROM's PAL intro, stage machine and illegal scene are
+in section 6:
 
 | Rule | NTSC | PAL | How known |
 |---|---|---|---|
@@ -590,17 +691,53 @@ Measured: the intro is 206 frames; stage machine 206 frames, flat draws 465, gho
 822, fog 205, lights 182, library inputs 70 436 values, hand-off 1, logo 120 and ghosts 205
 (`verify_opening_overlays_v2.mjs`), all `FOUND`.
 
+**The illegal-disc scene in PAL, HDD OSD** (*verified*, capture `hddosd-110U-opening3-pal-illegal`,
+`BootIllegal`, 224 scene frames, `CLOCK_BUILD=hdd CLOCK_VIDEO=pal`): `verify_opening3_stages.mjs`
+224 frames (handlers stage 0 x1, 4 x1, 5 x92, 6 x130; sound `0x6150,6` sent and equal once),
+`verify_opening3_handoff.mjs` 1 hand-off, `verify_opening_flat.mjs` 800 draws,
+`verify_opening_ghost.mjs` 222 ghosts, `verify_opening_illegal_cubes.mjs` 1 110 cubes and 432 900
+writes, `verify_opening3_illegal_v2.mjs` 3 108 fans, 1 110 glows, 28 212 boxes (204 not drawn) and
+131 banners, 1 648 372 writes: all `FOUND`. `verify_opening3_illegal.mjs` says `PARTIAL` on this
+capture (frame 130: 68 box packets sent, 128 computed) because the sound thread's periodic call of
+`sound_handler_queue_cmd` (`0x00200C00`, from `0x00200A48`, command `0x60D0`) falls inside the box
+loop and ends the packet window; the call sends no GS packet, and `_v2` leaves that call out of the
+window ends (the diff of the two files is that filter). In NTSC the call never fell inside a box
+loop. `mutate.mjs` on `_v2` over the PAL capture: 146 of 177 killed; the survivors are the
+UV-origin terms (zero), the `<` to `<=` wrap edges, a 1e-6 constant shift, the glow `on` 1 to 2,
+the unreached tile fade `z < 672`, the clamp edges 192, 64 and 0 and a printed diagnostic.
+
+**The towers in PAL, both builds** (*verified*, `verify_opening_towers_ee.mjs` and
+`verify_opening_vu1_v2.mjs`, unchanged and mentioning no video mode, `CLOCK_VIDEO=pal`; the states
+`hddosd-1.10U-host-opening-pal-towers-full.p2s` (breakpoint `0x00221D30`, table `0x001F0198`) and
+`rom-0230E-opening-pal-towers-full.p2s` (breakpoint `0x0021D428`, table `0x001F0138`) hold 21
+entries, every mask 0x3F, play counts 1 + 12 e, main cell e mod 6, 126 towers; ROM captures taken
+with the ROM-mapped probes, rewritten to `*-as-hdd`, `OPENING_BUILD=rom`):
+
+| Capture | Chains | VU1 |
+|---|---|---|
+| `hddosd-110U-opening3-pal-towers-a` (state, 45 frames) | 5 796 chains, 278 208 matrix values | 5 796 towers, 34 776 faces through the plain routine, none through the other |
+| `hddosd-110U-opening3-pal-towers-late` (advance 150, 52 frames) | 6 552 | 6 552 towers, 39 312 faces through the plain routine |
+| `rom-0230E-opening3-pal-towers-a-as-hdd` (46 frames) | 5 796 | 5 796 towers |
+| `rom-0230E-opening3-pal-towers-late-as-hdd` (advance 200, 99 frames) | 12 474 | 12 474 towers |
+
+Chain words and VU1 packets are equal in all four (`FOUND`): packets 40 572 (`-a`, both builds,
+463 680 writes, no vertex sent without drawing), 45 864 (HDD OSD `-late`, 524 160 writes, 413
+vertices sent without drawing) and 87 318 (ROM `-late`, 997 920 writes, 453 vertices sent without
+drawing). The towers' arithmetic and tables are the same in PAL on both builds.
+
 ## 8. The hand-off to the clock
 
 `opening_transition_to_clock` (`0x0021AEE0`) is called in emulator frame 375 (module counter
-248, camera z 106.147), after the scene loop (*verified*, `verify_opening_handoff.mjs`):
+248, camera z 106.147), after the scene loop (*verified*, `verify_opening_handoff.mjs` and
+`verify_opening3_handoff.mjs`; the branches are in the table below):
 
 1. `execute_app_type` (`0x001F0010`) = -1.
 2. When the clock is forced (`enter_clock_module` non-zero, `0x0021AEFC`), the hard disk is not
    ready (`is_hdd_boot_ready` 0, `0x0021AF0C`) and the hard-disk exec is not 1 (`0x0021AF20`):
    module 2, `0x001F064C` = 1, return (a first boot that is not a hard-disk boot). In every other
-   case the table of step 3 decides; no check of the disc state comes before this one.
-3. Otherwise by the snapshot `D_003700A0` through `jtbl_00364F60` (*read*): 0x6A, 0x6B execute 2;
+   case the table of step 3 decides; no check of the disc state comes before this one. The exit
+   gives execute -1, module 2, previous-was-opening 1.
+3. Otherwise by the snapshot `D_003700A0` through `jtbl_00364F60`: 0x6A, 0x6B execute 2;
    0x6C, 0x6D execute 1; 0x6E execute 0; 0x6F execute 5; 0x70 execute 4; 0x71 module 2; 0x72
    module 5 when `0x001F0D58 > 0` else 2; 0x73 execute 3; **0x74 module 4**; anything else
    (including the initial 0) module 2.
@@ -613,6 +750,24 @@ state were unknown and skips `func_0022FEF8` (*read*).
 Left as computed: module 2, previous-was-opening 1 (`hddosd-110U-opening2-handoff-probes`; 2
 calls). With the snapshot written to 0x74 during the dive: module 4
 (`hddosd-110U-opening2-handoff-illegal`).
+
+**Every branch, verified** (`verify_opening3_handoff.mjs`; the stimulated captures of section 3
+write the disc state after the advance; the verifier names the branch and the values it leaves):
+
+| Capture | Branch | Left |
+|---|---|---|
+| `hddosd-110U-opening3-illegal` (disc 0x64; frame 370, counter 243, z 800.12) | table, snapshot 0x64 | execute -1, module 2, previous 1 |
+| `-disc6a`, `-6b`, `-6c`, `-6d`, `-6e`, `-6f`, `-70`, `-73` | table, snapshot as held | execute 2, 2, 1, 1, 0, 5, 4, 3; module 1, previous 0 |
+| `-disc65-b`, `-disc69`, `-disc71` (snapshot 0x65, 0x69, 0x71), `-enter`, `-readyneg` (snapshot 0x64) | table | execute -1, module 2, previous 1 |
+| `-ill72-b` | table, snapshot 0x72, CDDA count positive | module 5 |
+| `-ill74-c` | table, snapshot 0x74 | module 4, previous 1 |
+| `-ready-b` | hard-disk ready, exec 1 (the table said module 2) | execute 6, module 0 |
+| `-forced` | forced-clock exit (frame 375, counter 248, z 106.147) | execute -1, module 2, previous 1 |
+| `-forcedsnap` (snapshot 0x6C) | forced-clock exit: the exit wins over the table, which would send 0x6C to execute 1 | execute -1, module 2, previous 1 |
+
+The hand-off verifier prints `PARTIAL` on `-disc65-a`, `-ready-a`, `-readymid`, `-mecha`, `-ill72-a`
+and `-ill74-a`: these captures end before a hand-off (a 36- to 106-frame window, or a scene that does
+not end under that stimulus); their stage-machine verdicts are `FOUND`.
 
 What is sent around it (`hddosd-110U-opening2-handoff`, no disc, interpreter):
 
@@ -649,10 +804,30 @@ and its stamp, on `-late-a` with z written 1130 for the fade branch above z 1128
 `-late-b` with z written 1161 for stage 7): zeroes `B+0x38`, `+0x20..+0x28`, `+0x10..+0x18`,
 `+0x00..+0x08`, `+0x30`, `+0x34`; when `0x001F0008` is non-zero (set by `main` `0x0020DA2C` when
 the MECHACON version `& 0xFFFFFF <= 0x203FF`) it leaves; else the snapshot = disc state and by
-the table `jtbl_003654A0` (*read*): states 0x64, 0x6A..0x70, 0x73 set `D_003700F4` = 1 and the
-first time send `sceSdRemote(1, 0x6150, 6, 0, 0xF)` and stamp `D_00370100 = counter`, then end
-(result 2) when the counter exceeds the stamp + 0x80; 0x72 does the same only when `0x001F0D58 >
-0`; 0x65..0x69, 0x71, 0x74 end the same way when `D_003700F4` is non-zero.
+the table `jtbl_003654A0` (*read*, `OpeningProcessInner.s` `0x0021F290..0x0021F34C`; the table
+index is `disc - 0x64 < 0x11`): states 0x64, 0x6A..0x70, 0x73 set `D_003700F4` = 1 and the first
+time send `sceSdRemote(1, 0x6150, 6, 0, 0xF)` (call at `0x0021F320`) and stamp
+`D_00370100 = counter`, then end (result 2) when the counter exceeds the stamp + 0x80
+(`sltu`/`movn`, `0x0021F338..0x0021F348`); 0x72 does the same only when `0x001F0D58 > 0`
+(`blez` at `0x0021F2F4`); 0x65..0x69, 0x71, 0x74 end the same way when `D_003700F4` is non-zero
+(`0x0021F34C`).
+
+*Verified* by `verify_opening3_stages.mjs` (sound sends compared in command, argument registers
+and call site):
+
+| Capture | Stimulus | Branch | Frames |
+|---|---|---|---|
+| `hddosd-110U-opening3-illegal` (`BootIllegal`, emulator frames 128..370) | none, disc 0x64 | stage 6, disc 0x64: ends after the wait (x130); `sceSdRemote(1, 0x6150, 6, 0, 0xF)` computed once; the stages' scene end (result 2) is followed by the hand-off (section 8); 239 fade alphas equal | 242 |
+| `-mecha` | `0x001F0008` = 1 | stage 6 leaves at the MECHACON flag, no end (x162) | 256 |
+| `-ill74-a` | disc 0x74 held | the flag branch, flag 0: never ends (x164) | 257 |
+| `-ill74-b` | then `D_003700F4` = 1 | ends at once (result 2); hand-off module 4; the module restarts | 156 |
+| `-ill74-c` | `D_003700F4` = 1 written at counter 107 | counter 128 no end, 129 result 2 (`0x80 < frame`; with no stamp the stamp is 0) | 65 |
+| `-ill72-a` | disc 0x72, CDDA count 0 | stage 6 does not end (x92) | 186 |
+| `-ill72-b` | disc 0x72, CDDA count 1 | `sceSdRemote(1, 0x6150, 6, 0, 0xF)` from `0x0021F328`, stamp, end after 0x80 frames; hand-off module 5 | 130 |
+
+The end of the scene is reached by the disc state 0x64 in the default `BootIllegal` run; states
+0x65..0x69, 0x71 share the table target of 0x74 (`0x0021AA48` on ROM) and are exercised only
+through 0x74's flag (section 10).
 
 **Draw** (*read*: order, `OpeningDrawIllegalScene` `0x00224578`; *verified*: values, below):
 `func_002243F8` (colour scale from z; ghost `func_0021D140(1, 2, 0x70, 0xFFFFFF)`; frame copy
@@ -665,7 +840,23 @@ black between 1128 and 1160), then in `OpeningDrawEnd` the banner (`func_0021DD9
 `D_00370A70` ramps +1 a frame to 0x70, or down by 1 once `D_003700F4` is set; `func_0021DBE0`
 draws texture 13 + language, 512 x 128, blend mode 5 with that alpha).
 
-**Measured** (`verify_opening_illegal.mjs`, `hddosd-110U-opening3-illdraw`, 239 frames): 238
+**Measured, `BootIllegal` run** (`verify_opening3_illegal.mjs`, capture
+`hddosd-110U-opening3-illegal`, 240 scene frames): 240 colour scales, 240 particle turns, 3 360 fan
+packets, 1 200 glows, 30 535 box packets (185 not drawn), 239 box carries, 131 banner alphas and
+draws; 1 783 858 writes, all equal. `verify_opening_illegal_cubes.mjs`: 1 200 cubes, 91 200 record
+values, 12 000 packets, 468 000 writes, all equal; `verify_opening_flat.mjs` 854 draws,
+`verify_opening_ghost.mjs` 240 ghosts. The same verifier on `-illdraw`: 1 768 948 writes.
+`verify_opening3_illegal_v2.mjs` (no change to the arithmetic) is `FOUND` on both NTSC
+captures (3 360 fans, 1 200 glows, 30 535 boxes, 131 banners on `-illegal`; 3 332, 1 190, 30 280,
+128 on `-illdraw`) and on `hddosd-110U-opening3-pal-illegal` (below). `mutate.mjs` on
+`verify_opening3_illegal.mjs` (60 mutants): 49 killed; the 11 that survive compute nothing a
+frame reaches: the source-origin terms of the UV are multiplied by 0 in every glow and banner
+draw, the glow's `on` 1 to 2 is equivalent, `wrapDown <` to `<=` differs only when a float equals
+its limit, the tile fade branch `z < 672` is not reached (z starts at 672 and only grows), the
+threshold 192 differs only for values in [192, 193) that no frame has, and `near < 0` is dead
+(`near` is never negative there and never above 64).
+
+**Measured, the `-illdraw` capture** (`verify_opening_illegal.mjs`, `hddosd-110U-opening3-illdraw`, 239 frames): 238
 colour scales, 238 particle turns, 3 332 fan packets, 1 190 glows, 30 280 tile packets (184 not
 drawn), 237 tile-state carries, 128 banner alphas and draws; 1 768 948 writes, all equal.
 `verify_opening_illegal_cubes.mjs` (the cubes differ from the intro's in the callback and the
@@ -674,32 +865,52 @@ set-up; its header lists the differences): 1 190 cubes, 90 440 record values, 11
 `verify_opening_ghost.mjs`): 844 and 808 flat calls on `-illdraw` and `hddosd-110U-opening3-ill74`,
 238 ghosts. Pictures: `hddosd-110U-opening3-ill-{150,250,350,500,700}.png`.
 
+`verify_opening_illegal.mjs` says `PARTIAL` on `hddosd-110U-opening3-illegal`: it ends a glow's or a
+banner's packet window at the next probe record of its own list, which on this capture runs into the
+ghost rectangle (14 writes sent, 8 computed). `verify_opening3_illegal.mjs` ends a window at the
+next probe record of any verifier and reads the ELF words inline.
+
 With the snapshot written to 0x74 during an intro's dive, the hand-off chooses module 4 and the
 red scene plays: module 4 at emulator frame 451, module 2 again by 653
 (`hddosd-110U-opening2-illegal-a.png`).
 
+**PAL** (HDD OSD, BIOS 2.30 E, `CLOCK_VIDEO=pal`, `hddosd-110U-opening3-pal-illegal`, 224 scene
+frames, section 7): the same scene with the PAL banner rectangle (`y` and `h` scaled by the two
+doubles at `0x003653D8` and `0x003653E0`).
+
 ## 10. Open
 
-- **The hand-off's forced-clock exit** (section 8, step 2) is reached by no capture: both
-  hand-off captures run with the clock not forced and go through the table. Needs a capture with
-  `0x002AD22C` = 0 written before the hand-off.
-- Branches modelled by `verify_opening_stages.mjs` and `verify_opening_handoff.mjs` and not
-  reached by any capture: the hard-disk branches of stages 1 and 2 and of the hand-off (need
-  `0x002AD230` = 1 and `0x002AD234`); stage 2's disc-state sounds (need the disc state held); disc states that hold stage 1 (0x65..0x69, 0x71);
-  the illegal scene's 0x72 and MECHACON (`0x001F0008` = 1) exits. Captures with a disc state
-  written (`hddosd-110U-opening3-disc65-a`, `-disc65-b`, `-ill74`) ran with the state not held and
-  verify as plain runs.
-- The meaning of the sound command ids (`0x6140`, `0x6150` and their arguments).
-- ROM 2.30: towers late in the dive (12 early frames with towers captured); the stage-3 countdown
-  and the hard-disk hold; the hand-off's other branches and the gap around it; the illegal-disc
-  scene; the intro in PAL.
-- PAL: the illegal-disc scene and the towers on either build.
+- **The hand-off's wait on exec 0** (ROM: module 0, execute -1, previous 1; `rom-0230A-opening3-readywait`)
+  is entered and not left inside a capture. Only another thread writes exec and a write cannot be
+  made inside a trace; the values the loop leaves (read after the trace: module 0, execute -1,
+  previous 1; then module 2, execute 6 once exec was written) are not recomputed by a script. HDD
+  OSD: a hand-off with ready set and exec 0 is not captured. Settles it: a verifier on a capture
+  that spans the write of exec by the other thread, or a read of the loop's code.
+- **Hard-disk words not exercised.** HDD OSD: exec values other than 1 and -1; a hard-disk
+  hand-off with the clock forced. ROM: exec values other than 1, -1, 0 and 2; the ready word
+  cleared during a run; the drive state machine at `0x002083B0` (it rewrites `0x00300440` while
+  ready is set) is not read.
+- **The meaning of the sound command ids**: HDD OSD `0x6140`, `0x6150` (and `0x60D0` of the sound
+  thread), ROM `0x5014`, `0x5015` and their arguments. Only their sending is verified.
+- **Illegal-scene end wait by state.** Only the disc states 0x64 (default run), 0x72 and 0x74 are
+  exercised on HDD OSD, and on ROM 0x72 and 0x74; the other entries of `jtbl_003654A0` (HDD OSD
+  0x6A..0x70, 0x73; 0x65..0x69, 0x71 through the flag) share their targets and are read, not
+  captured. Settles it: stage-6 captures with those states held.
+- **The tile fade branch `z < 672` of the illegal scene** is not reached: z starts at 672 and
+  only grows (the mutants on it survive in `verify_opening3_illegal.mjs`).
+- **ROM CDDA count**: the second store (`0x0020FDB0`, base `s1`) is known from a watchpoint, not
+  from the disassembly.
+- **Mutation coverage of the stage verifiers.** `mutate.mjs verify_opening3_stages_rom.mjs` on
+  its default capture set kills 15 of 41 mutants (the survivors are lines only a stimulated
+  capture reaches); the run over every registered capture has not finished. The scores of
+  `verify_opening3_stages.mjs` over all its captures are not recomputed. Settles it:
+  `mutate.mjs <verifier> --captures 50` run to the end.
+- **PAL towers**: the captures cover the state's start (HDD OSD 45 frames, ROM 46) and the dive's
+  end, not every frame between.
 - The fade's 'W' mode (only 'B' occurred).
-- ROM fade and bars counts: a run of the unmodified earlier verifiers on a ROM trace counted fade
-  30 and bars 348, `verify_opening_flat.mjs` counts 31 and 359 on the same intro; the spans each
-  covers are not recorded. Settles it: both verifiers on `rom-0230A-opening3-intro-as-hdd`.
-- Verifiers without a `_v2` copy keep the plain arithmetic helper of section 4.6 (`verify_opening_towers.mjs`
-  also models an outside vertex as two hidden vertices, not three: use `verify_opening_vu1.mjs`).
+- Verifiers without a `_v2` copy keep the plain arithmetic helper of section 4.6
+  (`verify_opening_towers.mjs` also models an outside vertex as two hidden vertices, not three: use
+  `verify_opening_vu1.mjs`).
 
 ## 11. Files
 
@@ -713,7 +924,10 @@ red scene plays: module 4 at emulator frame 451, module 2 again by 653
   `verify_opening_flat.mjs`, `verify_opening_inputs.mjs`, `verify_opening_towers.mjs`,
   `verify_opening_towers_ee.mjs`, `verify_opening_vu1.mjs`, `verify_opening_handoff.mjs`,
   `verify_opening_handoff_rom.mjs`, `verify_opening_illegal.mjs`,
-  `verify_opening_illegal_cubes.mjs`, and the seven `_v2` copies of section 4.6. Each verifier
+  `verify_opening_illegal_cubes.mjs`, `verify_opening3_stages.mjs`,
+  `verify_opening3_stages_rom.mjs`, `verify_opening3_handoff.mjs`,
+  `verify_opening3_handoff_rom.mjs`, `verify_opening3_illegal.mjs`,
+  `verify_opening3_illegal_v2.mjs`, and the seven `_v2` copies of section 4.6. Each verifier
   exports `PROBES`.
 - Model data (`References/model/`): `opening-vu1-microprogram.json`, `opening-tables.json`
   (static tables and constants from the ELF), `opening-lib.mjs` (libvu0, exact sums),

@@ -68,57 +68,105 @@ hour field turns the hour (`watson_gif_trace {hold: ["up"]}` records it from the
 
 ## What is left before implementation
 
-The next big step is the Vulkan side: a GS backend tested pixel for pixel against PCSX2's
-software renderer replaying the GS dumps, with the verifiers as the tests of each module. What
-the pages still list as open, grouped:
+The Vulkan side comes next: a GS backend tested pixel for pixel against PCSX2's software renderer
+replaying the GS dumps, with the verifiers as the tests of each module. The regression suite
+(`node References/scripts/run_all.mjs`) passes 849 of 849 entries (2026-10-03). The frame model
+(`clock-frame.md`) produces every packet of the clock frame, of System Configuration, the main
+menu, Clock Adjustment, the transitions and the configuration item 0 on both builds (HDD OSD's
+text included; ROM 2.30's text is `verify_text2.mjs`'s), and every `whole2` and `whole3` capture
+ends `FOUND`.
 
-**The frame model** (`clock-frame.md`)
-- `rom-0230A-whole2-enter` ends PARTIAL: `menuList` overlaps `configPage`, and the language word
-  is not yet an input of `rebuildList` (entry 4's value count).
-- `hddosd-110U-whole2-back` and `-whole2-up` have no verdict; captures not taken are listed on
-  the page.
-- Not met in a capture: the list moving up or down on HDD OSD, a confirmed value's pulse,
-  overlay modes 1 and 4, ROM 2.30 Clock Adjustment, ROM 2.30 main menu to the Browser,
-  configuration item 0 other than 0, a send with no face on one side of a rod, orb modes 2 and 3
-  on ROM 2.30, a transition on ROM 2.30 in PAL.
-- Text is not part of the model (`text.md`).
+What the pages list as open, deliberately, one line each, grouped by page:
 
-**Text** (`text.md`)
-- ROM 2.30 place level (the language is not in the probes), the list entries' alpha, one
-  colour-block mismatch, captures not taken.
-- PAL: `DrawIcon`'s PAL branch, one crashing capture, no PAL capture of config, adjust or down,
-  no ROM PAL capture.
-- Languages other than English and the language table; decorations, line break and font blocks 1
-  to 5; the Browser's text.
+**`clock-frame.md`**
+- ROM 2.30 value tables by language: the jump table at `0x002C4920` is read in two orders that
+  disagree for languages 3 to 6; settled by `dump_ee.mjs` on a ROM 2.30 capture.
+- How a setting reaches item 0 beyond the confirm callback; the gate written by cross in is met
+  by no capture.
+- ROM 2.30's aspect value table (`0x0028ACE0`) is not read; its confirm of a changed aspect value
+  is neither modelled nor captured.
+- The generic editor, the enter callback and the gate writers outside the entry list are not
+  modelled and not met.
+- ROM 2.30 in PAL has the main menu into System Configuration only; PAL item 0 rows are verified
+  on HDD OSD only.
+- The leaving-entry drawing and the cancel's time guard are not modelled and not met.
+- Strings are probed, not derived; a string running out of packet room is met by no capture.
+- Overlay modes 1 and 4: which code sets them (the captures write the mode word).
+- Not met in a capture: a confirmed value's pulse, a send with no face on one side of a rod,
+  orb mode 2 on ROM 2.30, a transition other than the main menu into System Configuration on ROM
+  2.30 in PAL, the time record's year, month, day and zone words.
 
-**Transitions and overlays** (`clock-transitions.md`, `clock-frame-rest.md`)
+**`clock-frame-rest.md`**
+- Overlay mode 1's white colour and what sets modes 1, 3 and 4.
+- PAL values of the ramp lengths, `ay` and the text scaling are read; the PAL whole-frame
+  captures equal the model.
+- The pages function beyond its blur trips; ROM 2.30's vignette sector function in full.
+
+**`clock-transitions.md`**
 - The reset in `func_00234B88` is never seen; overlay mode 1 has no caller.
-- The first-run intro: `verify_first_run.mjs` holds the rules, its traces are not compared (HDD
-  OSD, ROM 2.30, PAL, ROM 2.30's later pages).
-- Code `0x72` with its gate word written to 1; PAL fade rising on ROM 2.30; PAL hour turning
-  with a record written to hh:59:59; a PAL written-state capture on ROM 2.30.
-- Configuration item 0 other than 0 (bars, text height); the pages function beyond its blur
-  trips; ROM 2.30's vignette sector function in full.
+- First-run stage 5 on HDD OSD is read, not compared; stage 3 (the settings pages) is not
+  computed by `verify_first_run.mjs`; the PAL first run is captured to stage 2 on HDD OSD only.
+- The regression suite does not hold `hddosd-110U-flow-pal-fr-logos`, the four
+  `*-flow-exit72*.log` logs or `rom-0230E-pal-clock-written`.
+- PAL hour carry: no script compares the carry itself; the wrap from 23 to 0 is not exercised.
+- The buffers between sends (section 4e) are readings, not verifiers.
 
-**The opening** (`opening.md`)
-- Which hand-off branch let module 4 through; the hard-disk branches, stage 2's disc-state
-  sounds, the disc states that hold stage 1 and the illegal scene's 0x72 and MECHACON exits are
-  not reached by any capture; the sound command ids' meaning; the fade's 'W' mode.
-- ROM 2.30: towers late in the dive, the stage-3 countdown and hard-disk hold, the hand-off's
-  other branches, the illegal-disc scene, the intro in PAL; the fade and bars counts (30 and 348
-  against 31 and 359).
-- PAL: the illegal-disc scene and the towers on either build.
+**`text.md`**
+- ROM 2.30's trimming branch (`0x0020CBA0`, `0x0020CE44`) is reported, not reproduced.
+- ROM 2.30 PAL constants in `romPlace` have no mutation run on the PAL captures.
+- ROM 2.30 button pictures (NTSC and PAL) are not compared; its pages' load at start-up is not
+  traced.
+- The Japanese BIOS capture `hddosd-110U-text2-ja-boot` is empty (one reported hang, not
+  reproduced); a Japanese console's layout row 0 is not verified.
+- Font blocks 1, 3 and 5, decorations and a line break are reached by no clock string.
+- Languages: video mode 0's path of `config_get_osd_language`, field values of 8 or more, the
+  language entry's save path, Spanish, Portuguese, Italian and Dutch at the menu and at boot.
+- `clock_text.mjs` takes the date and time strings from the probe and the caller's string id from
+  the capture; ROM 2.30 has no frame model of text.
+- Soft-double rounding in `DrawIcon`'s PAL branch is not distinguishable by any capture.
+- The Browser's text.
 
-**Camera, scene, rods, orbs, state, GS state, textures, cubes**
-- Which menu event calls each of the three configuration callbacks; orb modes 2 and 3 read only
-  as far as the colours and targets.
+**`pal.md`**
+- ROM 2.30 PAL: `verify_trail_fill.mjs` and `verify_first_run.mjs` not run.
+- HDD OSD PAL first run: only stages 0 to 2 captured.
+- Hour carry in PAL: no script compares it; 23 to 0 is not exercised.
+- Text in PAL: soft doubles modelled as IEEE; ROM 2.30 PAL button pictures not compared; no
+  language other than English in PAL.
+- `verify_opening3_illegal_v2.mjs` on the PAL capture: 31 of 177 mutants survive.
+
+**`opening.md`**
+- The hand-off's wait on exec 0 is entered and not left inside a capture.
+- Hard-disk words not exercised (exec values, the ready word cleared during a run, the drive
+  state machine at `0x002083B0`).
+- The meaning of the sound command ids.
+- The illegal scene's end wait: disc states other than 0x64, 0x72 and 0x74 are read, not captured;
+  the tile fade branch `z < 672` is not reached.
+- The ROM CDDA count's second store (`0x0020FDB0`) is known from a watchpoint only.
+- Mutation coverage of the stage verifiers is not complete.
+- PAL towers: the captures cover the state's start and the dive's end, not every frame between.
+- The fade's 'W' mode; verifiers without a `_v2` copy keep the plain arithmetic helper.
+
+**`clock-scene.md`**
 - The sorted insertion and the depth key are not recomputed on their own.
-- The float-to-unsigned conversion of the reflection coordinates below zero; which side of the
-  rod flag 0 is.
-- A change of hour while the clock runs freely; the time keeper by recomputation; who reads the
-  hour-hand and second-hand globals.
-- The helpers that bind the display buffer, copy, blur and overlay are not compared call by
-  call.
+
+**`clock-state.md`**
+- The time keeper by recomputation; who reads the hour-hand and second-hand globals.
+
+**`clock-camera.md`**
+- Which menu event calls each of the three configuration callbacks.
+- The code of orb modes 2 and 3 is read only as far as the targets and the colours.
+
+**`clock-rod-draw.md`, `clock-extra-passes.md`**
+- Which side of the rod flag 0 is; the float-to-unsigned conversion of the reflection
+  coordinates below zero.
+
+**`clock-gs-state.md`**
+- The helpers that bind the display buffer, copy, blur and overlay are not compared call by call.
+
+**`clock-textures.md`**
 - Where `TEXCSMOK` and `TEXCSTSL` are drawn; the font's textures.
-- Cubes: PAL's rate and ramp are read only; no picture was compared; the placement vector's
-  fourth word; the blur chain's own rule apart from `verify_frame.mjs --carry`.
+
+**`config-cubes.md`**
+- What each send does to the pixels is a reading; no picture was compared.
+- The placement vector's fourth word; the blur chain's own rule apart from `verify_frame.mjs
+  --carry`; the font draws on that screen.

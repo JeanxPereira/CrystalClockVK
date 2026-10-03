@@ -237,9 +237,11 @@ top:    y 0 .. (int)(margin * 16)               = 27.375
 bottom: y (int)((h - margin) * 16) .. h         = 196.5625 .. 224
 ```
 
-Only the value 0 was seen. A value written into memory is put back to 0 before the frame is
-drawn (the configuration is reloaded every frame), so the branch for 1 and the text positions
-for 2 are still only read.
+The bars follow item 0 as 0 or 2; item 1 draws none (`References/scripts/model_aspect.mjs`,
+`hddosd-110U-whole2-aspect1`: 0 bar packets; `hddosd-110U-whole2-aspect2`: 196). A value written
+into memory is put back to what the settings word holds before the frame is drawn; what reloads
+the item, how a setting reaches it and the text rows it moves are in `clock-frame.md`
+("Configuration item 0").
 
 **Column** (`0x00226A88`, ROM `0x00222210`): opaque black, `x (w << 4) - 0x28 .. (w << 4) - 8`
 (637.5 .. 639.5), full height. Verified every frame.
@@ -272,10 +274,9 @@ font code; the font system was not entered (out of scope).
 
 ## Still only read, or not done
 
-- Config item 0 with a value other than 0 (no bars for 1; text lower for 2).
 - Overlay mode 1's white colour, and what sets modes 1, 3 and 4 (the callers of the mode setter).
 - PAL values of the ramp lengths (33, 66, 8), `ay` 0.5405 and the text's PAL scaling: read only; the whole-frame PAL captures (above) are equal to the model, which carries them.
-- The date/time and hint text beyond "which packets": pen position, alpha rule, strings, font.
+- The date/time and hint text beyond "which packets" is in `text.md` (pen position, alpha rule, strings, font; HDD OSD verified, ROM 2.30 to the place and alpha level); on HDD OSD the whole-frame model carries it (`clock-frame.md`, `whole3` captures), on ROM 2.30 it does not.
 - The pages function beyond its blur trips: menu items, the menu transition's own blur chain
   (`0x00236350`, `0x00236058`, `0x00236110`; its packets are reproduced by `verify_frame.mjs --carry`, `clock-frame.md`), the first-run pages.
 - ROM 2.30's vignette sector function `0x00230000` beyond the extra branch, and its binder

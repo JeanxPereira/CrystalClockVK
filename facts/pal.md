@@ -1,6 +1,6 @@
 # PAL
 
-Recorded 2026-10-02. Builds: **HDD OSD 1.10U** (canon) and **ROM 2.30**, both run in PAL for
+Builds: **HDD OSD 1.10U** (canon) and **ROM 2.30**, both run in PAL for
 real, not stimulated. Addresses are HDD OSD's unless "ROM" is written. A PAL capture is
 verified with `CLOCK_VIDEO=pal` (`builds.mjs`: `PAL`, `FPS`, `ROWS`).
 
@@ -71,9 +71,10 @@ the instructions only.
 | Vignette radii | HDD OSD: `1184, 592` unchanged (`func_002338E0` has no PAL step). ROM 2.30: the vertical term is multiplied by 1.15 when the video mode is PAL (`0x0022FEE4..0x0022FF00`, constant `0x002C81D8`) | 1184, 592 | HDD OSD 1184, 592; ROM 2.30 vertical term × 1.15 | measured on both: HDD OSD `hddosd-110U-pal-whole-to-clock`, ROM 2.30 `rom-0230E-pal-whole-menu` (`verify_frame.mjs`); the ROM step is read |
 | Orb sprites' centre | `+ W/2`, `+ H/2` | 320, 112 | 320, 128 | measured |
 | Refracted lookup (HDD OSD) | clamp to `0..W×16`, `0..H×16` | 3584 | 4096 | measured |
-| Date and time `y` | `func_00226300` `0x00226350`: `y × 0.5405 / 0.47` (doubles `D_00365570`, `D_00365578`) when PAL | | × 1.15 | read; the text draws were seen, not recomputed |
-| Button hint `y` | `func_00226958`: `y × 0.5405 / 0.47` (`D_00365590`, `D_00365598`) | 200 | 230 (sent at 229.6) | measured as sent |
-| Menu and configuration text metrics | double constants, PAL = NTSC × 1.15: 6 → 6.9, 10 → 11.5, 17 → 19.55, 24 → 27.6, 27 → 31.05, 42 → 48.3 (`D_003655A0`, `D_003656A8..E8`; callers `func_00226CA0`, `func_00229080`, `func_0022A410`, `func_0022AF60`, `func_0022C450`) | | | read |
+| Date and time `y` | `func_00226300` `0x00226350`: `y × 0.5405 / 0.47` (doubles `D_00365570`, `D_00365578`) when PAL | | × 1.15 | read; the draws it makes are equal in `verify_text2.mjs` on the PAL captures of both builds (section 3) |
+| Button hint `y` | `func_00226958`: `y × 0.5405 / 0.47` (`D_00365590`, `D_00365598`) | 200 | 230 (sent at 229.6) | measured as sent; equal in `verify_text2.mjs` on the PAL captures |
+| Button picture bottom (`DrawIcon`, HDD OSD `0x00226618..0x00226684`) | `is_pal_vmode_p9_tgt` at `0x00226618`, then `bnel v0, 1`: NTSC skips the body. PAL: `bottom = trunc(top + (float)(bottom - top) × 0.5405 / 0.47)` in 1/16 pixels, doubles at `0x00365580` and `0x00365588` | as drawn | scaled | read (`DrawIcon.s` `0x226610..0x22668C`); verified by `verify_text2.mjs` on 6 HDD OSD PAL captures (section 3). ROM 2.30: pictures not compared |
+| Menu and configuration text metrics | double constants, PAL = NTSC × 1.15: 6 → 6.9, 10 → 11.5, 17 → 19.55, 24 → 27.6, 27 → 31.05, 42 → 48.3 (`D_003655A0`, `D_003656A8..E8`; callers `func_00226CA0`, `func_00229080`, `func_0022A410`, `func_0022AF60`, `func_0022C450`) | | | read; the draws are equal in `verify_text2.mjs` on the PAL captures, with no check of each constant on its own |
 | Line counts in the configuration pages | `func_00229080` `0x002290F8`, `func_0022A410` `0x0022A488`: PAL ? 13 : 11 | 11 | 13 | read |
 | First-run images | `oobe_handler` `0x0022DCE8`, `0x0022DD68`: other rectangles | | | read |
 
@@ -127,13 +128,26 @@ All run on real PAL captures, with `CLOCK_VIDEO=pal`. "rule" marks a verifier th
 | `verify_trail_fill` | FOUND: 2 086 strips, 49 392 points (`hddosd-110U-flow-pal-boot`) | not run |
 | `verify_clock_state` and `verify_placement` with the hour turned in Clock Adjustment | FOUND: 66 frames (`hddosd-110U-flow-pal-hour`) | FOUND: 67 frames (`rom-0230E-flow-pal-hour`) |
 | `verify_frame` | rule: FOUND: 15 frames of the clock (93.5% of the frame), 12 of System Configuration (80.9%), 49 frames of System Configuration to the clock (87.0%, `hddosd-110U-pal-whole-to-clock`), every packet the model produces | rule: FOUND, 16 frames of the clock (94.3%, `rom-0230E-pal-clock-b`), 13 of System Configuration (84.0%, `rom-0230E-pal-whole-config`), 17 of the main menu (77.7%, `rom-0230E-pal-whole-menu`) |
-| `verify_opening_camera` | rule: FOUND, 206 frames | not run |
+| `verify_opening_camera` | rule: FOUND, 206 frames | not run; the ROM's intro in PAL is run by `verify_opening3_stages_rom.mjs` on `rom-0230E-opening3-pal-intro`: FOUND, 291 frames (`opening.md` section 6) |
+| `verify_text2` (`CLOCK_VIDEO=pal`; text and its rules in `text.md`) | FOUND on 6 captures `hddosd-110U-text2-pal-`: `menu` 72 strings 696 glyphs, `clock` 33 / 286, `version` 156 / 1 176, `config` 408 / 1 356, `adjust` 308 / 902, `down` 643 / 3 544. Button pictures (`DrawIcon`) equal: 24 of 24, 11 of 11, 48 of 48, 84 of 84, 22 of 22, 138 of 138 | FOUND on 5 captures `rom-0230E-text2-pal-`: `menu` 72 / 696, `config` 372 / 1 164, `clock` 33 / 286, `adjust` 336 / 984, `down` 643 / 3 544 (opening, binding, glyph, string level, colour, width, place, alpha, panels) |
+| `verify_text_frame` with `--carry` (`CLOCK_VIDEO=pal`) | FOUND on the same 6 captures: 12, 11, 12, 12, 11 and 46 frames (menu, clock, version, config, adjust, down), every packet equal | not run (the model is HDD OSD only) |
+| `verify_first_run` | FOUND on `hddosd-110U-flow-pal-fr-logos` (stages 0, 1, 2): 364 of 364 machine steps, 300 of 300 logo images; the ramp lengths are read from memory, so the images test that rows and alpha follow the probed ramp | not run |
+| `verify_transitions` on the first run | FOUND on `hddosd-110U-flow-pal-fr-logos`, every value equal | not run |
+| `verify_clock_state`, `verify_placement` with the time record written to hh:59:59 | FOUND on `hddosd-110U-flow-pal-hour-free`: 97 frames (rod progress and appearance 1 164 of 1 164); orb matrix, position, colour, ring 679 of 679 | `verify_clock_state` FOUND on `rom-0230E-pal-clock-written`: 72 frames (rod progress and appearance 864 of 864) |
+| `verify_orbs`, sprites' fade rising | see the `verify_orbs` row | FOUND on `rom-0230E-flow-pal-fade-up3`: 924 strips, 1 848 sprites; ramp state at the calls: 178 rising, 284 shown |
+| `model_aspect` (`clock-frame.md`) | FOUND on `hddosd-110U-pal-whole2-aspect2`: 96 date and time rows, 48 hint rows, item 0 = 2 in every frame (the scaled rows) | no capture |
+| `verify_frame` with `--carry`, whole frame with text (`clock-frame.md`) | FOUND on `hddosd-110U-pal-whole3-config` (text 4 056 of 4 056 packets, 97.3% of the frame) and `-pal-whole3-menu` (1 750 of 1 750, 96.7%) | FOUND on `rom-0230E-pal-whole2-enter`: 75 frames, 92.8% of the frame (57 495 of 61 933 packets); text is not produced on ROM 2.30 |
+| Opening, illegal-disc scene (`verify_opening3_stages`, `verify_opening3_handoff`, `verify_opening_flat`, `verify_opening_ghost`, `verify_opening_illegal_cubes`, `verify_opening3_illegal_v2`; `opening.md`) | FOUND on `hddosd-110U-opening3-pal-illegal`: stages 224 frames (handlers 0, 4, 5 × 92, 6 × 130; sound `0x6150,6` once), hand-off 1, flat 800 draws, ghost 222, cubes 1 110 (432 900 writes), `verify_opening3_illegal_v2` 3 108 fans, 1 110 glows, 28 212 boxes, 131 banners, 1 648 372 writes | FOUND: `verify_opening3_illegal_v2.mjs` on `rom-0230E-opening3-pal-ill-a-as-hdd`: 3 234 fans, 1 155 glows, 29 368 boxes, 139 banners; `verify_opening3_stages_rom.mjs` and `verify_opening3_handoff_rom.mjs` on the `rom-0230E-opening3-pal-` captures `count`, `readyexec`, `intro`, `d71z`, `ill-a` (`opening.md` section 6) |
+| Opening, towers (`verify_opening_towers_ee`, `verify_opening_vu1_v2`, unchanged; `opening.md`) | FOUND: `hddosd-110U-opening3-pal-towers-a` 5 796 chains, 3 060 288 words, 5 796 VU1 towers, 40 572 packets; `-pal-towers-late` 6 552 chains, 45 864 packets, 413 vertices sent without drawing | FOUND: `rom-0230E-opening3-pal-towers-a-as-hdd` 5 796 chains, 40 572 packets; `-pal-towers-late-as-hdd` 12 474 chains, 87 318 packets, 453 vertices sent without drawing (run with `OPENING_BUILD=rom`; the traces are rewritten by `extract_opening_rom_trace.mjs`) |
+
+The PAL towers captures cover the start of the towers state and the end of the dive, not every
+frame between (HDD OSD 45 and 150..202 frames; ROM 46 and 200..299).
 
 `verify_orbs` passes as written although it holds `SCREEN = [640, 224]`: the half height is
 added and taken away again in its formula. With 256 it passes too.
 
 The text positions `verify_overlays` prints (not checks) are computed for a 224-row window, so
-in PAL they read 16 rows too high.
+in PAL they read 16 rows too high; the text is checked by `verify_text2.mjs` (section 3).
 
 ## 4. What PAL changed in the verifiers
 
@@ -141,6 +155,12 @@ Four NTSC constants, now rules: `verify_camera.mjs` takes `ay` from the video mo
 `verify_gs_state.mjs` computes `ZBUF_1` as `ceil(W/64) × ceil(H/32) × 2` (it held `0x8C`);
 `verify_orbs.mjs` takes the rows from the video mode; `verify_opening_camera.mjs` takes the rate
 and, in PAL, the integrator factor at `0x0036F9D0`. The frame model's `ZBUF_1` is the same rule.
+
+`verify_opening3_illegal.mjs` says PARTIAL on the PAL illegal-disc capture (frame 130: 68 box
+packets sent, 128 computed): the sound thread's periodic `sound_handler_queue_cmd` probe (pc
+`0x00200C00`, ra `0x00200A48`) falls inside the box loop and ends the packet window.
+`verify_opening3_illegal_v2.mjs` differs from it only by not letting that probe end a window, and
+is FOUND on the PAL capture and on the NTSC `-illegal` and `-illdraw` captures.
 
 ## 5. Floating point
 
@@ -150,13 +170,22 @@ frame, goes from the smallest normal number to minus zero, not through denormals
 single-precision step returns a signed zero below the smallest normal number (`verify_frame.mjs`,
 `clock-frame.md`). *Measured*.
 
-## 6. Not run
+## 6. Open
 
-- The opening in PAL on ROM 2.30, and the opening's towers and the illegal-disc scene in PAL on
-  either build. On HDD OSD every other opening verifier ran in PAL (`opening.md` section 7,
-  `hddosd-110U-opening3-pal-intro`); on ROM 2.30 the opening ran in NTSC with the same verifiers
-  (`opening.md` section 6).
-- `verify_trail_fill` and the sprites' fade rising on ROM 2.30 in PAL.
-- The hour turning with a time record written to hh:59:59 (`hddosd-110U-flow-pal-hour-free`), and
-  the written-state captures, in PAL.
-- Text: positions and metrics are read, not recomputed.
+- ROM 2.30 in PAL: `verify_trail_fill.mjs` and `verify_first_run.mjs` are not run.
+- HDD OSD PAL first run: only the logos (stages 0 to 2) are captured; the language prompt, the
+  User Preferences pages and the end stage are not.
+- Hour carry in PAL: `rom-0230E-pal-clock-written` (state `rom-0230E-pal-clock.p2s`) has the time
+  record written to hour 5, 59 min, 59 s, 900.0 ms. `verify_clock_state.mjs` is FOUND on its 72
+  frames, but no script compares the carry itself nor the return to the console's time afterwards.
+  The wrap from hour 23 to 0 is not exercised.
+- Text in PAL: the soft-double routines (`dpmul`, `dpdiv`, `dpadd`) are modelled as IEEE
+  round-to-nearest in `verify_text2.mjs`, not traced bit by bit. Hand mutants of the `DrawIcon`
+  line on `hddosd-110U-text2-pal-down`: `trunc` to `round`, `+1` on the top, multiply and divide
+  swapped and the sign flipped are killed; removing `Math.fround` survives (the operand is an
+  integer count of sixteenths). ROM 2.30 button pictures are not compared in PAL, no mutation was
+  run on the ROM PAL text captures, and languages other than English are not captured in PAL.
+- `verify_opening3_illegal_v2.mjs` on the PAL capture: 31 of 177 mutants survive (UV origin terms
+  that are 0, wrap and clamp edges, the tile-fade branch `z < 672`, one glow value, constants
+  below a truncation step). The stage verifier prints that the integrator is equal in 224 frames,
+  not the factor 1.2.
