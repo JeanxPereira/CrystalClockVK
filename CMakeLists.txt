@@ -151,3 +151,29 @@ elseif (WIN32)
 elseif (UNIX)
     target_compile_definitions(${PROJECT_NAME} PRIVATE VK_USE_PLATFORM_XCB_KHR)
 endif()
+
+# ──────────────────────────────────────────────────────────────────────────────
+# NATIVE RENDERER (parity tool and tests; the application above is unchanged)
+# ──────────────────────────────────────────────────────────────────────────────
+FetchContent_Declare(
+    json
+    GIT_REPOSITORY https://github.com/nlohmann/json.git
+    GIT_TAG v3.11.3
+    GIT_SHALLOW ON
+)
+FetchContent_MakeAvailable(json)
+
+add_library(ClockRenderer STATIC
+    src/core/HeadlessContext.cpp
+    src/core/VmaUsage.cpp
+)
+target_include_directories(ClockRenderer PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty)
+target_link_libraries(ClockRenderer PUBLIC nlohmann_json::nlohmann_json vk-bootstrap VulkanMemoryAllocator Vulkan::Vulkan)
+
+set(CLOCK_FIXTURE ${CMAKE_SOURCE_DIR}/References/fixtures/hddosd-110U-whole3-clock/f0 CACHE PATH "Parity fixture")
+
+enable_testing()
+
+add_executable(HeadlessTest tests/HeadlessTest.cpp)
+target_link_libraries(HeadlessTest PRIVATE ClockRenderer)
+add_test(NAME HeadlessTest COMMAND HeadlessTest)
