@@ -16,7 +16,9 @@ CameraMatrices Camera<A>::matrices(ClockState& clock) {
     return out;
 }
 
+#ifndef SCENE_NATIVE_ONLY
 template struct Camera<EeArithmetic>;
+#endif
 template struct Camera<NativeArithmetic>;
 
 }

@@ -115,10 +115,12 @@ add_library(ClockParity STATIC
     src/core/HeadlessContext.cpp
     src/parity/GsParityRenderer.cpp
     src/parity/Fixture.cpp
-    src/parity/StbImage.cpp
     src/parity/Compare.cpp
     src/parity/FromScene.cpp
 )
+add_library(ClockStb STATIC src/parity/StbImage.cpp)
+target_include_directories(ClockStb PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty)
+target_link_libraries(ClockParity PUBLIC ClockStb)
 add_dependencies(ClockParity Shaders)
 target_include_directories(ClockParity PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty)
 target_link_libraries(ClockParity PUBLIC ClockVma nlohmann_json::nlohmann_json vk-bootstrap VulkanMemoryAllocator Vulkan::Vulkan)
@@ -158,8 +160,11 @@ else()
     target_compile_options(ClockScene PRIVATE -ffp-contract=off -fno-fast-math)
 endif()
 
-add_library(SceneTestSupport STATIC tests/scene/SceneFixture.cpp tests/scene/SceneInputs.cpp)
-target_link_libraries(SceneTestSupport PUBLIC ClockScene nlohmann_json::nlohmann_json)
+add_library(SceneInputs STATIC tests/scene/SceneFixture.cpp tests/scene/SceneInputs.cpp)
+target_include_directories(SceneInputs PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(SceneInputs PUBLIC nlohmann_json::nlohmann_json)
+add_library(SceneTestSupport INTERFACE)
+target_link_libraries(SceneTestSupport INTERFACE SceneInputs ClockScene nlohmann_json::nlohmann_json)
 
 get_filename_component(SCENE_FIXTURE ${CLOCK_FIXTURE}/../scene.json ABSOLUTE)
 add_executable(ArithmeticTest tests/scene/ArithmeticTest.cpp)
@@ -195,16 +200,14 @@ else()
     message(STATUS "parity gates inactive: no fixture at ${CLOCK_FIXTURE}")
 endif()
 
-add_library(ClockRender STATIC src/render/Device.cpp)
+add_library(ClockRender STATIC src/render/Device.cpp src/render/NativeRenderer.cpp)
+add_dependencies(ClockRender Shaders)
 target_include_directories(ClockRender PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(ClockRender PUBLIC ClockVma vk-bootstrap VulkanMemoryAllocator Vulkan::Vulkan SDL3::SDL3)
+target_link_libraries(ClockRender PUBLIC ClockVma ClockStb vk-bootstrap VulkanMemoryAllocator Vulkan::Vulkan SDL3::SDL3)
 
 add_executable(DeviceTest tests/render/DeviceTest.cpp)
 target_link_libraries(DeviceTest PRIVATE ClockRender)
 add_test(NAME DeviceTest COMMAND DeviceTest)
-
-add_executable(CrystalClock src/app/Main.cpp)
-target_link_libraries(CrystalClock PRIVATE ClockRender)
 
 target_sources(ClockScene PRIVATE src/scene/Orbs.cpp)
 add_executable(OrbsTest tests/scene/OrbsTest.cpp)
@@ -235,3 +238,27 @@ if(EXISTS ${SCENE_FIXTURE} AND EXISTS ${SCENE_PASSES} AND EXISTS ${CLOCK_FIXTURE
     add_test(NAME ParityClockScene COMMAND ParityTool ${SCENE_PARITY_FIXTURE} ${CMAKE_BINARY_DIR}/parity-report/whole3-clock-scene ${CMAKE_SOURCE_DIR}/bin/shaders ${CMAKE_SOURCE_DIR}/tools/ParityTool/budgets/hddosd-110U-whole3-clock.json)
     set_tests_properties(ParityClockScene PROPERTIES FIXTURES_REQUIRED ClockSceneFixture)
 endif()
+
+# The app's scene: the same sources with NativeArithmetic only. EeArithmetic's functions are defined in
+# Arithmetic.cpp alone, which this library leaves out, so any use of them in the app fails to link.
+add_library(ClockSceneNative STATIC src/scene/ClockState.cpp src/scene/Camera.cpp src/scene/FrameHead.cpp src/scene/Orbs.cpp src/scene/Rods.cpp src/scene/Clock.cpp)
+target_include_directories(ClockSceneNative PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_compile_definitions(ClockSceneNative PRIVATE SCENE_NATIVE_ONLY)
+target_link_libraries(ClockSceneNative PRIVATE nlohmann_json::nlohmann_json)
+
+get_filename_component(CLOCK_REFERENCES_DEFAULT ${CLOCK_FIXTURE}/../../.. ABSOLUTE)
+set(CLOCK_REFERENCES ${CLOCK_REFERENCES_DEFAULT} CACHE PATH "References folder with textures/ and fixtures/ (the main checkout's)")
+set(CLOCK_TEXTURES ${CLOCK_REFERENCES}/textures)
+get_filename_component(CLOCK_START ${CLOCK_FIXTURE}/../scene.json ABSOLUTE)
+
+add_executable(NativeRendererTest tests/render/NativeRendererTest.cpp)
+target_link_libraries(NativeRendererTest PRIVATE ClockRender ClockSceneNative SceneInputs)
+if(EXISTS ${CLOCK_START} AND EXISTS ${CLOCK_TEXTURES}/tbp-2bc0-64x64.png)
+    add_test(NAME NativeRendererTest COMMAND NativeRendererTest ${CMAKE_SOURCE_DIR}/bin/shaders ${CLOCK_START} ${CMAKE_SOURCE_DIR}/facts/data/rod-mesh.json ${CLOCK_TEXTURES})
+else()
+    add_test(NAME NativeRendererTest COMMAND NativeRendererTest ${CMAKE_SOURCE_DIR}/bin/shaders)
+endif()
+
+add_executable(CrystalClock src/app/Main.cpp)
+target_link_libraries(CrystalClock PRIVATE ClockRender)
+target_link_libraries(ParityTool PRIVATE ClockRender ClockSceneNative SceneInputs)

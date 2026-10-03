@@ -139,7 +139,9 @@ OrbFrame Orbs<A>::frame(OrbState& state, const OrbInputs& in, const Mat4& view, 
     return out;
 }
 
+#ifndef SCENE_NATIVE_ONLY
 template struct Orbs<EeArithmetic>;
+#endif
 template struct Orbs<NativeArithmetic>;
 
 }

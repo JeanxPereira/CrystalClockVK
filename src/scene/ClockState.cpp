@@ -171,7 +171,9 @@ void ClockLogic<A>::step(ClockState& clock) {
     overlayStep(clock);
 }
 
+#ifndef SCENE_NATIVE_ONLY
 template struct ClockLogic<EeArithmetic>;
+#endif
 template struct ClockLogic<NativeArithmetic>;
 
 }

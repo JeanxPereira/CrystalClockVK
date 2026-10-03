@@ -323,7 +323,9 @@ RodsFrame Rods<A>::frame(const RodsInput& input, const Mat4& view, const Mat4& s
     return out;
 }
 
+#ifndef SCENE_NATIVE_ONLY
 template class Rods<EeArithmetic>;
+#endif
 template class Rods<NativeArithmetic>;
 
 }

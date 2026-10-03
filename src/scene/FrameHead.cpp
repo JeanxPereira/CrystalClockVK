@@ -298,7 +298,9 @@ std::vector<HeadDraw> FrameHead<A>::column(const HeadInputs& in) {
     return out;
 }
 
+#ifndef SCENE_NATIVE_ONLY
 template class FrameHead<EeArithmetic>;
+#endif
 template class FrameHead<NativeArithmetic>;
 
 }

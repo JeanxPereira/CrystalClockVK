@@ -365,7 +365,9 @@ Frame Clock<A>::frame(const FrameInputs& in) {
     return frame;
 }
 
+#ifndef SCENE_NATIVE_ONLY
 template class Clock<EeArithmetic>;
+#endif
 template class Clock<NativeArithmetic>;
 
 }

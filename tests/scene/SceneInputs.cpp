@@ -2,6 +2,11 @@
 
 #include "SceneFixture.hpp"
 
+#include <fstream>
+#include <iterator>
+#include <stdexcept>
+#include <string>
+
 namespace scenetest {
 
 namespace {
@@ -154,6 +159,31 @@ ClockInputs clockInputs(const json& in, const RodMesh& mesh) {
     c.width = in.at("screen").at("width");
     c.height = in.at("screen").at("height");
     return c;
+}
+
+json firstInput(const std::string& path) {
+    std::ifstream file(path, std::ios::binary);
+    if (!file) throw std::runtime_error("cannot open " + path);
+    const std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    const size_t frames = text.find("\"frames\"");
+    const size_t start = frames == std::string::npos ? std::string::npos : text.find('{', frames);
+    if (start == std::string::npos) throw std::runtime_error(path + ": no frames");
+    int depth = 0;
+    bool quoted = false;
+    for (size_t i = start; i < text.size(); ++i) {
+        const char c = text[i];
+        if (quoted) {
+            if (c == '\\') ++i;
+            else if (c == '"') quoted = false;
+        } else if (c == '"') {
+            quoted = true;
+        } else if (c == '{') {
+            ++depth;
+        } else if (c == '}' && --depth == 0) {
+            return json::parse(text.begin() + static_cast<std::ptrdiff_t>(start), text.begin() + static_cast<std::ptrdiff_t>(i + 1)).at("input");
+        }
+    }
+    throw std::runtime_error(path + ": frame 0 does not end");
 }
 
 FrameInputs frameInputs(const json& in) {

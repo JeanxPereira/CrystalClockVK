@@ -42,13 +42,24 @@ Device::Device(SDL_Window* window, const DeviceOptions& options) : m_window(wind
     features13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
     features13.dynamicRendering = VK_TRUE;
     features13.synchronization2 = VK_TRUE;
+    VkPhysicalDeviceVulkan14Features features14{};
+    features14.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_FEATURES;
+    features14.pushDescriptor = VK_TRUE;
 
     vkb::PhysicalDeviceSelector selector{m_instance};
     if (window) selector.set_surface(m_surface);
-    auto physical = selector.set_minimum_version(1, 4).set_required_features_13(features13).select();
+    auto physical = selector.set_minimum_version(1, 4).set_required_features_13(features13).set_required_features_14(features14).select();
     if (!physical) throw std::runtime_error("physical device: " + physical.error().message());
 
-    auto device = vkb::DeviceBuilder{physical.value()}.build();
+    vkb::PhysicalDevice chosen = physical.value();
+    VkPhysicalDeviceFeatures wanted{};
+    wanted.wideLines = VK_TRUE;
+    m_wideLines = chosen.enable_features_if_present(wanted);
+    const VkPhysicalDeviceLimits& limits = chosen.properties.limits;
+    m_maxLineWidth = m_wideLines ? limits.lineWidthRange[1] : 1.0f;
+    m_sampleCounts = limits.framebufferColorSampleCounts & limits.framebufferDepthSampleCounts;
+
+    auto device = vkb::DeviceBuilder{chosen}.build();
     if (!device) throw std::runtime_error("device: " + device.error().message());
     m_device = device.value();
 
