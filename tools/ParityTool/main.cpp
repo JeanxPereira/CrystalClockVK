@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <fstream>
 #include <map>
+#include <set>
 #include <stdexcept>
 #include <tuple>
 #include <vector>
@@ -216,7 +217,18 @@ int main(int argc, char** argv) {
                 } else if (o.delta > found->second) {
                     std::printf("larger difference: %s %s (%u,%u) delta %u, budget %u\n", o.scope.c_str(), o.target.c_str(), o.x, o.y, o.delta, found->second);
                     breaches++;
+                } else if (o.delta < found->second) {
+                    std::printf("tighten: %s %s (%u,%u) delta %u, budget %u\n", o.scope.c_str(), o.target.c_str(), o.x, o.y, o.delta, found->second);
+                    breaches++;
                 }
+            }
+            std::set<std::tuple<std::string, std::string, uint32_t, uint32_t>> seen;
+            for (const auto& o : observed) seen.insert({o.scope, o.target, o.x, o.y});
+            for (const auto& entry : allowed) {
+                const auto& key = entry.first;
+                if (seen.count(key)) continue;
+                std::printf("stale budget entry: %s %s (%u,%u)\n", std::get<0>(key).c_str(), std::get<1>(key).c_str(), std::get<2>(key), std::get<3>(key));
+                breaches++;
             }
             if (context.validationErrors()) { std::printf("validation errors: %u\n", context.validationErrors()); breaches++; }
             std::printf("budget: %zu differing pixels observed, %zu budgeted, %u breaches\n", observed.size(), allowed.size(), breaches);
