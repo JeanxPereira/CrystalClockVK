@@ -108,9 +108,11 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(json)
 
+add_library(ClockVma STATIC src/core/VmaUsage.cpp)
+target_link_libraries(ClockVma PUBLIC VulkanMemoryAllocator Vulkan::Vulkan)
+
 add_library(ClockParity STATIC
     src/core/HeadlessContext.cpp
-    src/core/VmaUsage.cpp
     src/parity/GsParityRenderer.cpp
     src/parity/Fixture.cpp
     src/parity/StbImage.cpp
@@ -118,7 +120,7 @@ add_library(ClockParity STATIC
 )
 add_dependencies(ClockParity Shaders)
 target_include_directories(ClockParity PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty)
-target_link_libraries(ClockParity PUBLIC nlohmann_json::nlohmann_json vk-bootstrap VulkanMemoryAllocator Vulkan::Vulkan)
+target_link_libraries(ClockParity PUBLIC ClockVma nlohmann_json::nlohmann_json vk-bootstrap VulkanMemoryAllocator Vulkan::Vulkan)
 
 set(CLOCK_FIXTURE ${CMAKE_SOURCE_DIR}/References/fixtures/hddosd-110U-whole3-clock/f0 CACHE PATH "Parity fixture")
 
@@ -167,11 +169,11 @@ endif()
 
 add_library(ClockRender STATIC src/render/Device.cpp)
 target_include_directories(ClockRender PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(ClockRender PUBLIC vk-bootstrap VulkanMemoryAllocator Vulkan::Vulkan SDL3::SDL3)
+target_link_libraries(ClockRender PUBLIC ClockVma vk-bootstrap VulkanMemoryAllocator Vulkan::Vulkan SDL3::SDL3)
 
-add_executable(DeviceTest tests/render/DeviceTest.cpp src/core/VmaUsage.cpp)
+add_executable(DeviceTest tests/render/DeviceTest.cpp)
 target_link_libraries(DeviceTest PRIVATE ClockRender)
 add_test(NAME DeviceTest COMMAND DeviceTest)
 
-add_executable(CrystalClock src/app/Main.cpp src/core/VmaUsage.cpp)
+add_executable(CrystalClock src/app/Main.cpp)
 target_link_libraries(CrystalClock PRIVATE ClockRender)
