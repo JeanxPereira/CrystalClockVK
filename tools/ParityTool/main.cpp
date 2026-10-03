@@ -6,7 +6,7 @@
 #include "render/Device.hpp"
 #include "render/NativeRenderer.hpp"
 #include "scene/Clock.hpp"
-#include "../../tests/scene/SceneInputs.hpp"
+#include "scene/SceneInputs.hpp"
 #include <nlohmann/json.hpp>
 #include <algorithm>
 #include <cstdio>
@@ -88,9 +88,9 @@ void observe(std::vector<Observed>& list, const std::string& scope, const std::s
 // Colour and alpha are measured apart.
 int nativeReport(const std::filesystem::path& fixtureDirectory, const std::filesystem::path& shaders, const std::filesystem::path& mesh, const std::filesystem::path& textures, const std::filesystem::path& out) {
     const parity::Fixture fixture = parity::loadFixture(fixtureDirectory);
-    const nlohmann::json input = scenetest::firstInput((fixtureDirectory / ".." / "scene.json").string());
-    scene::Clock<scene::NativeArithmetic> clock(scenetest::clockInputs(input, scene::loadRodMesh(mesh)));
-    const scene::Frame frame = clock.frame(scenetest::frameInputs(input));
+    const nlohmann::json input = scene::firstInput((fixtureDirectory / ".." / "scene.json").string());
+    scene::Clock<scene::NativeArithmetic> clock(scene::clockInputs(input, scene::loadRodMesh(mesh)));
+    const scene::Frame frame = clock.frame(scene::frameInputs(input));
     const parity::GsFrameLayout layout = parity::clockLayout(frame.width, frame.height, frame.displayIndex);
 
     std::map<std::string, parity::Image> oracle = fixture.targetStart;

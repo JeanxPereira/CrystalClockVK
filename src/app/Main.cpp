@@ -4,7 +4,9 @@
 #include <imgui_impl_vulkan.h>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <exception>
@@ -13,8 +15,9 @@
 #include <string>
 #include <vector>
 
-#include "../../tests/scene/SceneInputs.hpp"
+#include "scene/SceneInputs.hpp"
 #include "app/DebugPanel.hpp"
+#include "app/NativeFrames.hpp"
 #include "app/Png.hpp"
 #include "render/Device.hpp"
 #include "render/NativeRenderer.hpp"
@@ -104,10 +107,12 @@ int main(int argc, char** argv) {
         render::NativeRenderer renderer(device, options.shaders);
         renderer.loadClockTextures(options.textures);
 
-        // The clock's state when the whole3-clock capture starts (frames[0].input of its scene.json), then real time.
-        const nlohmann::json input = scenetest::firstInput(options.start.string());
-        Clock clock(scenetest::clockInputs(input, scene::loadRodMesh(options.mesh)));
-        scene::FrameInputs inputs = scenetest::frameInputs(input);
+        // The clock as the whole3-clock capture holds it at its first frame (resources/clock/start.json, or a
+        // capture's scene.json through --start), then real time.
+        const nlohmann::json input = scene::firstInput(options.start.string());
+        Clock clock(scene::clockInputs(input, scene::loadRodMesh(options.mesh)));
+        scene::FrameInputs inputs = scene::frameInputs(input);
+        app::firstFrame(inputs);
 
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
@@ -140,8 +145,7 @@ int main(int argc, char** argv) {
         const auto produce = [&] {
             inputs.time = clockTime(system_clock::now() + offset);
             frame = clock.frame(inputs);
-            inputs.field ^= 1;
-            inputs.displayIndex ^= 1;
+            app::nextFrame(inputs);
             ++logicFrames;
             fresh = true;
         };
@@ -205,10 +209,20 @@ int main(int argc, char** argv) {
         size_t next = 0;
 
         const double step = 1001.0 / 60000.0;
+        // One present per logic frame, the loop sleeping until the next step is due: FIFO then shows every logic
+        // frame for the same number of refreshes. Presenting as fast as the loop wakes (2 frames in flight, so in
+        // bursts) showed the 59.94 Hz frames for uneven runs of refreshes, a judder.
+        const auto refreshRate = [&] {
+            const SDL_DisplayMode* mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(window));
+            return mode ? double(mode->refresh_rate) : 0.0;
+        };
         double owed = 0;
         const Uint64 begun = SDL_GetTicksNS();
-        Uint64 last = begun;
+        Uint64 last = begun, lastPresent = begun;
         uint64_t presented = 0;
+        // Intervals between presents of consecutive logic frames, for the cadence report.
+        uint64_t intervals = 0, uneven = 0;
+        double intervalSum = 0, intervalWorst = 0;
         float fps = 0;
         bool running = true;
         while (running) {
@@ -246,6 +260,12 @@ int main(int argc, char** argv) {
                 }
             }
             panel.step = false;
+            const double sincePresent = double(now - lastPresent) * 1e-9;
+            if (panel.paused ? sincePresent < step : !fresh) {
+                const double wait = panel.paused ? step - sincePresent : step - owed;
+                SDL_DelayPrecise(static_cast<Uint64>(std::max(0.0, wait) * 1e9));
+                continue;
+            }
 
             const scene::ClockTime shownTime = clockTime(system_clock::now() + offset);
             char text[64];
@@ -274,6 +294,7 @@ int main(int argc, char** argv) {
             info.outputWidth = output.width;
             info.outputHeight = output.height;
             if (fresh) renderer.record(context->cmd, frame);
+            const bool newFrame = fresh;
             fresh = false;
             renderer.present(context->cmd, context->image, device.swapchainExtent(), panel.shown, aspect);
 
@@ -292,6 +313,15 @@ int main(int argc, char** argv) {
             vkCmdEndRendering(context->cmd);
             device.endFrame(*context);
             ++presented;
+            const Uint64 shown = now;
+            if (newFrame && !panel.paused && presented > 1) {
+                const double interval = double(shown - lastPresent) * 1e-9;
+                ++intervals;
+                intervalSum += interval;
+                intervalWorst = std::max(intervalWorst, std::fabs(interval - step));
+                uneven += std::fabs(interval - step) > 0.002;
+            }
+            lastPresent = shown;
 
             if (panel.screenshot || !screenshotName.empty()) {
                 shoot(screenshotName.empty() ? "clock" : screenshotName);
@@ -306,6 +336,10 @@ int main(int argc, char** argv) {
         if (options.soak > 0)
             std::printf("%s: %.1f s, %llu frames presented, %llu logic frames, %u validation errors\n", options.smoke ? "smoke" : "soak", options.soak,
                         static_cast<unsigned long long>(presented), static_cast<unsigned long long>(logicFrames), device.validationErrors());
+        if (options.soak > 0)
+            std::printf("display %.2f Hz; %llu present intervals, mean %.3f ms (step %.3f ms), %llu off by more than 2 ms, worst off by %.3f ms\n", refreshRate(),
+                        static_cast<unsigned long long>(intervals), intervals ? intervalSum / double(intervals) * 1e3 : 0.0, step * 1e3,
+                        static_cast<unsigned long long>(uneven), intervalWorst * 1e3);
         if (device.validationErrors() != 0) code = 1;
     } catch (const std::exception& error) {
         std::fprintf(stderr, "fatal: %s\n", error.what());

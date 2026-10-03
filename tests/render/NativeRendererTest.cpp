@@ -1,13 +1,17 @@
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "../Check.hpp"
-#include "../scene/SceneInputs.hpp"
+#include "scene/SceneInputs.hpp"
 #include "render/Device.hpp"
+#include "app/NativeFrames.hpp"
 #include "render/NativeRenderer.hpp"
 #include "scene/Clock.hpp"
 
@@ -71,13 +75,55 @@ int blends(render::NativeRenderer& renderer) {
     renderer.draw(frameOf({sprite(BlendOp::Opaque, 200, 100, 50, 0x80), over}));
     CHECK(near(pixel(renderer.readTarget(TargetName::Display), 320, 224), 10 * quarter + 200 * (1 - quarter), 220 * quarter + 100 * (1 - quarter), 128 * quarter + 50 * (1 - quarter), "FixedOver"));
 
-    Pass add = sprite(BlendOp::FixedAdd, 60, 200, 10, 0xff);
+    Pass add = sprite(BlendOp::FixedAdd, 60, 200, 10, 0x10);
     add.material.blendConstant = 0x20;
     renderer.draw(frameOf({sprite(BlendOp::Opaque, 100, 100, 100, 0x80), add}));
     CHECK(near(pixel(renderer.readTarget(TargetName::Display), 320, 224), 100 + 60 * quarter, 100 + 200 * quarter, 100 + 10 * quarter, "FixedAdd"));
 
     renderer.draw(frameOf({sprite(BlendOp::Opaque, 1, 2, 3, 0x40)}));
     CHECK(pixel(renderer.readTarget(TargetName::Display), 5, 5)[3] == 0x40);
+    return 0;
+}
+
+// Every pass's written alpha is bounded by 0x80, which a target stores as 1.0: a target read back holds the bound
+// of what was written to it, and in Debug a frame that would write more is refused before anything is recorded.
+int alphaBounds(render::NativeRenderer& renderer) {
+    renderer.configure({kWidth, kHeight, 1});
+    Pass low = sprite(BlendOp::Opaque, 1, 2, 3, 0x40);
+    low.target = TargetName::RefractionSource;
+    renderer.draw(frameOf({low}));
+    Pass read = sprite(BlendOp::AlphaOver, 0x80, 0x80, 0x80, 0x80);
+    read.material.source = scene::SourceKind::Target;
+    read.material.sourceTarget = TargetName::RefractionSource;
+    read.material.sampling = scene::Sampling::ClampToRegion;
+    read.material.region = {0, 639, 0, 223};
+    CHECK(renderer.writtenAlpha(read) == 0x40);
+    CHECK(renderer.blendAlpha(read) == 0x40);
+
+    std::vector<uint8_t> opaque(4 * 4 * 4, 0xff);
+    renderer.setTexture(21, 4, 4, opaque);
+    Pass textured = sprite(BlendOp::Opaque, 0x80, 0x80, 0x80, 0x80);
+    textured.material.source = scene::SourceKind::Texture;
+    textured.material.texture = 21;
+    CHECK(renderer.writtenAlpha(textured) == 0xff);
+    Pass edge = textured;
+    edge.edgeSmoothing = true;
+    CHECK(renderer.writtenAlpha(edge) == 0x80);
+
+#ifndef NDEBUG
+    for (const Pass& high : {sprite(BlendOp::Opaque, 1, 2, 3, 0x90), textured}) {
+        bool refused = false;
+        try {
+            renderer.draw(frameOf({sprite(BlendOp::Opaque, 0, 0, 0, 0x80), high}));
+        } catch (const std::logic_error& e) {
+            std::printf("refused: %s\n", e.what());
+            refused = true;
+        }
+        CHECK(refused);
+    }
+#endif
+    renderer.draw(frameOf({sprite(BlendOp::Opaque, 9, 9, 9, 0x80)}));
+    CHECK(pixel(renderer.readTarget(TargetName::Display), 1, 1)[0] == 9);
     return 0;
 }
 
@@ -174,9 +220,9 @@ int msaa(render::NativeRenderer& renderer) {
 // Real clock frames: every blended pass multiplies by at most 0x80, and they draw without validation errors.
 int clockFrames(render::NativeRenderer& renderer, const std::string& scenePath, const std::string& meshPath, const std::string& textures) {
     renderer.loadClockTextures(textures);
-    const nlohmann::json input = scenetest::firstInput(scenePath);
-    scene::Clock<scene::NativeArithmetic> clock(scenetest::clockInputs(input, scene::loadRodMesh(meshPath)));
-    scene::FrameInputs in = scenetest::frameInputs(input);
+    const nlohmann::json input = scene::firstInput(scenePath);
+    scene::Clock<scene::NativeArithmetic> clock(scene::clockInputs(input, scene::loadRodMesh(meshPath)));
+    scene::FrameInputs in = scene::frameInputs(input);
     renderer.configure({kWidth, kHeight, 4});
     uint32_t largest = 0, passes = 0, written = 0;
     for (int n = 0; n < 8; ++n) {
@@ -186,7 +232,7 @@ int clockFrames(render::NativeRenderer& renderer, const std::string& scenePath, 
             if (a > largest) largest = a;
             if (a > 0x80) std::fprintf(stderr, "frame %d pass %s: blend alpha 0x%x\n", n, p.name.c_str(), a);
             CHECK(!(p.material.source == scene::SourceKind::Target && p.material.coordinates == scene::CoordinateKind::Projective));
-            for (const scene::Vertex& v : p.vertices) written = std::max<uint32_t>(written, v.a);
+            written = std::max(written, renderer.writtenAlpha(p));
             ++passes;
         }
         renderer.draw(frame);
@@ -196,17 +242,111 @@ int clockFrames(render::NativeRenderer& renderer, const std::string& scenePath, 
     const auto rgba = renderer.readTarget(TargetName::Display);
     size_t lit = 0;
     for (size_t i = 0; i < rgba.size(); i += 4) lit += rgba[i] + rgba[i + 1] + rgba[i + 2] > 0;
-    std::printf("clock: %u passes over 8 frames, largest blend alpha 0x%x, largest vertex alpha 0x%x, %zu lit pixels\n", passes, largest, written, lit);
-    CHECK(largest <= 0x80);
+    std::printf("clock: %u passes over 8 frames, largest blend alpha 0x%x, largest written alpha 0x%x, %zu lit pixels\n", passes, largest, written, lit);
+    CHECK(largest <= 0x80 && written <= 0x80);
     CHECK(lit > kWidth * kHeight / 4);
+    return 0;
+}
+
+// The committed start file (tools/scene/make_start.mjs) starts the same clock as the capture's frame 0.
+int startFile(const std::string& scenePath, const std::string& meshPath, const std::string& startPath) {
+    const scene::RodMesh mesh = scene::loadRodMesh(meshPath);
+    const nlohmann::json captured = scene::firstInput(scenePath), committed = scene::firstInput(startPath);
+    scene::Clock<scene::NativeArithmetic> a(scene::clockInputs(captured, mesh)), b(scene::clockInputs(committed, mesh));
+    scene::FrameInputs in = scene::frameInputs(captured);
+    CHECK(scene::frameInputs(committed).time.milliseconds == in.time.milliseconds);
+    for (int n = 0; n < 4; ++n) {
+        const scene::Frame x = a.frame(in), y = b.frame(in);
+        CHECK(x.passes.size() == y.passes.size());
+        for (size_t i = 0; i < x.passes.size(); ++i) {
+            CHECK(x.passes[i].name == y.passes[i].name);
+            CHECK(x.passes[i].material == y.passes[i].material);
+            CHECK(x.passes[i].vertices == y.passes[i].vertices);
+        }
+        in.field ^= 1;
+        in.displayIndex ^= 1;
+    }
+    std::printf("start file: 4 frames equal to the capture's\n");
+    return 0;
+}
+
+struct StepDifference {
+    std::array<size_t, 2> pixels{};
+    std::array<uint32_t, 2> largest{};
+};
+
+// Pixels of Display and RefractionSource that change between two drawn frames.
+StepDifference drawnDifference(render::NativeRenderer& renderer, const scene::Frame& a, const scene::Frame& b) {
+    StepDifference d;
+    std::array<std::vector<uint8_t>, 2> first, second;
+    const TargetName targets[2] = {TargetName::Display, TargetName::RefractionSource};
+    renderer.draw(a);
+    for (size_t t = 0; t < 2; ++t) first[t] = renderer.readTarget(targets[t]);
+    renderer.draw(b);
+    for (size_t t = 0; t < 2; ++t) second[t] = renderer.readTarget(targets[t]);
+    for (size_t t = 0; t < 2; ++t)
+        for (size_t i = 0; i < first[t].size(); i += 4) {
+            uint32_t delta = 0;
+            for (size_t c = 0; c < 3; ++c) delta = std::max<uint32_t>(delta, uint32_t(std::abs(int(first[t][i + c]) - int(second[t][i + c]))));
+            d.pixels[t] += delta > 0;
+            d.largest[t] = std::max(d.largest[t], delta);
+        }
+    return d;
+}
+
+// Time frozen, the clock settled for 900 frames, then two consecutive frames. The background tube scrolls with the
+// frame counter whatever the time (scene/FrameHead.cpp strip), so the second frame is also drawn with the first
+// frame's clear and background: everything else must then be identical, Display and RefractionSource, when the
+// frames are made as the window makes them (app/NativeFrames.hpp, field held at 0).
+struct FrozenStep {
+    StepDifference whole, rest;
+};
+
+FrozenStep frozenStep(render::NativeRenderer& renderer, const scene::ClockInputs& start, scene::FrameInputs in, bool alternateField) {
+    scene::Clock<scene::NativeArithmetic> clock(start);
+    if (!alternateField) app::firstFrame(in);
+    const auto next = [&] {
+        if (alternateField) {
+            in.field ^= 1;
+            in.displayIndex ^= 1;
+        } else {
+            app::nextFrame(in);
+        }
+    };
+    for (int n = 0; n < 900; ++n) {
+        (void)clock.frame(in);
+        next();
+    }
+    const scene::Frame a = clock.frame(in);
+    next();
+    const scene::Frame b = clock.frame(in);
+    scene::Frame same = b;
+    for (size_t i = 0; i < same.passes.size() && i < a.passes.size(); ++i)
+        if (same.passes[i].name == "clear" || same.passes[i].name == "background") same.passes[i] = a.passes[i];
+    return {drawnDifference(renderer, a, b), drawnDifference(renderer, a, same)};
+}
+
+int frozen(render::NativeRenderer& renderer, const std::string& startPath, const std::string& meshPath) {
+    renderer.configure({kWidth, kHeight, 1});
+    const nlohmann::json input = scene::firstInput(startPath);
+    const scene::ClockInputs start = scene::clockInputs(input, scene::loadRodMesh(meshPath));
+    const scene::FrameInputs in = scene::frameInputs(input);
+    const FrozenStep alternating = frozenStep(renderer, start, in, true), held = frozenStep(renderer, start, in, false);
+    for (const auto& [name, step] : {std::pair{"field alternating", alternating}, std::pair{"field held at 0", held}})
+        std::printf("frozen time, two frames, %s: display %zu pixels (largest %u), refraction %zu (largest %u); "
+                    "background kept: display %zu (largest %u), refraction %zu (largest %u)\n",
+                    name, step.whole.pixels[0], step.whole.largest[0], step.whole.pixels[1], step.whole.largest[1], step.rest.pixels[0], step.rest.largest[0],
+                    step.rest.pixels[1], step.rest.largest[1]);
+    CHECK(alternating.rest.pixels[1] > 0);
+    CHECK(held.rest.pixels[0] == 0 && held.rest.pixels[1] == 0);
     return 0;
 }
 
 }  // namespace
 
 int main(int argc, char** argv) {
-    if (argc != 2 && argc != 5) {
-        std::fprintf(stderr, "usage: NativeRendererTest <shader dir> [scene.json rod-mesh.json textures dir]\n");
+    if (argc != 2 && argc != 5 && argc != 6) {
+        std::fprintf(stderr, "usage: NativeRendererTest <shader dir> [scene.json rod-mesh.json textures dir [start.json]]\n");
         return 1;
     }
     try {
@@ -214,9 +354,12 @@ int main(int argc, char** argv) {
         render::NativeRenderer renderer(device, argv[1]);
         CHECK(blends(renderer) == 0);
         CHECK(sampling(renderer) == 0);
+        CHECK(alphaBounds(renderer) == 0);
         CHECK(copies(renderer) == 0);
         CHECK(msaa(renderer) == 0);
-        if (argc == 5) CHECK(clockFrames(renderer, argv[2], argv[3], argv[4]) == 0);
+        if (argc >= 5) CHECK(clockFrames(renderer, argv[2], argv[3], argv[4]) == 0);
+        if (argc == 6) CHECK(startFile(argv[2], argv[3], argv[5]) == 0);
+        if (argc == 6) CHECK(frozen(renderer, argv[5], argv[3]) == 0);
         std::printf("validation errors: %u\n", device.validationErrors());
         CHECK(device.validationErrors() == 0);
     } catch (const std::exception& e) {

@@ -3,8 +3,8 @@
 #include <stb_image.h>
 
 #include <algorithm>
-#include <cassert>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <fstream>
 #include <stdexcept>
@@ -347,6 +347,7 @@ void NativeRenderer::configure(const NativeOutput& output) {
     vkDeviceWaitIdle(m_device.device());
     destroyTargets();
     m_output = output;
+    m_alphaBound = {};
     const auto samples = static_cast<VkSampleCountFlagBits>(output.samples);
     for (Target& t : m_targets) {
         t.resolved = createImage(output.width, output.height, kColourFormat,
@@ -477,27 +478,58 @@ void NativeRenderer::beginRendering(VkCommandBuffer cmd, Target& t) {
     vkCmdSetScissor(cmd, 0, 1, &scissor);
 }
 
-uint32_t NativeRenderer::blendAlpha(const scene::Pass& pass) const {
-    const scene::Material& m = pass.material;
-    switch (m.blend) {
-    case scene::BlendOp::Opaque: return 0;
-    case scene::BlendOp::FixedOver:
-    case scene::BlendOp::FixedAdd: return m.blendConstant;
-    default: break;
-    }
+uint32_t NativeRenderer::writtenAlpha(const scene::Pass& pass, const std::array<uint32_t, 3>& bounds) const {
     if (pass.edgeSmoothing) return 0x80;
+    const scene::Material& m = pass.material;
     uint32_t vertex = 0;
     for (const scene::Vertex& v : pass.vertices) vertex = std::max<uint32_t>(vertex, v.a);
     if (m.source == scene::SourceKind::Texture) {
         const auto found = m_textures.find(m.texture);
         return found == m_textures.end() ? vertex : vertex * found->second.largestAlpha / 128;
     }
-    if (m.source == scene::SourceKind::Target) return vertex * (m.colourOnly ? 0x7fu : 0x80u) / 128;
+    if (m.source == scene::SourceKind::Target) return vertex * (m.colourOnly ? 0x7fu : bounds[static_cast<size_t>(m.sourceTarget)]) / 128;
     return vertex;
+}
+
+uint32_t NativeRenderer::writtenAlpha(const scene::Pass& pass) const { return writtenAlpha(pass, m_alphaBound); }
+
+uint32_t NativeRenderer::blendAlpha(const scene::Pass& pass) const {
+    switch (pass.material.blend) {
+    case scene::BlendOp::Opaque: return 0;
+    case scene::BlendOp::FixedOver:
+    case scene::BlendOp::FixedAdd: return pass.material.blendConstant;
+    default: return writtenAlpha(pass);
+    }
+}
+
+// Targets store alpha / 128 in UNORM, so a byte above 0x80 would saturate. The frame's passes are walked first:
+// each target's bound grows with what is written to it, and in Debug a frame that would write or multiply by more
+// than 0x80 is refused before anything is recorded.
+void NativeRenderer::checkAlpha(const scene::Frame& frame) {
+    std::array<uint32_t, 3> bounds = m_alphaBound;
+    for (const scene::Pass& pass : frame.passes) {
+        if (pass.vertices.empty()) continue;
+        const uint32_t written = writtenAlpha(pass, bounds);
+        const scene::BlendOp blend = pass.material.blend;
+        const uint32_t factor = blend == scene::BlendOp::Opaque ? 0
+                                : blend == scene::BlendOp::FixedOver || blend == scene::BlendOp::FixedAdd ? pass.material.blendConstant
+                                                                                                           : written;
+#ifndef NDEBUG
+        if (written > 0x80 || factor > 0x80) {
+            char text[96];
+            std::snprintf(text, sizeof text, " writes alpha 0x%x and blends by 0x%x, above 0x80", written, factor);
+            throw std::logic_error("pass " + pass.name + text);
+        }
+#endif
+        uint32_t& bound = bounds[static_cast<size_t>(pass.target)];
+        bound = std::max(bound, std::min(written, 0x80u));
+    }
+    m_alphaBound = bounds;
 }
 
 void NativeRenderer::record(VkCommandBuffer cmd, const scene::Frame& frame) {
     if (m_output.width == 0) throw std::runtime_error("the renderer has no output");
+    checkAlpha(frame);
     std::vector<GpuVertex> vertices;
     std::vector<std::pair<uint32_t, uint32_t>> ranges;
     for (const scene::Pass& pass : frame.passes) {
@@ -527,7 +559,6 @@ void NativeRenderer::record(VkCommandBuffer cmd, const scene::Frame& frame) {
         const scene::Pass& pass = frame.passes[i];
         const scene::Material& m = pass.material;
         if (ranges[i].second == 0) continue;
-        assert(blendAlpha(pass) <= 0x80 && "a blend factor above 1");
         Target& drawn = target(pass.target);
         Target* source = m.source == scene::SourceKind::Target ? &target(m.sourceTarget) : nullptr;
         if (source == &drawn) throw std::logic_error("pass " + pass.name + " reads the target it draws to");

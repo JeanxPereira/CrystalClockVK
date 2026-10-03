@@ -48,8 +48,11 @@ public:
     // (width / height of the shown picture) with black around it.
     void present(VkCommandBuffer cmd, VkImage image, VkExtent2D extent, scene::TargetName shown, float aspect);
 
-    // The largest alpha a blended pass multiplies by (As or the constant, in bytes): vertex alpha, times the
-    // texture's largest alpha / 128 when textured. Target texels are bounded by 0x80 (they store alpha / 128).
+    // The largest alpha byte a pass writes (its As): 0x80 with edge smoothing, else the vertex alpha times, when
+    // textured, the texture's largest alpha / 128 or the source target's bound / 128 (0x7f when colour only).
+    // Each target's bound is the largest alpha drawn into it since configure().
+    uint32_t writtenAlpha(const scene::Pass& pass) const;
+    // The largest blend factor of a pass, in bytes: 0 when opaque, the constant for the fixed modes, else As.
     uint32_t blendAlpha(const scene::Pass& pass) const;
 
 private:
@@ -90,6 +93,8 @@ private:
     VkPipeline pipeline(const scene::Pass& pass);
     Target& target(scene::TargetName name) { return m_targets[static_cast<size_t>(name)]; }
     void beginRendering(VkCommandBuffer cmd, Target& target);
+    uint32_t writtenAlpha(const scene::Pass& pass, const std::array<uint32_t, 3>& bounds) const;
+    void checkAlpha(const scene::Frame& frame);
 
     Device& m_device;
     VkShaderModule m_vertex{VK_NULL_HANDLE}, m_fragment{VK_NULL_HANDLE};
@@ -102,6 +107,7 @@ private:
     std::map<int32_t, Texture> m_textures;
     Image m_blank;
     std::array<Target, 3> m_targets{};
+    std::array<uint32_t, 3> m_alphaBound{};
     Image m_depth;
     NativeOutput m_output{0, 0, 0};
     std::array<Buffer, 3> m_vertices{};

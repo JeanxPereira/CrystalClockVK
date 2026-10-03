@@ -7,7 +7,7 @@
 
 #include "../Check.hpp"
 #include "SceneFixture.hpp"
-#include "SceneInputs.hpp"
+#include "scene/SceneInputs.hpp"
 #include "parity/Fixture.hpp"
 #include "parity/FromScene.hpp"
 
@@ -273,13 +273,13 @@ int main(int argc, char** argv) {
         const json& dumpFrames = dump.at("frames");
         CHECK(!frames.empty());
 
-        EeClock clock(scenetest::clockInputs(frames.at(0).at("input"), mesh));
+        EeClock clock(scene::clockInputs(frames.at(0).at("input"), mesh));
         size_t compared = 0, passes = 0;
         for (const json& frame : frames) {
             const int index = frame.at("index");
             const std::string at = "frame " + std::to_string(index);
             if (menusIdle(frame, at)) return 1;
-            const scene::FrameInputs in = scenetest::frameInputs(frame.at("input"));
+            const scene::FrameInputs in = scene::frameInputs(frame.at("input"));
             const scene::Frame out = clock.frame(in);
             if (compareAfter(clock, frame.at("expect").at("after"), at)) return 1;
             CHECK(out.field == in.field && out.displayIndex == in.displayIndex);
@@ -301,23 +301,23 @@ int main(int argc, char** argv) {
         }
         std::printf("geometry: %zu frames carried, %zu scene passes equal to the dump\n", compared, passes);
 
-        EeClock first(scenetest::clockInputs(frames.at(0).at("input"), mesh));
-        const scene::Frame zero = first.frame(scenetest::frameInputs(frames.at(0).at("input")));
+        EeClock first(scene::clockInputs(frames.at(0).at("input"), mesh));
+        const scene::Frame zero = first.frame(scene::frameInputs(frames.at(0).at("input")));
         std::vector<std::string> text;
         if (writeSceneFixture(parity::fromScene(zero, parity::clockLayout(zero.width, zero.height, zero.displayIndex)), zero.textAt, argv[4], argv[5], text)) return 1;
 
-        scene::Clock<scene::NativeArithmetic> native(scenetest::clockInputs(frames.at(0).at("input"), mesh));
-        const scene::Frame plain = native.frame(scenetest::frameInputs(frames.at(0).at("input")));
+        scene::Clock<scene::NativeArithmetic> native(scene::clockInputs(frames.at(0).at("input"), mesh));
+        const scene::Frame plain = native.frame(scene::frameInputs(frames.at(0).at("input")));
         CHECK(!plain.passes.empty());
         std::printf("native: frame 0 has %zu passes (Ee %zu)\n", plain.passes.size(), zero.passes.size());
 
         // The ramps this capture holds still, rising: each frame ticks the grey ramp once (background) and the
         // vignette ramp once (overlay), and the vignette is drawn.
-        scene::ClockInputs rising = scenetest::clockInputs(frames.at(0).at("input"), mesh);
+        scene::ClockInputs rising = scene::clockInputs(frames.at(0).at("input"), mesh);
         rising.head.greyRamp = {40, 10, 0, 1};
         rising.state.vignetteRamp = {80, 10, 0, 1};
         EeClock ramps(rising);
-        const scene::Frame drawn = ramps.frame(scenetest::frameInputs(frames.at(0).at("input")));
+        const scene::Frame drawn = ramps.frame(scene::frameInputs(frames.at(0).at("input")));
         CHECK(ramps.head().greyRamp.counter == 11 && ramps.state().vignetteRamp.counter == 11);
         bool vignette = false;
         for (const scene::Pass& pass : drawn.passes) vignette = vignette || pass.name == "vignette";

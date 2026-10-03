@@ -1,18 +1,15 @@
-#include "SceneInputs.hpp"
-
-#include "SceneFixture.hpp"
+#include "scene/SceneInputs.hpp"
 
 #include <fstream>
 #include <iterator>
 #include <stdexcept>
 #include <string>
 
-namespace scenetest {
+namespace scene {
 
 namespace {
 
 using nlohmann::json;
-using namespace scene;
 
 float f(const json& hex) { return hexFloat(hex); }
 Colour colour(const json& j) { return {j.at(0).get<int32_t>(), j.at(1).get<int32_t>(), j.at(2).get<int32_t>(), j.at(3).get<int32_t>()}; }
@@ -142,6 +139,18 @@ OrbState orbState(const json& in) {
 
 }
 
+uint32_t hexBits(const json& hex) {
+    const std::string text = hex.get<std::string>();
+    if (text.size() != 10 || text[0] != '0' || text[1] != 'x') throw std::runtime_error("not a float pattern: " + text);
+    return static_cast<uint32_t>(std::stoul(text.substr(2), nullptr, 16));
+}
+
+float hexFloat(const json& hex) { return asFloat(hexBits(hex)); }
+
+Vec4 hexVec4(const json& hex) { return {hexFloat(hex.at(0)), hexFloat(hex.at(1)), hexFloat(hex.at(2)), hexFloat(hex.at(3))}; }
+
+Mat4 hexMat4(const json& hex) { return {hexVec4(hex.at(0)), hexVec4(hex.at(1)), hexVec4(hex.at(2)), hexVec4(hex.at(3))}; }
+
 ClockInputs clockInputs(const json& in, const RodMesh& mesh) {
     ClockInputs c;
     c.state = clockState(in);
@@ -166,7 +175,8 @@ json firstInput(const std::string& path) {
     if (!file) throw std::runtime_error("cannot open " + path);
     const std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
     const size_t frames = text.find("\"frames\"");
-    const size_t start = frames == std::string::npos ? std::string::npos : text.find('{', frames);
+    if (frames == std::string::npos) return json::parse(text);
+    const size_t start = text.find('{', frames);
     if (start == std::string::npos) throw std::runtime_error(path + ": no frames");
     int depth = 0;
     bool quoted = false;

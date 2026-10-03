@@ -21,14 +21,6 @@ nlohmann::json loadScene(const std::string& path) {
     return nlohmann::json::parse(in);
 }
 
-uint32_t hexBits(const nlohmann::json& hex) {
-    const std::string text = hex.get<std::string>();
-    if (text.size() != 10 || text[0] != '0' || text[1] != 'x') throw std::runtime_error("not a float pattern: " + text);
-    return static_cast<uint32_t>(std::stoul(text.substr(2), nullptr, 16));
-}
-
-float hexFloat(const nlohmann::json& hex) { return scene::asFloat(hexBits(hex)); }
-
 std::string bitsText(uint32_t bits) {
     char text[11];
     std::snprintf(text, sizeof text, "0x%08x", bits);
@@ -67,10 +59,6 @@ bool sameBits(const scene::Mat4& value, const nlohmann::json& hex, std::string_v
     for (size_t r = 0; same && r < 4; ++r) same = sameBits(value[r], hex.at(r), std::string(what) + "[" + std::to_string(r) + "]");
     return same;
 }
-
-scene::Vec4 hexVec4(const nlohmann::json& hex) { return {hexFloat(hex.at(0)), hexFloat(hex.at(1)), hexFloat(hex.at(2)), hexFloat(hex.at(3))}; }
-
-scene::Mat4 hexMat4(const nlohmann::json& hex) { return {hexVec4(hex.at(0)), hexVec4(hex.at(1)), hexVec4(hex.at(2)), hexVec4(hex.at(3))}; }
 
 uint32_t fnv(const float* values, size_t count) {
     uint32_t h = 0x811c9dc5u;
