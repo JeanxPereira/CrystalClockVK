@@ -194,3 +194,6 @@ add_test(NAME FixtureTest COMMAND FixtureTest ${CLOCK_FIXTURE})
 add_executable(CompareTest tests/CompareTest.cpp)
 target_link_libraries(CompareTest PRIVATE ClockRenderer)
 add_test(NAME CompareTest COMMAND CompareTest)
+
+add_executable(ParityTool tools/ParityTool/main.cpp)
+target_link_libraries(ParityTool PRIVATE ClockRenderer)
