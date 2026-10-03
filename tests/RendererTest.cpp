@@ -46,6 +46,7 @@ int main(int argc, char** argv) {
 
     // Each fragment must see the depth and colour every earlier primitive stored there: two hundred screen-sized sprites, each one
     // step nearer the back (Z 10000, 9999, ...) under Z >=, in one pass. Only the first passes; every pixel keeps its red 1.
+    // Probabilistic: without coherent images it failed every run here (15 to 25 stale pixels), but a driver could pass it by luck.
     {
         constexpr uint32_t BW = 640, BH = 224;
         renderer.setTarget("big", BW, BH, std::vector<uint8_t>(BW * BH * 4, 0));

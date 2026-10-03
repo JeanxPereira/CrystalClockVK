@@ -3,7 +3,7 @@
 
 layout(pixel_interlock_ordered) in;
 
-// coherent: a fragment must see what earlier fragments of the same pixel stored inside the interlock, not a stale cached copy.
+// coherent: later fragments of a pixel must see earlier stores inside the interlock.
 layout(set = 0, binding = 0, rgba8ui) coherent uniform uimage2D targetImage;
 layout(set = 0, binding = 1, r32ui) coherent uniform uimage2D depthImage;
 layout(set = 0, binding = 2) uniform usampler2D textureImage;
