@@ -197,3 +197,5 @@ add_test(NAME CompareTest COMMAND CompareTest)
 
 add_executable(ParityTool tools/ParityTool/main.cpp)
 target_link_libraries(ParityTool PRIVATE ClockRenderer)
+
+add_test(NAME ParityClock COMMAND ParityTool ${CLOCK_FIXTURE} ${CLOCK_FIXTURE}/report ${CMAKE_SOURCE_DIR}/bin/shaders ${CMAKE_SOURCE_DIR}/tools/ParityTool/budgets.json)

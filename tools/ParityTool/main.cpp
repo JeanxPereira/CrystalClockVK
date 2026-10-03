@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <fstream>
 #include <map>
+#include <stdexcept>
 
 namespace {
 
@@ -41,29 +42,33 @@ void writeRaw(const std::filesystem::path& path, const std::vector<uint8_t>& byt
 
 // The oracle dumps the top-left w x h corner of each buffer (the draw's bounding box); the rest of the buffer is untouched by the draw.
 parity::Image cropOf(const parity::Image& full, uint32_t w, uint32_t h) {
+    if (w > full.width || h > full.height) throw std::runtime_error("the oracle rectangle does not fit the buffer");
     parity::Image out{w, h, std::vector<uint8_t>(size_t(w) * h * 4)};
     for (uint32_t y = 0; y < h; y++) std::copy_n(&full.rgba[size_t(y) * full.width * 4], size_t(w) * 4, &out.rgba[size_t(y) * w * 4]);
     return out;
 }
 
 parity::DepthImage cropOf(const parity::DepthImage& full, uint32_t w, uint32_t h) {
+    if (w > full.width || h > full.height) throw std::runtime_error("the oracle rectangle does not fit the buffer");
     parity::DepthImage out{w, h, std::vector<uint32_t>(size_t(w) * h)};
     for (uint32_t y = 0; y < h; y++) std::copy_n(&full.depth[size_t(y) * full.width], w, &out.depth[size_t(y) * w]);
     return out;
 }
 
 void paste(parity::Image& full, const parity::Image& part) {
+    if (part.width > full.width || part.height > full.height) throw std::runtime_error("the oracle rectangle does not fit the buffer");
     for (uint32_t y = 0; y < part.height; y++) std::copy_n(&part.rgba[size_t(y) * part.width * 4], size_t(part.width) * 4, &full.rgba[size_t(y) * full.width * 4]);
 }
 
 void paste(parity::DepthImage& full, const parity::DepthImage& part) {
+    if (part.width > full.width || part.height > full.height) throw std::runtime_error("the oracle rectangle does not fit the buffer");
     for (uint32_t y = 0; y < part.height; y++) std::copy_n(&part.depth[size_t(y) * part.width], part.width, &full.depth[size_t(y) * full.width]);
 }
 
 }  // namespace
 
 int main(int argc, char** argv) {
-    if (argc != 4) { std::fprintf(stderr, "usage: ParityTool <fixture dir> <out dir> <shader dir>\n"); return 1; }
+    if (argc != 4 && argc != 5) { std::fprintf(stderr, "usage: ParityTool <fixture dir> <out dir> <shader dir> [budgets.json]\n"); return 1; }
     try {
         const parity::Fixture fixture = parity::loadFixture(argv[1]);
         const std::filesystem::path out = argv[2];
@@ -154,6 +159,12 @@ int main(int argc, char** argv) {
             keep("chained-" + id, ours, oracle);
         }
         report["chainedDepth"] = toJson(parity::compare(parity::DepthImage{depth.width, depth.height, renderer.readDepth()}, depth));
+        {
+            std::ifstream frameFile(std::filesystem::path(argv[1]) / "frame.json");
+            const nlohmann::json frameJson = nlohmann::json::parse(frameFile);
+            report["capture"] = frameJson.at("capture");
+            report["frame"] = frameJson.at("frame");
+        }
         report["skipped"] = skipped;
         report["validationErrors"] = context.validationErrors();
 
@@ -168,6 +179,29 @@ int main(int argc, char** argv) {
                         chained["colour"]["differing"].get<unsigned long long>(), chained["colour"]["pixels"].get<unsigned long long>(), chained["colour"]["largest"].get<unsigned>());
         }
         std::printf("skipped passes taken from the oracle: %u; validation errors: %u\n", skipped, context.validationErrors());
+
+        if (argc == 5) {
+            std::ifstream in(argv[4]);
+            if (!in) throw std::runtime_error(std::string("no budgets at ") + argv[4]);
+            const nlohmann::json budgets = nlohmann::json::parse(in);
+            uint32_t breaches = 0;
+            auto within = [&](const std::string& what, const parity::Difference& d, const nlohmann::json& budget) {
+                const double share = d.pixels ? double(d.differing) / double(d.pixels) : 0.0;
+                if (share > budget.at("differingShare").get<double>() || d.largest > budget.at("largest").get<uint32_t>()) {
+                    std::printf("over budget: %s differs on %.6f of its pixels, largest %u\n", what.c_str(), share, d.largest);
+                    breaches++;
+                }
+            };
+            for (const auto& [name, group] : groups) {
+                if (!budgets.at("groups").contains(name)) { std::printf("no budget for group: %s\n", name.c_str()); breaches++; continue; }
+                within(name, group.colour, budgets.at("groups").at(name));
+                within(name + " (depth)", group.depth, budgets.at("depth"));
+            }
+            for (const auto& [id, oracle] : state) within("chained " + id, parity::compare(parity::Image{oracle.width, oracle.height, renderer.readTarget(id)}, oracle), budgets.at("chained"));
+            within("chained depth", parity::compare(parity::DepthImage{depth.width, depth.height, renderer.readDepth()}, depth), budgets.at("depth"));
+            if (context.validationErrors()) { std::printf("validation errors: %u\n", context.validationErrors()); breaches++; }
+            if (breaches) return 1;
+        }
         return 0;
     } catch (const std::exception& error) {
         std::fprintf(stderr, "ParityTool: %s\n", error.what());

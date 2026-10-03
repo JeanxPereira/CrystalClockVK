@@ -76,17 +76,17 @@ test scaffolding; the application never decodes packets.
 
 ## Renderer: GS features and their Vulkan form
 
-| GS feature (from `facts/`) | Vulkan, `GsParity` mode | Expected parity |
+| GS feature (from `facts/`) | Vulkan, `GsParity` mode | Measured parity |
 |---|---|---|
 | Display and work buffers (by FBP) | One `RGBA8_UINT` image per buffer at native size; the display has two, alternating | exact |
-| 12.4 coordinates with the screen offset | Vertex shader snaps to 1/16 pixel and shifts half a pixel (the GS samples at integer coordinates, Vulkan at pixel centres); the driver has 8 subpixel bits | exact at edges (spike confirms, sprites included) |
-| Depth, `GREATER` / `GEQUAL` (`ZBUF_1` `0x8C`: 32-bit format, values up to 16777215 by the screen matrix) | `D32_SFLOAT` holding z / 2^24; hardware compare | exact at vertices; interior values are interpolated by the GPU, so a test can flip where two surfaces nearly coincide (measured) |
-| Blend `((A − B) · C >> 7) + D`, alpha 0x80 = 1, `FIX`, `COLCLAMP` 1 | Fragment shader in integers on the destination read back (see "Ordering inside a draw") | exact |
+| 12.4 coordinates with the screen offset | Rows walked on the CPU as the software renderer's `DrawTriangle` does; a row is drawn as a rectangle over exactly its pixels | exact (differ 0 on every non-AA group) |
+| Depth, `GREATER` / `GEQUAL` (`ZBUF_1` `0x8C`: 32-bit format, values up to 16777215 by the screen matrix) | `r32ui` storage image compared in the fragment shader inside the interlock; Z per pixel is the software renderer's double arithmetic | exact (depth differ 0 on every group); not `D32_SFLOAT` with hardware compare, whose interpolated Z flipped tests |
+| Blend `((A - B) * C >> 7) + D`, alpha 0x80 = 1, `FIX`, `COLCLAMP` 1 | Fragment shader in integers on the destination read inside the interlock | exact |
 | `DTHE` 0 | No dithering | exact |
-| Texture address modes, `TEX1` `0x61` bilinear | `texelFetch` with integer addressing; GS modes and bilinear weights written in the shader | exact for equal coordinates; see interpolation |
-| Gouraud colour, ST/Q | `noperspective` varyings (GS vertices are already on the screen); S/Q and T/Q divided per fragment | colour ±1 on gradients; a coordinate that lands across a texel boundary picks another texel, so textured passes can differ by more than 1 on isolated pixels (measured) |
-| Line strip with `AA1` (orb trail) | Thin quad per segment in the shader | risk: measured in slice 0 |
-| Text fans and sprites with CLUT | Triangles; CLUT resolved at texture load | exact texel, ±1 on gradients |
+| Texture address modes, `TEX1` `0x61` bilinear | Integer addressing with the GS modes; bilinear weights are the four bits under the integer part, `lerp16_4` | exact |
+| Gouraud colour, ST/Q, sprite UV | Stepped per row as `CDrawScanline` does in blocks of four (colour in 16 bits, S T Q floats with `divps`-rounded division, sprite coordinates stepped); S, T and Q rounded down as PCSX2 `FlushPrim` does on sprites and flat-Z draws | exact |
+| Edge antialiasing `PRIM.AA1` on lines and triangles | Edge pixels walked on the CPU by the software renderer's DDA and coverage, drawn as one-pixel rows in the same ordered draw; `AA1` is on the rods' refracted faces as well as the orb trails | exact except edge pixels whose bilinear taps fall outside the draw's texture rectangle (see Tolerance) |
+| Text fans and sprites with CLUT | Triangles; CLUT resolved at texture load | skipped by the fixture maker (paletted textures), taken from the oracle |
 
 `GsParity` is a set of specialization constants. `Native` turns them off: float blend, standard
 samplers, free resolution. In the proof of concept `Native` is a toggle, nothing more.
@@ -104,14 +104,34 @@ primitive order. Measured on the baseline (RX 6750 XT, driver 26.8.1, Vulkan 1.4
 - Fallback: attachment local read with a barrier between draws, splitting a draw where its
   primitives overlap (cost: draw count, not parity).
 
-Slice 0 measures both on a capture's worst pass.
+Used: the storage-image method, with the target and depth images declared `coherent`; no draw is
+split. Proven by two tests: 64 overlapping sprites blended in order, and 200 screen-sized sprites
+under `Z >=` (without `coherent` this test read stale values in 15 to 25 pixels per run; the clock
+then showed 659 stale pixels in its `aa z-gequal` group). The fallback is not built.
 
 ### Tolerance
 
-The tolerance is a budget per cause, not one number: for each cause in the table, the largest
-difference per channel and the share of pixels allowed to differ. Slice 0 and slice 1 measure
-them; the measured budgets are then written here and become the gate. A difference outside every
-budget, or with no cause in the table, fails.
+The oracle is PCSX2's software renderer (`pcsx2-gsrunner`, SSE4.1 build, block width 4), not a
+hardware GS. Parity means agreeing with that renderer, whose rules were read from its C path and
+confirmed in its JIT. Measured on three captures at frame 0 (`hddosd-110U-whole3-clock`,
+`hddosd-110U-whole3-config`, `hddosd-110U-whole2-to-clock`, 188 / 360 / 359 passes, each pass
+compared from the oracle's buffers before it, then the whole frame chained): every group without a
+cause below differs on 0 pixels, colour and depth.
+
+| Cause | Share of the group's pixels | Largest difference | Capture |
+|---|---|---|---|
+| Interpolation of colour, texel boundary, depth interpolation | 0 | 0 | all three (computed per pixel by the software renderer's arithmetic) |
+| STQ rounding (`GSState::FlushPrim` rounds S, T, Q down on sprites and flat-Z draws; an input rule of the oracle, applied by the renderer) | 0 | 0 | config, to-clock |
+| Edge antialiasing | 0 | 0 | all three |
+| PCSX2 software texture cache (oracle artifact, not imitated): the cache converts only the draw's texture rectangle, so a bilinear tap outside it reads zero | `aa z-gequal` 5.9e-6 (6 of 1018298); `aa z-always` 2.6e-6 (2 of 797569) | 103 (`aa z-gequal`, clock); 28 (`aa z-always`, to-clock) | clock, config, to-clock |
+
+Chained whole frame: clock fb0000 2 of 143360 (103), fb1a40 2 (103), fb2300 0; config fb08c0 0,
+fb1a40 3 (52), fb2300 0; to-clock fb0000 0, fb1a40 2 (28), fb2300 0. The texture cache is the only
+nonzero cause: a model of it (a zero-filled buffer updated per draw over the draw's texture
+rectangle) brought every group on all three captures to 0 and was not kept. The gate is
+`tools/ParityTool/budgets.json`, run as the CTest `ParityClock`; a group missing from the file, a
+group or chained target over its budget, or a validation error fails. A difference with no cause
+in the table fails.
 
 ## Scene
 
@@ -138,7 +158,7 @@ helper used only where `facts/` requires it, with the EE's own `sinf` / `cosf` a
 |---|---|---|---|---|
 | Logic | `scene/` state per frame | State fixtures exported from captures by the JS model | exact | unit tests |
 | Geometry | `FrameDescription` → `parity/` → GS values | Packets of `whole2` / `whole3` captures | exact | unit tests |
-| Pixels | Headless `GsParity` render of one frame, every target | GS local memory after the software renderer replays the same frame's `.gs` | the measured budgets | parity tool |
+| Pixels | Headless `GsParity` render of one frame, every target | The oracle: `pcsx2-gsrunner -dump rt,z,a,i` per draw, decoded by `tools/parity/make_fixture.mjs` | the measured budgets | parity tool, CTest `ParityClock` |
 | Native | Headless `Native` render | Same frames | report only, no gate | parity tool |
 
 The parity report gives, per pass and per target: pixels that differ, maximum difference per
@@ -151,7 +171,7 @@ Debug builds run with validation layers; every pass carries its name as a debug 
 
 | Slice | Content | Done when |
 |---|---|---|
-| 0. Spike | The oracle: GS local memory out of the software renderer for one frame of a `.gs` (through `pcsx2-gsrunner`, or Watson with the software renderer and `watson_gs_read` / `extract_buffers.mjs`). Then, against it: edges of triangles and sprites, shader blend with both ordering methods, depth, one bilinear textured quad, the `AA1` line | Every row of the renderer table has a measured difference; the ordering method is chosen |
+| 0. Spike | The oracle: per-draw buffers out of the software renderer for one frame of a `.gs` (`pcsx2-gsrunner -dump rt,z,a,i`, decoded by `tools/parity/make_fixture.mjs`). Then, against it: edges of triangles and sprites, shader blend with both ordering methods, depth, one bilinear textured quad, the `AA1` line | Every row of the renderer table has a measured difference; the ordering method is chosen |
 | 1. One still frame | The clock frame of one `whole2` capture: background, rods (refracted, textured, reflection, extra passes), orbs (trail, sprites), blur, tint, vignette. The `FrameDescription` comes from the `parity/` decoder | Every target within the budgets; side-by-side image; the budgets written into this document |
 | 2. Live clock | `scene/` runs the logic from real time; a captured sequence compared frame by frame | Logic and geometry exact; pixels within tolerance |
 | 3. Screens around | Main menu, System Configuration with cubes, Clock Adjustment, transitions, text | Same criteria on `whole2` / `whole3` captures of those screens |
@@ -166,13 +186,20 @@ towers, illegal-disc scene); PAL; languages other than English; ROM 2.30 as a ta
 
 ## Risks
 
-- Ordering inside a draw (above). Fallback: split draws.
-- `AA1` line coverage. Fallback: declare it in the tolerance with its measured size.
-- Texel-boundary and depth-flip differences that are visible, not just countable. Fallback:
-  compute the interpolation of the affected pass in the fragment shader from the primitive's
-  vertices, with the software renderer's arithmetic, and record the cost.
+Answered by slices 0 and 1: ordering inside a draw (storage images in the pixel interlock,
+`coherent`); `AA1` coverage (implemented, exact); texel-boundary and depth-flip differences
+(rows computed per pixel with the software renderer's arithmetic); reading the oracle
+(`pcsx2-gsrunner`).
+
+Still open:
+- The oracle is PCSX2's software renderer, not hardware; where it models hardware by its own
+  admission (the STQ rounding), parity is with the model.
+- Cost: the CPU walk makes about 42 MB of row data per frame and 160-byte vertices (the parity tool
+  takes about 3 s per frame in Debug). Move the spans to a storage buffer before `GsParity` runs
+  live.
+- Refused by the fixture maker, so not covered: `ABE` with `AA1`, paletted textures (26 to 125
+  passes per capture, taken from the oracle), `PABE`, `FBA`, frame masks.
+- The STQ rule takes "every vertex has the same Z" as PCSX2's `m_eq.z`; PCSX2 derives it from a
+  float min and max, which could differ for large Z values not met in these captures.
 - The refraction reads a work buffer that earlier passes drew, so a difference there is carried
-  into the display. The report compares every target, so the first target that differs is known.
-- Reading GS local memory out of the oracle. Fallback order: `pcsx2-gsrunner`, then Watson with
-  the software renderer (to confirm: which renderer Watson runs, and that `watson_gs_read`
-  returns the software renderer's memory).
+  into the display; the report compares every target, so the first target that differs is known.
