@@ -164,3 +164,14 @@ if(PARITY_ACTIVE)
 else()
     message(STATUS "parity gates inactive: no fixture at ${CLOCK_FIXTURE}")
 endif()
+
+add_library(ClockRender STATIC src/render/Device.cpp)
+target_include_directories(ClockRender PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(ClockRender PUBLIC vk-bootstrap VulkanMemoryAllocator Vulkan::Vulkan SDL3::SDL3)
+
+add_executable(DeviceTest tests/render/DeviceTest.cpp src/core/VmaUsage.cpp)
+target_link_libraries(DeviceTest PRIVATE ClockRender)
+add_test(NAME DeviceTest COMMAND DeviceTest)
+
+add_executable(CrystalClock src/app/Main.cpp src/core/VmaUsage.cpp)
+target_link_libraries(CrystalClock PRIVATE ClockRender)
