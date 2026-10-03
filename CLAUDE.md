@@ -7,9 +7,9 @@ Design: `docs/superpowers/specs/2026-10-03-native-clock-design.md`. Plan: `docs/
 ## Layers
 | Layer | Role |
 |---|---|
-| `scene/` | Plain C++. The clock: state, camera, placement, ramps, frame assembly into one `scene::Frame`. No Vulkan |
-| `render/` | `Device` (instance, device, queues, VMA, swapchain) and `NativeRenderer` (executes a `scene::Frame`) |
-| `app/` | SDL3 window, real time, frame loop, ImGui debug panel |
+| `scene/` (planned, native clock plan Tasks 2-10) | Plain C++. The clock: state, camera, placement, ramps, frame assembly into one `scene::Frame`. No Vulkan |
+| `render/` (planned, native clock plan Tasks 2-10) | `Device` (instance, device, queues, VMA, swapchain) and `NativeRenderer` (executes a `scene::Frame`) |
+| `app/` (planned, native clock plan Tasks 2-10) | SDL3 window, real time, frame loop, ImGui debug panel |
 | `parity/` | The measuring rule: fixture loader, GS frame types, `GsParityRenderer`, comparison. Plus `core/HeadlessContext` for tests |
 
 Support: `tools/ParityTool` (isolated and chained comparison against budgets), `tools/parity/` (fixture generation), `tests/`.
@@ -43,12 +43,17 @@ Format: `Type(Scope): Short imperative description`
 - Imperative mood ("Fix" not "Fixed")
 - Body optional, separated by blank line, explains *why* not *what*
 
+## Rendering
+The GS work of every frame is in `facts/clock-frame.md`, `facts/clock-rod-draw.md` and `facts/clock-gs-state.md`.
+
 ## Code Directives
 - **English Only**: the codebase and all text.
 - **Zero Comments**: only where GS reverse-engineered arithmetic needs one.
 - PascalCase file and type names; lean explicit wrappers; `scene/` and `parity/` testable without a window.
 
 ## Claude Directives
-- Short sentences. No preamble or pleasantries.
-- Run tools first, show the result, then stop. Do not narrate.
-- Keep CLAUDE.md updated.
+- Use short, 3-6 word sentences.
+- No filter, preamble, or pleasantries.
+- Run tools first, show the result, then stop. DO not narrate.
+- Drop articles(“Me fix code” not “will fix the code”).
+- Mantain CLAUDE.md and the auto-memory MEMORY.md updated
