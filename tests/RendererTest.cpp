@@ -44,6 +44,29 @@ int main(int argc, char** argv) {
     std::vector<uint32_t> depth = renderer.readDepth();
     CHECK(depth[20 * W + 10] == 7 && depth[0] == 100);
 
+    // Each fragment must see the depth and colour every earlier primitive stored there: two hundred screen-sized sprites, each one
+    // step nearer the back (Z 10000, 9999, ...) under Z >=, in one pass. Only the first passes; every pixel keeps its red 1.
+    {
+        constexpr uint32_t BW = 640, BH = 224;
+        renderer.setTarget("big", BW, BH, std::vector<uint8_t>(BW * BH * 4, 0));
+        renderer.setDepth(BW, BH, std::vector<uint32_t>(BW * BH, 100));
+        scene::Pass layers = pass(scene::Primitive::Sprites, {});
+        layers.target = "big";
+        layers.scissor = {0, 0, int32_t(BW) - 1, int32_t(BH) - 1};
+        layers.depth = {scene::DepthTest::GreaterEqual, true};
+        for (uint32_t i = 0; i < 200; i++) {
+            layers.vertices.push_back(at(0, 0, 10000 - i, 0, 0, 0, 0));
+            layers.vertices.push_back(at(float(BW), float(BH), 10000 - i, float(1 + i), 0, 0, 128));
+        }
+        renderer.draw(layers);
+        const std::vector<uint8_t> layered = renderer.readTarget("big");
+        uint32_t stale = 0;
+        for (uint32_t i = 0; i < BW * BH; i++) stale += layered[i * 4] != 1;
+        if (stale) std::fprintf(stderr, "layers: %u pixels saw a stale depth\n", stale);
+        CHECK(stale == 0);
+        renderer.setDepth(W, H, depth100);
+    }
+
     // Sixty-four overlapping additive sprites in one pass: each must see the one before it.
     renderer.setTarget("t", W, H, black);
     scene::Pass stack = pass(scene::Primitive::Sprites, {});

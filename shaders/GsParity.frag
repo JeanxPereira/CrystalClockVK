@@ -3,8 +3,9 @@
 
 layout(pixel_interlock_ordered) in;
 
-layout(set = 0, binding = 0, rgba8ui) uniform uimage2D targetImage;
-layout(set = 0, binding = 1, r32ui) uniform uimage2D depthImage;
+// coherent: a fragment must see what earlier fragments of the same pixel stored inside the interlock, not a stale cached copy.
+layout(set = 0, binding = 0, rgba8ui) coherent uniform uimage2D targetImage;
+layout(set = 0, binding = 1, r32ui) coherent uniform uimage2D depthImage;
 layout(set = 0, binding = 2) uniform usampler2D textureImage;
 
 // scissor: x0 y0 x1 y1 (inclusive)        blend: a b c d (terms 0 source 1 destination 2 zero; c 0 source alpha 1 destination alpha 2 fixed)
