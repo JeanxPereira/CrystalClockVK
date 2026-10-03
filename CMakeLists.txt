@@ -196,3 +196,10 @@ add_test(NAME DeviceTest COMMAND DeviceTest)
 
 add_executable(CrystalClock src/app/Main.cpp)
 target_link_libraries(CrystalClock PRIVATE ClockRender)
+
+target_sources(ClockScene PRIVATE src/scene/Orbs.cpp)
+add_executable(OrbsTest tests/scene/OrbsTest.cpp)
+target_link_libraries(OrbsTest PRIVATE SceneTestSupport)
+if(EXISTS ${SCENE_FIXTURE})
+    add_test(NAME OrbsTest COMMAND OrbsTest ${SCENE_FIXTURE})
+endif()
