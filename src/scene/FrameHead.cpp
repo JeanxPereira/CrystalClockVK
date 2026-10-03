@@ -215,7 +215,7 @@ std::vector<HeadDraw> FrameHead<A>::head(const HeadInputs& in, const Mat4& view,
     s.tint.v1 = (in.height << 4) + 8;
 
     tickRamp(s.greyRamp);
-    if (s.greyRamp.state != 0 && s.greyRamp.length != 0) {
+    if (s.greyRamp.state != 0) {
         const int32_t grey = s.greyRamp.counter * 0x28 / s.greyRamp.length;
         s.greys = {grey, grey, grey};
     }

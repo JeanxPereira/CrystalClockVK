@@ -91,7 +91,30 @@ bool rampEqual(const scene::Ramp& r, const json& j, const std::string& what) {
     return same;
 }
 
-bool stateEqual(const scene::HeadState& s, const json& after, const std::string& at) {
+// The cubes pass and the menus also write the head's records and ramps: the cubes set the copy record's blend, setMode (clock_menus.mjs)
+// rewrites the fade record's colour and extent, and the menus start, lower or hide the vignette and grey ramps after the head's tick.
+// A frame's after-state is taken from those writes before it is compared, and carried on.
+// A ramp the menus start (idle to rising), send down (full to falling) or hide (idle at 0).
+void takeStart(scene::Ramp& mine, const scene::Ramp& expected) {
+    if (mine.length != expected.length) return;
+    const bool start = mine.state == 0 && expected.state == 1 && expected.counter == 0;
+    const bool down = mine.state == 2 && expected.state == 3 && expected.counter == mine.counter;
+    const bool hide = expected.state == 0 && expected.counter == 0;
+    if (start || down || hide) mine = expected;
+}
+
+void takeForeign(scene::HeadState& s, const json& from) {
+    const scene::Rect copyRecord = rectOf(from.at("copyRecord")), fade = rectOf(from.at("fadeRecord"));
+    s.copy.blend = copyRecord.blend;
+    for (int i = 0; i < 3; ++i) s.fade.colour[i] = fade.colour[i];
+    s.fade.x1 = fade.x1;
+    s.fade.y1 = fade.y1;
+    takeStart(s.vignetteRamp, rampOf(from.at("vignetteRamp")));
+    takeStart(s.greyRamp, rampOf(from.at("greyRamp")));
+}
+
+bool stateEqual(scene::HeadState s, const json& after, const std::string& at) {
+    takeForeign(s, after);
     bool ok = rampEqual(s.greyRamp, after.at("greyRamp"), at + " greyRamp") && rampEqual(s.vignetteRamp, after.at("vignetteRamp"), at + " vignetteRamp");
     for (int i = 0; i < 3; ++i) ok = ok && s.greys[i] == after.at("greys").at(i).get<int32_t>();
     const auto& ring = after.at("ringRecord");
@@ -104,9 +127,45 @@ bool stateEqual(const scene::HeadState& s, const json& after, const std::string&
     return ok;
 }
 
+struct Expected {
+    scene::Target target;
+    scene::Source source;
+    scene::AlphaMode alpha;
+    int32_t depthTest;
+};
+
+// The GS state each draw is sent with, from the gs.* calls of References/model/clock_rest.mjs. `index` is the draw's place in its part.
+Expected expectedState(scene::Part part, size_t index) {
+    using namespace scene;
+    switch (part) {
+        case Part::Background: return {Target::Display, Source::Background, AlphaMode::Add, 2};  // :82 bind(1, 1, 2) after the display of :121
+        case Part::Blur:
+        case Part::BlurAfter:
+            if (index % 2 == 0) return {Target::Work1, Source::Frame, AlphaMode::AlphaOver, 1};  // :97 frameTexture, work(1), blend(1, 1)
+            return {Target::Display, Source::Work1, AlphaMode::AlphaOver, 1};                     // :100 buffer(1), display, blend(1, 1)
+        case Part::Copy:
+            if (index == 0) return {Target::Work0, Source::Frame, AlphaMode::AlphaOver, 1};  // :125 work(0), frameTexture; :112 blend(1, 1)
+            return {Target::Work1, Source::Frame, AlphaMode::AlphaOver, 1};                  // :127 work(1); :112 blend(1, 1)
+        case Part::Tint: return {Target::Display, Source::Work0, AlphaMode::Add, 1};         // :129 display, buffer(0), blend(0, 1)
+        case Part::Vignette: return {Target::Display, Source::None, AlphaMode::AlphaOver, 2};  // :173 blend(1, 2), on the display the rods left
+        case Part::Fade: return {Target::Display, Source::None, AlphaMode::AlphaOver, 1};      // :178 display, blend(1, 1)
+        case Part::Bars: return {Target::Display, Source::None, AlphaMode::AlphaOver, 1};      // :193 display, blend(1, 1)
+        case Part::Column: return {Target::Display, Source::None, AlphaMode::AlphaOver, 1};    // :222 display, blend(1, 1)
+    }
+    return {};
+}
+
+bool stateEqual(const HeadDraw& d, size_t index, const std::string& at) {
+    const Expected e = expectedState(d.part, index);
+    const bool same = d.target == e.target && d.source == e.source && d.alpha == e.alpha && d.depthTest == e.depthTest;
+    if (!same) std::fprintf(stderr, "%s: GS state (target, source, alpha, depth test) differs from the model's\n", at.c_str());
+    return same;
+}
+
 // The native draw converted back to GS registers, compared with what the fixture decoded from the packets.
-bool drawEqual(const HeadDraw& d, const json& e, int32_t width, int32_t height, const std::string& at) {
+bool drawEqual(const HeadDraw& d, const json& e, int32_t width, int32_t height, const std::string& at, size_t index) {
     using scene::Coordinates;
+    if (!stateEqual(d, index, at)) return false;
     const uint32_t prim = (d.topology == scene::Topology::Sprite ? 6u : 4u) | (d.gouraud ? 8u : 0u) | (d.textured ? 0x10u : 0u) | (d.blended ? 0x40u : 0u) |
                           (d.coordinates == Coordinates::Uv ? 0x100u : 0u);
     if (prim != e.at("prim").get<uint32_t>()) {
@@ -171,7 +230,7 @@ bool drawsEqual(const std::vector<HeadDraw>& draws, const json& head, int32_t wi
         }
         counter += got.size();
         for (size_t i = 0; i < got.size(); ++i)
-            if (!drawEqual(*got[i], want[i], width, height, at + " " + key + "[" + std::to_string(i) + "]")) return false;
+            if (!drawEqual(*got[i], want[i], width, height, at + " " + key + "[" + std::to_string(i) + "]", i)) return false;
         return true;
     };
     auto one = [&](Part part, const char* key) {
@@ -185,7 +244,7 @@ bool drawsEqual(const std::vector<HeadDraw>& draws, const json& head, int32_t wi
             std::fprintf(stderr, "%s %s: %zu draws, expected 1\n", at.c_str(), key, got.size());
             return false;
         }
-        return drawEqual(*got[0], want, width, height, at + " " + key);
+        return drawEqual(*got[0], want, width, height, at + " " + key, 0);
     };
     size_t unused = 0;
     ++cover.frames;
@@ -198,6 +257,10 @@ int sceneFixture(const std::string& path) {
     const json scene = scenetest::loadScene(path);
     const auto& frames = scene.at("frames");
     CHECK(!frames.empty());
+    if (!frames.at(0).at("expect").contains("head")) {
+        std::printf("%s: no expect.head, skipped\n", path.c_str());
+        return 0;
+    }
     Coverage isolated, carriedCover;
     std::optional<scene::FrameHead<EeArithmetic>> carried;
     for (const auto& frame : frames) {
@@ -215,6 +278,7 @@ int sceneFixture(const std::string& path) {
         if (!carried) carried.emplace(stateOf(in));
         CHECK(drawsEqual(frameDraws(*carried, inputs, view, screen), head, inputs.width, inputs.height, at + " carried", carriedCover));
         CHECK(stateEqual(carried->state(), expect.at("after"), at + " carried"));
+        takeForeign(carried->state(), expect.at("after"));
 
         scene::FrameHead<NativeArithmetic> native(stateOf(in));
         const auto nativeDraws = frameDraws(native, inputs, view, screen);
@@ -245,3 +309,4 @@ int main(int argc, char** argv) {
         return 0;
     });
 }
+
