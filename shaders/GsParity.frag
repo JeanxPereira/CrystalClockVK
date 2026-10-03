@@ -39,16 +39,16 @@ ivec4 texel(ivec2 at) {
 // Bilinear weights are four bits: a + ((b - a) * f >> 4).
 ivec4 mix4(ivec4 a, ivec4 b, int f) { return a + (((b - a) * f) >> 4); }
 
-// A sprite's coordinate as the GS rasterizer steps it: V adds its step once per row in floats; U is the row's start,
-// truncated, plus the truncated step times the lane offset inside an eight-pixel block, plus whole blocks of eight steps.
+// A sprite's coordinate as the GS rasterizer (SSE4.1 build, four-pixel blocks) steps it: V adds its step once per row in
+// floats; U is the row's start, truncated, plus the truncated step times the lane offset inside a block, plus whole blocks.
 ivec2 steppedCoordinate(ivec2 pixel) {
     precise float v = inStepped.y;
     for (int row = inFirst.y; row < pixel.y; row++) v += inStepped.w;
-    int skip = inFirst.x & 7;
+    int skip = inFirst.x & 3;
     int offset = pixel.x - (inFirst.x - skip);
-    precise float lane = inStepped.z * float((offset & 7) - skip);
-    precise float block = inStepped.z * 8.0;
-    return ivec2(int(inStepped.x) + int(lane) + (offset >> 3) * int(block), int(v));
+    precise float lane = inStepped.z * float((offset & 3) - skip);
+    precise float block = inStepped.z * 4.0;
+    return ivec2(int(inStepped.x) + int(lane) + (offset >> 2) * int(block), int(v));
 }
 
 ivec4 sampleTexture(ivec2 pixel) {

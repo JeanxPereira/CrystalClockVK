@@ -137,6 +137,21 @@ int main(int argc, char** argv) {
         }
         if (wrong) std::fprintf(stderr, "copy: %u pixels differ from their texel\n", wrong);
         CHECK(wrong == 0);
+
+        // The oracle's software renderer is built for SSE4.1: U steps in blocks of four pixels. Sprite x 278.625..339.4375,
+        // U 0..63 bilinear: step 67893.40625, start -7307.97 at x 279 (skip 3). At x 296: -7307 + int(step * -3) + 5 * int(step * 4)
+        // = -7307 - 203680 + 5 * 271573 = 1146878, texel 17, weight 7; red 4 * texel gives 68 + (4 * 7 >> 4) = 69 (blocks of eight give 70).
+        std::vector<uint8_t> ramp(64 * 64 * 4, 0);
+        for (uint32_t i = 0; i < 64 * 64; i++) ramp[i * 4] = uint8_t((i % 64) * 4);
+        renderer.setTexture("ramp", 64, 64, ramp);
+        scene::Pass stepped = pass(scene::Primitive::Sprites, {{278.625f, 0, 0, 128, 128, 128, 128, 0, 0, 1}, {339.4375f, 4, 0, 128, 128, 128, 128, 63, 63, 1}});
+        stepped.target = "copy";
+        stepped.scissor = {0, 0, 639, 223};
+        stepped.texture = scene::Texture{"ramp", false, 64, 64, scene::Coordinates::Texel, {scene::AddressMode::Clamp, 0, 0}, {scene::AddressMode::Clamp, 0, 0}, scene::Filter::Bilinear, {}};
+        renderer.draw(stepped);
+        const std::vector<uint8_t> steps = renderer.readTarget("copy");
+        if (steps[296 * 4] != 69) std::fprintf(stderr, "stepped: x 296 red %d\n", steps[296 * 4]);
+        CHECK(steps[296 * 4] == 69);
     }
 
     CHECK(context.validationErrors() == 0);
