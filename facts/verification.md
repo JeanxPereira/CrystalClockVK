@@ -1,0 +1,135 @@
+# What has been verified, on which build
+
+Every row is a script in `References/scripts/` that recomputes what a function produced from the
+inputs a trace probe recorded at its entry, and compares bit for bit. `CLOCK_BUILD=hdd` selects
+HDD OSD 1.10U's addresses (`builds.mjs`); the default is ROM 2.30; `CLOCK_VIDEO=pal` selects
+PAL (`pal.md`). Captures are in `Watson/Runtime/captures/`, named `hddosd-110U-…` and
+`rom-0230A-…` (`rom-0230E-…` in PAL).
+
+**HDD OSD 1.10U is the canon build, and it runs** (`hddosd-boot.md`).
+
+**Re-running all of it.** `References/scripts/run_all.manifest.json` has 502 entries, one per
+verifier, capture, build and video mode; `node References/scripts/run_all.mjs` runs them in
+parallel and exits 1 on any that no longer passes (`--filter <regex>`, `--changed`, `--jobs <n>`).
+`node References/scripts/mutate.mjs <verifier>` changes one constant, operator or comparison of
+a verifier at a time and expects none of the mutants to end `FOUND`.
+
+## The clock and System Configuration
+
+| Script | What it recomputes | HDD OSD 1.10U | ROM 2.30 |
+|---|---|---|---|
+| `verify_clock_state.mjs` | time → current rod, angles, progress, colours, appearance | 19 frames; 53 with the hour turned in Clock Adjustment; 43 + 39 with the ramp and angles written; 86 with the hour turning on its own | 37 + 37 + 33 + 47 frames, with the hour turning; 86 with the hour turning on its own |
+| `verify_placement.mjs` | rod and orb matrices, orb position, colour, ring; the sine table | 228 rods, 133 orbs | 780 rods, 455 orbs |
+| `verify_camera.mjs` | the screen matrix (bit for bit), the view matrix (to 1.5e-5, in double precision) | one camera, 539 calls | one camera, 539 calls |
+| `verify_view_matrix.mjs` | the view matrix bit for bit, through the library's own sine, rotation, cross product and normalize | 124 distinct matrices | 125 distinct matrices |
+| `verify_approach.mjs` | the camera's approach from power-on | 217 steps | 177 steps |
+| `verify_scale.mjs` | the scene scale easing toward its target | 47 steps, factor 0.03 | 19 steps, factor 0.1 |
+| `verify_rod.mjs` | transform; textured emitter; rod centre | 4 180 face records, 4 356 faces | 3 956 face records, 4 356 faces |
+| `verify_rod_pieces.mjs` | the split rod's two pieces; every texture offset | 57 split rods, 7 524 faces | 36 split rods, 4 752 faces |
+| `verify_refraction.mjs` | refracted emitter: `PRIM`, colour, `UV`, `XYZ` | 3 179 faces, with its clamp | 3 073 faces, with its wrap |
+| `verify_reflection.mjs` | reflection emitter; edge term `F` | 2 044 faces, 3 200 terms | 1 626 faces, 2 793 terms |
+| `verify_orbs.mjs` | trail strips; the four sprites and their fade | 182 strips, 364 sprites; fade falling 910 / 1 820, rising 924 / 1 848 | 826 strips, 1 652 sprites; fade rising 924 / 1 848 |
+| `verify_gs_state.mjs` | registers sent by the state helpers, per call | 3 220 calls, every write as read | 3 510 calls; differs in `CLAMP_1`, `TEST_1`, `TEXFLUSH` |
+| `verify_background.mjs` | the background tube: every vertex of every strip, the grey ramp, when it is drawn | 8 240 strips, 485 442 vertices | 6 272 strips, 369 510 vertices |
+| `verify_blur.mjs` | head of the frame: clear, blur trips, copies, tint; every sprite-helper packet | 757 frame heads, 36 954 sprites | 694 frame heads, 35 259 sprites |
+| `verify_overlays.mjs` | fade overlay and its state machine, vignette, bars, right column | 757 frames | 694 frames |
+| `verify_cubes.mjs` | the cubes of System Configuration: place, scale, colour, matrix, every face sent | 1 740 cubes in 6 captures | 1 722 cubes in 7 captures (one with the ring forced) |
+| `verify_transitions.mjs` | mode and weight step, set mode, band ramp, orb position and colour blend in modes 2 and 3 | 8 captures: boot (plain and through the intro), open, close, leave, return, modes 1 and 4 written | 7 captures: boot, open, close, leave, return, modes 1 and 2 written |
+| `verify_trail_fill.mjs` | the trail while its ring fills, down to an empty strip | 6 244 strips, 148 176 points | 4 172 strips, 98 784 points |
+| `verify_rand.mjs` | the per-orb random angles | 14 of 14 | 7 of 7 |
+| `verify_options.mjs` | the options dialog's ramp | 77 + 77 ticks, every value equal | 77 + 77 ticks, every value equal |
+| `verify_exits.mjs` | the clock thread's exits for the drive's screen codes | 11 codes | 12 codes |
+| `verify_first_run.mjs` | the first-run stage rules | holds the rules; its traces are not compared yet | holds the rules; its traces are not compared yet |
+| `verify_frame.mjs` | **end to end**: every packet of the rods, orbs and extra passes of a frame, from a snapshot at the frame's start (`clock-frame.md`) | 14 frames: 2 744 vertex packets and 4 256 state packets, all equal | 9 + 29 frames: 8 226 vertex packets and 11 552 state packets, all equal |
+| `verify_frame.mjs --carry` | **the whole frame** except text, from state carried frame to frame (`clock-frame.md`) | 11 captures incl. boot, through the intro, menu, config, transitions, PAL: all equal, 77.5–93.5% of the packets | 9 captures incl. PAL: all equal, 77.7–94.6% |
+| `extract_rom_textures.mjs` | the ten textures, against GS memory | equal | equal |
+| `extract_rod_mesh.mjs` | the rod mesh in the file against ROM memory | equal | equal |
+
+`verify_frame.mjs --carry` also has the `whole2` captures (the menus' code modelled); their
+coverage is in `clock-frame.md`, which also holds the one capture that does not yet end `FOUND`.
+
+## Text (`text.md`)
+
+| Script | What it recomputes | HDD OSD 1.10U | ROM 2.30 |
+|---|---|---|---|
+| `verify_text.mjs` | every glyph packet, string openings, texture set-ups and uploads; on HDD OSD also character, pen, colour and place of every string | 7 captures: 7 929 glyph packets, 41 575 string-level values, 312 places | 4 captures: 3 098 glyph packets, 2 576 pen steps |
+| `verify_text2.mjs` | alpha of every caller, the remaining places, PAL (HDD OSD); string level (ROM 2.30) | 7 captures `hddosd-110U-text2-*`: string, glyph, place, alpha, panels and entries equal; PAL menu and clock equal bar the button picture | string level equal in `config`, `clock`, `open`; place level does not pass (`text.md` section 8) |
+| `verify_text_frame.mjs --carry` | the font library's context carried across characters, strings and frames | `menu` 770 of 770 packets, `boot` 3 599 of 3 599, `open` 10 552 of 10 552, `down` 4 710 of 4 710, `adjust` 1 386 of 1 386, `version` 1 488 of 1 488, `clock` 384 of 384 | none stated |
+
+## The opening intro (`opening.md`)
+
+The intro's verifiers run on ROM 2.30 through `extract_opening_rom_trace.mjs` (`opening.md`
+section 6); the `_v2` copies (`verify_opening_{camera,camera_rom,cubes,fog,lights,towers,vu1}_v2.mjs`
+and `verify_opening_overlays_v2.mjs`) route single-precision operations through the exact helpers
+of `References/model/opening-lib.mjs` and give the same counts as the plain versions on every
+capture of the page.
+
+| Script | What it recomputes | HDD OSD 1.10U | ROM 2.30 |
+|---|---|---|---|
+| `verify_opening_camera.mjs`, `verify_opening_camera_rom.mjs` | camera integrator, fade, blur level, logo alpha | 247 frames, the whole intro | 359 frames (the ROM's own update function) |
+| `verify_opening_stages.mjs`, `verify_opening_stages_rom.mjs` | stage handlers | with the camera | 359 frames; 31 fades, 35 blurs, 120 logo alphas |
+| `verify_opening_cubes.mjs` | the five glass cubes: angles, matrices, every vertex packet and `ALPHA` | 994 cubes, 9 940 packets | 1 490 cubes, 14 900 packets; 1 540 cubes on the whole intro |
+| `verify_opening_lights.mjs` | the four lights' sprites and trails | 218 frames | 318 frames, 5 088 sprite and 1 272 trail packets; 329 frames on the whole intro |
+| `verify_opening_fog.mjs` | six fog layers | 246 frames, 25 092 packets | 347 frames, 35 394 packets; 358 frames on the whole intro |
+| `verify_opening_overlays.mjs` | the ghost of the previous frame, the logo | 246 + 120 draws | logo 120 (the ghost half models HDD OSD's call sequence and does not apply) |
+| `verify_opening_ghost.mjs` | the ghost | on the illegal-disc scene: 238 ghosts | 358 |
+| `verify_opening_towers.mjs`, `verify_opening_vu1.mjs` | the towers' PATH1 packets from a model of the VU1 microprogram | up to 3 780 towers; both routines and the out-of-bounds path exercised (the moved-coordinates routine only with the code patched: no history reaches it) | 1 512 towers in 12 frames |
+| `verify_opening_towers_ee.mjs` | the towers' VIF1 chain from the play history | 6 300 chains | 1 512 chains |
+| `verify_opening_flat.mjs` | frame copy, bars, fade, dive blur | 557 calls | 784 calls: copy 359, bars 359, fade 31, blur 35 |
+| `verify_opening_inputs.mjs` | `sinf`/`cosf`, libvu0 matrices, fog mesh, cube tables | 16 090 values | 124 680 values; 127 250 on the whole intro |
+| `verify_opening_handoff.mjs`, `verify_opening_handoff_rom.mjs` | the hand-off to the clock or the illegal-disc scene | HDD OSD | 1 hand-off |
+| `verify_opening_illegal.mjs`, `verify_opening_illegal_cubes.mjs` | the illegal-disc scene: values of the draw, its cubes | 239 frames, 1 768 948 writes equal; 1 190 cubes, 464 100 writes equal | not run |
+
+## PAL (`pal.md`)
+
+Both builds were run in PAL for real (BIOS 2.30 E; `CLOCK_VIDEO=pal`). Every verifier of the
+first table passes there on both builds, except `verify_trail_fill.mjs` and the sprites' fade
+rising, which are not run on ROM 2.30. On HDD OSD every opening verifier except the towers and
+the illegal-disc scene passes in PAL (`opening.md` section 7: stage machine 206 frames, flat
+draws 465, ghost 205, cubes 822, fog 205, lights 182, library inputs 70 436 values, hand-off 1,
+logo 120). Not run in PAL: the opening on ROM 2.30, the written-state captures, the hour turning with a record written to hh:59:59, text
+positions.
+
+## Where the builds differ, all measured on both
+
+| | HDD OSD 1.10U | ROM 2.30 |
+|---|---|---|
+| Refracted lookup | 12.4 coordinates clamped to `0..W×16`, `0..H×16`; region clamp on the buffer | 1024 and 256 added, floor at 1024, no region clamp: strays up to 4.13 texels below the picture |
+| Loaded textures other than the grain | clamp | repeat |
+| Depth test in the texture binders | greater or equal | greater |
+| Scene scale easing factor | 0.03 | 0.1 |
+| Scene scale before the time is known | held at 0 | eased like any other frame |
+| Refracted face header | one `CLAMP_1`: region clamp to the screen | two `CLAMP_1 0x1000000` |
+| A split rod's grain | one packet for both pieces | one packet per face |
+| Blur trips on the clock alone | 0 (`c < T ? 10 - c*10/T : 0`) | 5 before the rods (`5 + 5*clamp(T - c, 0, T)/T`) |
+| Vignette's last sector | 6 vertices | 8 vertices |
+| Glyphs | 12-vertex triangle fans | sprites |
+| Cubes of System Configuration | always the ring of six | five standing cubes while the list has fewer than six entries |
+| Opening: `CLAMP_1 = 0` in frame copy, blur and ghost | sent | not sent |
+| Opening: length of the intro | 246 frames | 359 frames |
+
+Everything else compared so far is the same code and gives the same values.
+
+## Stimulated captures
+
+Repeated on HDD OSD (`hddosd-110U-stim-*`): the hour turned in Clock Adjustment, the ramp and
+angles written while paused, the sprites' fade falling and rising. The time keeper only corrects
+the record when the console's second changes, so a record written to hh:59:59.9 runs on by
+itself, turns the hour, and is pulled back within the second (measured on both builds).
+
+## Not verified on either build
+
+- Text on ROM 2.30 beyond the glyph level and the string level; the alpha of each string on ROM
+  2.30; languages other than English.
+- The first-run intro: `verify_first_run.mjs` holds its rules, its traces are not compared.
+- Mode 1 of the overlay has no caller in either build.
+- Text inside the whole-frame model (both exist and pass separately).
+- Open items per page are listed in `README.md`.
+
+## A known weakness of the scripts
+
+The single-precision helper `f(a + b)` shared by the older verifiers rounds the double sum
+toward zero; when one addend is below the other's double precision it is lost, which is not
+what the EE does. It showed in three ROM 2.30 cubes of the intro; `References/model/opening-lib.mjs`
+has an exact `add`, used by the `_v2` copies of the opening's verifiers. Verifiers without a
+`_v2` copy keep the plain helper; every capture taken passes with it.
