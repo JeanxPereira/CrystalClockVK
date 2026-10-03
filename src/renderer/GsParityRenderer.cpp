@@ -1,4 +1,6 @@
 #include "renderer/GsParityRenderer.hpp"
+#include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <fstream>
 #include <stdexcept>
@@ -8,8 +10,9 @@ namespace {
 struct DrawState { int32_t scissor[4], blend[4], misc[4], tex[4], texSize[4], addressU[4], addressV[4], flags[4]; };
 static_assert(sizeof(DrawState) == 128);
 
-struct GpuVertex { float x, y, depthHigh, depthLow, r, g, b, a, s, t, q, pad; };
-static_assert(sizeof(GpuVertex) == 48);
+// stepped: a sprite's texture coordinate at its first pixel, its step per pixel (GS units, 1/65536 texel), and that pixel.
+struct GpuVertex { float x, y, depthHigh, depthLow, r, g, b, a, s, t, q, pad; float steppedU, steppedV, stepU, stepV, left, top, pad2[2]; };
+static_assert(sizeof(GpuVertex) == 80);
 
 void check(VkResult result, const char* what) {
     if (result != VK_SUCCESS) throw std::runtime_error(std::string(what) + " failed");
@@ -30,24 +33,48 @@ VkShaderModule loadShader(VkDevice device, const std::filesystem::path& path) {
 }
 
 GpuVertex convert(const scene::Vertex& v) {
-    return {v.x, v.y, float(v.depth >> 12), float(v.depth & 0xfff), v.r, v.g, v.b, v.a, v.s, v.t, v.q, 0};
+    return {v.x, v.y, float(v.depth >> 12), float(v.depth & 0xfff), v.r, v.g, v.b, v.a, v.s, v.t, v.q, 0, 0, 0, 0, 0, 0, 0, {0, 0}};
 }
 
-// A sprite is two corners; colour, depth and Q are the second vertex's.
-void expandSprite(const scene::Vertex& a, const scene::Vertex& b, bool projective, const scene::Texture* texture, std::vector<GpuVertex>& out) {
-    float s0 = a.s, t0 = a.t, s1 = b.s, t1 = b.t;
-    if (projective && texture) {
-        s0 = a.s / b.q * float(texture->width);
-        t0 = a.t / b.q * float(texture->height);
-        s1 = b.s / b.q * float(texture->width);
-        t1 = b.t / b.q * float(texture->height);
+// A sprite is two corners; colour, depth and Q are the second vertex's. Its texture coordinate follows the GS
+// rasterizer: corners sorted per axis, step = (t1 - t0) / (p1 - p0) in floats, start = t0 + step * (first pixel - p0);
+// coordinates are 1/65536 texel (UV << 12, or S/Q times 65536 << TW), less half a texel when filtering bilinearly.
+void expandSprite(const scene::Vertex& a, const scene::Vertex& b, const scene::Pass& pass, std::vector<GpuVertex>& out) {
+    const scene::Texture* texture = pass.texture ? &*pass.texture : nullptr;
+    float ta[2] = {0, 0}, tb[2] = {0, 0};
+    if (texture) {
+        if (texture->coordinates == scene::Coordinates::Projective) {
+            ta[0] = a.s / b.q * float(texture->width << 16); ta[1] = a.t / b.q * float(texture->height << 16);
+            tb[0] = b.s / b.q * float(texture->width << 16); tb[1] = b.t / b.q * float(texture->height << 16);
+        } else {
+            ta[0] = a.s * 65536.0f; ta[1] = a.t * 65536.0f;
+            tb[0] = b.s * 65536.0f; tb[1] = b.t * 65536.0f;
+        }
+        if (texture->filter == scene::Filter::Bilinear) for (int i = 0; i < 2; i++) { ta[i] -= 32768.0f; tb[i] -= 32768.0f; }
     }
-    auto corner = [&](float x, float y, float s, float t) {
+    const float pa[2] = {a.x, a.y}, pb[2] = {b.x, b.y};
+    const int32_t scissorLow[2] = {pass.scissor.x0, pass.scissor.y0};
+    float start[2], step[2];
+    int32_t first[2];
+    for (int i = 0; i < 2; i++) {
+        const bool aFirst = pa[i] < pb[i];
+        const float p0 = aFirst ? pa[i] : pb[i], p1 = aFirst ? pb[i] : pa[i];
+        const float t0 = aFirst ? ta[i] : tb[i], t1 = aFirst ? tb[i] : ta[i];
+        first[i] = std::max(int32_t(std::ceil(p0)), scissorLow[i]);
+        step[i] = (t1 - t0) / (p1 - p0);
+        const float prestep = float(first[i]) - p0;
+        const float moved = step[i] * prestep;
+        start[i] = t0 + moved;
+    }
+    auto corner = [&](float x, float y) {
         scene::Vertex v = b;
-        v.x = x; v.y = y; v.s = s; v.t = t; v.q = 1;
-        return convert(v);
+        v.x = x; v.y = y;
+        GpuVertex g = convert(v);
+        g.steppedU = start[0]; g.steppedV = start[1]; g.stepU = step[0]; g.stepV = step[1];
+        g.left = float(first[0]); g.top = float(first[1]);
+        return g;
     };
-    const GpuVertex topLeft = corner(a.x, a.y, s0, t0), topRight = corner(b.x, a.y, s1, t0), bottomLeft = corner(a.x, b.y, s0, t1), bottomRight = corner(b.x, b.y, s1, t1);
+    const GpuVertex topLeft = corner(a.x, a.y), topRight = corner(b.x, a.y), bottomLeft = corner(a.x, b.y), bottomRight = corner(b.x, b.y);
     out.insert(out.end(), {topLeft, topRight, bottomLeft, topRight, bottomRight, bottomLeft});
 }
 
@@ -132,16 +159,18 @@ VkPipeline GsParityRenderer::createPipeline(VkPrimitiveTopology topology, VkShad
         {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, nullptr, 0, VK_SHADER_STAGE_FRAGMENT_BIT, fragment, "main", nullptr},
     };
     const VkVertexInputBindingDescription binding{0, sizeof(GpuVertex), VK_VERTEX_INPUT_RATE_VERTEX};
-    const VkVertexInputAttributeDescription attributes[4] = {
+    const VkVertexInputAttributeDescription attributes[6] = {
         {0, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(GpuVertex, x)},
         {1, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(GpuVertex, depthHigh)},
         {2, 0, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(GpuVertex, r)},
         {3, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(GpuVertex, s)},
+        {4, 0, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(GpuVertex, steppedU)},
+        {5, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(GpuVertex, left)},
     };
     VkPipelineVertexInputStateCreateInfo input{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
     input.vertexBindingDescriptionCount = 1;
     input.pVertexBindingDescriptions = &binding;
-    input.vertexAttributeDescriptionCount = 4;
+    input.vertexAttributeDescriptionCount = 6;
     input.pVertexAttributeDescriptions = attributes;
     VkPipelineInputAssemblyStateCreateInfo assembly{VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
     assembly.topology = topology;
@@ -358,7 +387,7 @@ void GsParityRenderer::draw(const scene::Pass& pass) {
     std::vector<GpuVertex> vertices;
     if (sprites) {
         if (pass.vertices.size() % 2) throw std::runtime_error(pass.name + ": odd number of sprite corners");
-        for (size_t i = 0; i < pass.vertices.size(); i += 2) expandSprite(pass.vertices[i], pass.vertices[i + 1], projective, pass.texture ? &*pass.texture : nullptr, vertices);
+        for (size_t i = 0; i < pass.vertices.size(); i += 2) expandSprite(pass.vertices[i], pass.vertices[i + 1], pass, vertices);
     } else {
         for (const scene::Vertex& v : pass.vertices) vertices.push_back(convert(v));
     }
@@ -376,7 +405,7 @@ void GsParityRenderer::draw(const scene::Pass& pass) {
     if (pass.texture) {
         const scene::Texture& t = *pass.texture;
         state.tex[0] = 1;
-        state.tex[1] = (projective && !sprites) ? 1 : 0;
+        state.tex[1] = sprites ? 2 : projective ? 1 : 0;
         state.tex[2] = int(t.filter);
         state.tex[3] = t.alpha.constant ? 1 : 0;
         state.texSize[0] = int(t.width); state.texSize[1] = int(t.height); state.texSize[2] = t.alpha.value; state.texSize[3] = t.alpha.zeroWhenBlack ? 1 : 0;

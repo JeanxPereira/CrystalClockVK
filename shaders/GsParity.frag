@@ -9,7 +9,7 @@ layout(set = 0, binding = 2) uniform usampler2D textureImage;
 
 // scissor: x0 y0 x1 y1 (inclusive)        blend: a b c d (terms 0 source 1 destination 2 zero; c 0 source alpha 1 destination alpha 2 fixed)
 // misc: blend on, fixed, depth test (0 never 1 always 2 >= 3 >), depth write
-// tex: on, coordinates (0 texel 1 projective), filter (0 nearest 1 bilinear), alpha (0 texel 1 constant)
+// tex: on, coordinates (0 texel 1 projective 2 sprite steps), filter (0 nearest 1 bilinear), alpha (0 texel 1 constant)
 // texSize: width, height, constant alpha, zero when black      address: mode (0 repeat 1 clamp 2 region clamp 3 region repeat), min, max
 // flags: antialias, target width, target height
 layout(push_constant) uniform DrawState {
@@ -19,6 +19,8 @@ layout(push_constant) uniform DrawState {
 layout(location = 0) noperspective in vec2 inDepth;
 layout(location = 1) noperspective in vec4 inColour;
 layout(location = 2) noperspective in vec3 inTexture;
+layout(location = 3) flat in vec4 inStepped;
+layout(location = 4) flat in ivec2 inFirst;
 
 int address(int value, ivec4 mode, int size) {
     if (mode.x == 0) return value & (size - 1);
@@ -37,11 +39,28 @@ ivec4 texel(ivec2 at) {
 // Bilinear weights are four bits: a + ((b - a) * f >> 4).
 ivec4 mix4(ivec4 a, ivec4 b, int f) { return a + (((b - a) * f) >> 4); }
 
-ivec4 sampleTexture() {
-    vec2 texels = state.tex.y == 0 ? inTexture.xy : inTexture.xy / inTexture.z * vec2(state.texSize.xy);
-    ivec2 uv = ivec2(floor(texels * 65536.0));
+// A sprite's coordinate as the GS rasterizer steps it: V adds its step once per row in floats; U is the row's start,
+// truncated, plus the truncated step times the lane offset inside an eight-pixel block, plus whole blocks of eight steps.
+ivec2 steppedCoordinate(ivec2 pixel) {
+    precise float v = inStepped.y;
+    for (int row = inFirst.y; row < pixel.y; row++) v += inStepped.w;
+    int skip = inFirst.x & 7;
+    int offset = pixel.x - (inFirst.x - skip);
+    precise float lane = inStepped.z * float((offset & 7) - skip);
+    precise float block = inStepped.z * 8.0;
+    return ivec2(int(inStepped.x) + int(lane) + (offset >> 3) * int(block), int(v));
+}
+
+ivec4 sampleTexture(ivec2 pixel) {
+    ivec2 uv;
+    if (state.tex.y == 2) {
+        uv = steppedCoordinate(pixel);
+    } else {
+        vec2 texels = state.tex.y == 0 ? inTexture.xy : inTexture.xy / inTexture.z * vec2(state.texSize.xy);
+        uv = ivec2(floor(texels * 65536.0));
+        if (state.tex.z == 1) uv -= 0x8000;
+    }
     if (state.tex.z == 0) return texel(uv >> 16);
-    uv -= 0x8000;
     ivec2 f = (uv >> 12) & 0xf;
     ivec2 i = uv >> 16;
     ivec4 top = mix4(texel(i), texel(i + ivec2(1, 0)), f.x);
@@ -56,7 +75,7 @@ void main() {
     if (pixel.x < state.scissor.x || pixel.y < state.scissor.y || pixel.x > state.scissor.z || pixel.y > state.scissor.w) discard;
 
     ivec4 colour = ivec4(inColour);
-    if (state.tex.x == 1) colour = min((sampleTexture() * colour) >> 7, ivec4(255));
+    if (state.tex.x == 1) colour = min((sampleTexture(pixel) * colour) >> 7, ivec4(255));
     if (state.flags.x == 1) colour.a = 0x80;
     uint depth = uint(inDepth.x * 4096.0 + inDepth.y);
 

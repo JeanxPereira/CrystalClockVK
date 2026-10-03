@@ -109,6 +109,36 @@ int main(int argc, char** argv) {
         else CHECK(p[0] == 32 && p[1] == 32);
     }
 
+    // A copy sprite: corners 0,0 and 640,224 with UV 0.5 and 640.5; bilinear shifts UV by half a texel, so pixel x reads
+    // texel x with weight zero on its neighbours. A 24-bit texture's alpha is TA0, or zero on a black texel.
+    {
+        constexpr uint32_t CW = 640, CH = 224;
+        std::vector<uint8_t> source(CW * CH * 4);
+        for (uint32_t y = 0; y < CH; y++) for (uint32_t x = 0; x < CW; x++) {
+            uint8_t* s = &source[(y * CW + x) * 4];
+            s[0] = uint8_t(x * 37 + y); s[1] = uint8_t(y * 11 + x * 3); s[2] = uint8_t(x ^ y); s[3] = 0;
+        }
+        renderer.setTarget("copy", CW, CH, std::vector<uint8_t>(CW * CH * 4, 0));
+        renderer.setDepth(CW, CH, std::vector<uint32_t>(CW * CH, 0));
+        renderer.setTexture("source", CW, CH, source);
+        scene::Pass copy = pass(scene::Primitive::Sprites, {{0, 0, 0, 128, 128, 128, 128, 0.5f, 0.5f, 1}, {640, 224, 0, 128, 128, 128, 128, 640.5f, 224.5f, 1}});
+        copy.target = "copy";
+        copy.scissor = {0, 0, 639, 223};
+        copy.texture = scene::Texture{"source", false, 1024, 256, scene::Coordinates::Texel, {scene::AddressMode::RegionClamp, 0, 639}, {scene::AddressMode::RegionClamp, 0, 223},
+                                      scene::Filter::Bilinear, {true, 127, true}};
+        renderer.draw(copy);
+        const std::vector<uint8_t> copied = renderer.readTarget("copy");
+        uint32_t wrong = 0;
+        for (uint32_t i = 0; i < CW * CH; i++) {
+            const bool black = source[i * 4] == 0 && source[i * 4 + 1] == 0 && source[i * 4 + 2] == 0;
+            const uint8_t alpha = black ? 0 : 127;
+            const bool bad = copied[i * 4] != source[i * 4] || copied[i * 4 + 1] != source[i * 4 + 1] || copied[i * 4 + 2] != source[i * 4 + 2] || copied[i * 4 + 3] != alpha;
+            wrong += bad;
+        }
+        if (wrong) std::fprintf(stderr, "copy: %u pixels differ from their texel\n", wrong);
+        CHECK(wrong == 0);
+    }
+
     CHECK(context.validationErrors() == 0);
     return 0;
 }

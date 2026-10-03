@@ -24,3 +24,12 @@ chained fb1a40: 128220 of 143360 pixels differ, largest 243
 chained fb2300: 13 of 143360 pixels differ, largest 2
 skipped passes taken from the oracle: 26; validation errors: 0
 ```
+
+## Groups brought to the software renderer's rule
+
+Each row: the group, its `differ` / `max` before and after, the rule (file, function of `pcsx2/GS/Renderers/SW/`), and the kind of the difference.
+
+| Group | Before | After | Rule | Kind |
+|---|---|---|---|---|
+| `sprites flat opaque z-always` | 0 / 0 | 0 / 0 | A sprite covers `[ceil(x0), ceil(x1)) x [ceil(y0), ceil(y1))` inside the scissor, with the second vertex's colour and Z (`GSRasterizer.cpp` `DrawSprite`, `GSDrawScanline.cpp` `CSetupPrim`). Already followed. | — |
+| `sprites tex(target,texel,region-clamp,bilinear) opaque z-always` (the copies) | 130413 / 2 | 0 / 0 | A sprite's texture coordinate is stepped, not interpolated: `t = UV << 12` (`GSRendererSW.cpp` `ConvertVertexBuffer`, `fst`), less `0x8000` on both corners when bilinear (`GSRendererSW.cpp` `GetScanlineGlobalData`); corners sorted per axis, `step = (t1 - t0) / (p1 - p0)`, start `t0 + step * (first pixel - p0)` in floats, V adds its step once per row (`DrawSprite`); U is `int(start) + int(step * (lane - skip)) + blocks * int(8 * step)` over eight-pixel blocks (`CSetupPrim`, `CDrawScanline`); weights are the four bits under the integer part, `a + ((b - a) * f >> 4)` (`lerp16_4`); a 24-bit texture's alpha is TA0, zero on black (AEM). Our shader took the GPU's interpolated coordinate, which falls a hair below the texel and takes 15/16 of the neighbour. | arithmetic |
