@@ -2,7 +2,7 @@
 
 ## Project Overview
 Native C++23 / Vulkan 1.4 reimplementation of the PlayStation 2 OSDSYS Crystal Clock. The code is written from what `facts/` verified, not ported from the original. `facts/` is the truth; the GS parity rule is a measuring instrument (the native frame is compared with the GS oracle), not the product.
-Design: `docs/superpowers/specs/2026-10-03-native-clock-design.md`. Plan: `docs/superpowers/plans/2026-10-03-native-clock.md` (done, merged 2026-10-03). Open fronts in `D:/CodingProjects/CrystalClockVK-wt/`: `menus` (`feat/native-menus`), `sound` (`feat/native-sound`), `icon` (`feat/icon-lab`), `assets` (`feat/native-assets`). Read `facts/README.md` first.
+Design: `docs/superpowers/specs/2026-10-03-native-clock-design.md`. Plan: `docs/superpowers/plans/2026-10-03-native-clock.md` (done, merged 2026-10-03). Assets (`src/assets`: the clock's data read from the console's raw files, cached in a local `assets.bin`) merged 2026-10-04. Open fronts in `D:/CodingProjects/CrystalClockVK-wt/`: `menus` (`feat/native-menus`, lanes `menus-<lane>`), `sound` (`feat/native-sound`), `opening` (`feat/native-opening`), `icon` (`feat/icon-lab`). Watson traces are gzip (`.trace.jsonl.gz`); read them through `References/lib/trace.mjs`. Read `facts/README.md` first.
 
 ## Layers
 | Layer | Role |
