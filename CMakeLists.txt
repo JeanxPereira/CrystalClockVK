@@ -344,3 +344,10 @@ target_link_libraries(TimelineTest PRIVATE OpeningTestSupport)
 if(EXISTS ${OPENING_FULL_FIXTURE})
     add_test(NAME TimelineTest COMMAND TimelineTest ${OPENING_FIXTURES})
 endif()
+
+# opening: cubes
+add_executable(CubesTest tests/scene/opening/CubesTest.cpp src/scene/opening/Cubes.cpp src/scene/opening/Timeline.cpp)
+target_link_libraries(CubesTest PRIVATE OpeningTestSupport)
+if(EXISTS ${OPENING_FULL_FIXTURE})
+    add_test(NAME CubesTest COMMAND CubesTest ${OPENING_FULL_FIXTURE} ${OPENING_FIXTURES}/hddosd-110U-opening-full/passes.json)
+endif()
