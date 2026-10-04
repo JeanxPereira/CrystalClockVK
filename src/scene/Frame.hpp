@@ -7,13 +7,16 @@
 namespace scene {
 
 // facts/clock-frame.md: one clock frame as passes, in the OSD's order; facts/clock-gs-state.md: the state of each.
-// RefractionSource is the OSD's work buffer 0, Work its work buffer 1.
-enum class TargetName { Display, RefractionSource, Work };
+// RefractionSource is the OSD's work buffer 0, Work its work buffer 1. The opening adds Store (the half-width copy the
+// ghost reads, GS 0x2300) and Extra (the buffer the cubes refract through, GS 0x1A40); there Work is unused.
+enum class TargetName { Display, RefractionSource, Work, Store, Extra };
 enum class PassTopology { Triangles, Lines, Sprites };
 
 // The ALPHA values the clock sends: Add Cs*As + Cd; AlphaOver (Cs - Cd)*As + Cd; Subtract Cd - Cs*As;
-// FixedOver (Cs - Cd)*constant + Cd; FixedAdd Cs*constant + Cd. As and the constant are over 128.
-enum class BlendOp { Opaque, Add, AlphaOver, Subtract, FixedOver, FixedAdd };
+// FixedOver (Cs - Cd)*constant + Cd; FixedAdd Cs*constant + Cd. As and the constant are over 128. The opening adds
+// AddDestinationAlpha Cs*Ad + Cd and SubtractFixed Cd - Cs*constant (facts/opening.md section 4; the list the audit closed).
+enum class BlendOp { Opaque, Add, AlphaOver, Subtract, FixedOver, FixedAdd, AddDestinationAlpha, SubtractFixed };
+enum class TextureSet { Clock, Opening };
 enum class DepthTest { Always, GreaterEqual, Greater };
 enum class SourceKind { None, Texture, Target };
 enum class CoordinateKind { Texel, Projective };
@@ -49,6 +52,8 @@ struct Material {
     DepthTest depthTest = DepthTest::Always;
     bool depthWrite = true;
     bool gouraud = false;
+    bool perPixelAlpha = false;
+    bool alphaCorrection = false;
     bool operator==(const Material&) const = default;
 };
 
@@ -84,6 +89,8 @@ struct Frame {
     std::vector<Pass> passes;
     size_t textAt = 0;
     GlyphCache glyphs;
+    TextureSet textureSet = TextureSet::Clock;
+    int32_t depthBits = 32;
 };
 
 }

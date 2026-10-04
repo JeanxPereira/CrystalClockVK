@@ -19,7 +19,7 @@ struct GsTextureAlpha { bool constant; uint8_t value; bool zeroWhenBlack; };
 struct GsTexture { std::string source; bool sourceIsTarget; uint32_t width, height; GsCoordinates coordinates; GsAddress addressU, addressV; GsFilter filter; GsTextureAlpha alpha; };
 struct GsScissor { int32_t x0, y0, x1, y1; };
 struct GsVertex { float x, y; uint32_t depth; float r, g, b, a; float s, t, q; };
-struct GsPass { uint32_t index; std::string name, target; GsPrimitive primitive; GsScissor scissor; std::optional<GsBlend> blend; bool antialias; GsDepth depth; std::optional<GsTexture> texture; std::string skip; std::vector<GsVertex> vertices; };
+struct GsPass { uint32_t index; std::string name, target; GsPrimitive primitive; GsScissor scissor; std::optional<GsBlend> blend; bool antialias; GsDepth depth; std::optional<GsTexture> texture; std::string skip; std::vector<GsVertex> vertices; bool perPixelAlpha = false; bool alphaCorrection = false; };
 struct GsTarget { std::string id; uint32_t width, height; };
-struct GsFrame { uint32_t field; std::vector<GsTarget> targets; std::vector<GsPass> passes; };
+struct GsFrame { uint32_t field; std::vector<GsTarget> targets; std::vector<GsPass> passes; uint32_t depthFormat = 0; };
 }
