@@ -1,6 +1,8 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
+#include <stdexcept>
 
 #include "../../Check.hpp"
 #include "../SceneFixture.hpp"
@@ -13,6 +15,7 @@ namespace {
 using scene::EeArithmetic;
 using scene::Mat4;
 using scene::NativeArithmetic;
+using scene::PassTopology;
 using Bytes = openingtest::Bytes;
 
 uint32_t word(const Bytes& bytes, size_t at) {
@@ -78,6 +81,32 @@ Mat4 matrixOf(const Bytes& bytes, size_t at) {
     return m;
 }
 
+
+nlohmann::json loadDump(const std::string& openingPath) {
+    const std::filesystem::path path = std::filesystem::path(openingPath).parent_path() / "passes.json";
+    std::ifstream in(path, std::ios::binary);
+    if (!in) throw std::runtime_error("no passes.json at " + path.string());
+    return nlohmann::json::parse(in);
+}
+
+bool sameVertices(const std::vector<scene::Vertex>& mine, const nlohmann::json& dump, float shift, bool textured, size_t& compared) {
+    if (dump.at("vertices").size() != mine.size()) return false;
+    for (size_t i = 0; i < mine.size(); ++i) {
+        const nlohmann::json& d = dump.at("vertices").at(i);
+        const scene::Vertex& v = mine[i];
+        const float want[10] = {v.x, v.y - shift, static_cast<float>(v.z), float(v.r), float(v.g), float(v.b), float(v.a), v.u, v.v, v.q};
+        for (int c = 0; c < (textured ? 10 : 7); ++c)
+            if (static_cast<float>(d.at(c).get<double>()) != want[c]) {
+                std::fprintf(stderr, "vertex %zu field %d: dump %.9g, scene %.9g\n", i, c, d.at(c).get<double>(), static_cast<double>(want[c]));
+                return false;
+            }
+        ++compared;
+    }
+    return true;
+}
+
+constexpr int kDumpShift = 5;
+
 int run(const std::string& path) {
     const openingtest::OpeningFixture fixture = openingtest::OpeningFixture::load(path);
     std::vector<size_t> frames;
@@ -87,6 +116,8 @@ int run(const std::string& path) {
     const auto first = fixture.lights(frames[0]);
     CHECK(first->records.size() == 1 && first->records[0].mem.size() == 8);
 
+    const nlohmann::json dump = loadDump(path);
+    size_t compared = 0;
     scene::opening::Lights<EeArithmetic> lights(static_cast<uint32_t>(first->phase));
     scene::opening::Lights<NativeArithmetic> native(static_cast<uint32_t>(first->phase));
     CHECK(tablesEqual(first->records[0].mem[5], first->records[0].mem[6], first->records[0].mem[7], first->records[0].mem[2]));
@@ -119,6 +150,23 @@ int run(const std::string& path) {
         for (const scene::Pass& p : passes)
             if (p.topology == scene::PassTopology::Triangles) vertices += p.vertices.size();
         CHECK(vertices == static_cast<size_t>(lights.stats().quadsDrawn) * 6);
+        {
+            const nlohmann::json& frame = dump.at("frames").at(static_cast<size_t>(fixture.counter(k).value() + kDumpShift));
+            CHECK(!frame.is_null());
+            const nlohmann::json* sprites = nullptr;
+            const nlohmann::json* trails = nullptr;
+            size_t spriteCount = 0, trailCount = 0;
+            for (const nlohmann::json& p : frame.at("passes")) {
+                if (p.at("primitive") == "Triangles" && !p.at("texture").is_null() && p.at("texture").at("source").contains("image") && p.at("texture").at("source").at("image") == "t3020-1-0-6x6") { sprites = &p; ++spriteCount; }
+                if (p.at("primitive") == "Lines") { trails = &p; ++trailCount; }
+            }
+            const float shift = frame.at("field") != 0 ? 0.5f : 0.0f;
+            size_t expectedPasses = (lights.stats().quadsDrawn > 0 ? 1 : 0) + (passes.size() - (lights.stats().quadsDrawn > 0 ? 1 : 0));
+            CHECK(passes.size() == spriteCount + trailCount && expectedPasses == passes.size() && spriteCount <= 1 && trailCount <= 1);
+            for (const scene::Pass& p : passes) {
+                CHECK(sameVertices(p.vertices, p.topology == PassTopology::Lines ? *trails : *sprites, p.halfLine ? shift : 0.0f, p.topology != PassTopology::Lines, compared));
+            }
+        }
         ++drawn;
         if (at + 1 < frames.size() && fixture.counter(frames[at + 1]) == counter + 1) {
             CHECK(stateEqual(lights, fixture.lights(frames[at + 1])->records.at(0)));
@@ -127,6 +175,7 @@ int run(const std::string& path) {
         std::vector<scene::Pass> nativePasses;
         native.draw(counter, toScreen, nativePasses);
     }
+    std::printf("lights dump: %zu vertices equal\n", compared);
     std::printf("lights: %zu frames, %zu carried states equal, %zu library results equal, %lld sprite packets, %lld trail packets, %lld quads drawn, %lld left out, %lld trail vertices hidden\n",
                 drawn, states, library, static_cast<long long>(sprites), static_cast<long long>(trails), static_cast<long long>(quads), static_cast<long long>(leftOut),
                 static_cast<long long>(hidden));

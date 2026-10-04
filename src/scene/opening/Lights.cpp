@@ -1,7 +1,5 @@
 #include "scene/opening/Lights.hpp"
 
-#include <string>
-
 #include "scene/opening/Vu0.hpp"
 
 namespace scene::opening {
@@ -26,9 +24,9 @@ std::array<Vec4, 4> cornersOf(int pair) {
 }
 constexpr float kCoordinates[4][2] = {{0, 0}, {1, 0}, {0, 1}, {1, 1}};
 
-Pass spritePass(int light, int n) {
+Pass spritePass() {
     Pass pass;
-    pass.name = "light " + std::to_string(light) + " sprites " + std::to_string(n);
+    pass.name = "light sprites";
     pass.target = TargetName::Display;
     pass.topology = PassTopology::Triangles;
     pass.material.source = SourceKind::Texture;
@@ -40,18 +38,20 @@ Pass spritePass(int light, int n) {
     pass.material.depthTest = DepthTest::Always;
     pass.material.depthWrite = false;
     pass.material.gouraud = true;
+    pass.halfLine = true;
     return pass;
 }
 
-Pass trailPass(int light) {
+Pass trailPass() {
     Pass pass;
-    pass.name = "light " + std::to_string(light) + " trail";
+    pass.name = "light trails";
     pass.target = TargetName::Display;
     pass.topology = PassTopology::Lines;
     pass.material.blend = BlendOp::Add;
     pass.material.depthTest = DepthTest::Always;
     pass.material.depthWrite = false;
     pass.material.gouraud = true;
+    pass.halfLine = true;
     pass.edgeSmoothing = true;
     return pass;
 }
@@ -81,7 +81,7 @@ void Lights<A>::draw(int32_t counter, const Mat4& worldToScreen, std::vector<Pas
         ints[2] = A::toInt(A::mul(A::mul(p[2], q), 16.0f)) >> 4;
     };
 
-    std::array<std::array<Pass, 4>, kLights> sprites;
+    Pass sprites = spritePass();
     for (int i = 0; i < kLights; ++i) {
         const float a = A::mul(A::mul(A::mul(A::addExact(static_cast<float>(counter + m_phase), static_cast<float>(17 * i)), ka), A::addExact(static_cast<float>(i), 10.0f)), kb);
         const float b = A::mul(A::mul(A::mul(A::addExact(static_cast<float>(counter + m_phase), static_cast<float>(15 * i)), kc), A::addExact(static_cast<float>(i), 10.0f)), kd);
@@ -109,7 +109,6 @@ void Lights<A>::draw(int32_t counter, const Mat4& worldToScreen, std::vector<Pas
             transform(m, origin, at, q);
             m_ring[i][m_head] = {at[0], at[1], at[2], 16};
 
-            Pass pass = spritePass(i, n);
             ++m_stats.spritePackets;
             for (int pair = 0; pair < 2; ++pair) {
                 const std::array<Vec4, 4> quad = cornersOf(pair);
@@ -139,21 +138,18 @@ void Lights<A>::draw(int32_t counter, const Mat4& worldToScreen, std::vector<Pas
                     }
                     v[k].a = static_cast<uint8_t>(alpha);
                 }
-                pass.vertices.insert(pass.vertices.end(), {v[0], v[1], v[2], v[1], v[2], v[3]});
+                sprites.vertices.insert(sprites.vertices.end(), {v[0], v[1], v[2], v[1], v[2], v[3]});
             }
-            sprites[i][n] = std::move(pass);
         }
     }
-    for (auto& light : sprites)
-        for (Pass& pass : light)
-            if (!pass.vertices.empty()) out.push_back(std::move(pass));
+    if (!sprites.vertices.empty()) out.push_back(std::move(sprites));
 
     m_head = mod128(m_head + 1);
     if (m_head == m_tail) m_tail = mod128(m_tail + 1);
 
+    Pass trails = trailPass();
     for (int i = 0; i < kLights; ++i) {
         ++m_stats.trailPackets;
-        Pass pass = trailPass(i);
         const int32_t end = mod128(m_tail + 1);
         int32_t at = mod128(m_head + 127);
         const int32_t length = mod128(m_head - (end - 127));
@@ -184,9 +180,9 @@ void Lights<A>::draw(int32_t counter, const Mat4& worldToScreen, std::vector<Pas
             if (hidden) ++m_stats.trailHidden;
         }
         for (size_t j = 1; j < strip.size(); ++j)
-            if (kicked[j]) pass.vertices.insert(pass.vertices.end(), {strip[j - 1], strip[j]});
-        if (!pass.vertices.empty()) out.push_back(std::move(pass));
+            if (kicked[j]) trails.vertices.insert(trails.vertices.end(), {strip[j - 1], strip[j]});
     }
+    if (!trails.vertices.empty()) out.push_back(std::move(trails));
 }
 
 #ifndef SCENE_NATIVE_ONLY

@@ -77,6 +77,7 @@ void Fog<A>::draw(const Mat4& worldToScreen, std::vector<Pass>& out) {
         pass.material.depthTest = DepthTest::GreaterEqual;
         pass.material.depthWrite = false;
         pass.material.gouraud = true;
+        pass.halfLine = true;
 
         for (int row = 0; row < 16; ++row)
             for (int column = 0; column < 16; ++column) {
