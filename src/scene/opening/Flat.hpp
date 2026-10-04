@@ -13,13 +13,18 @@ namespace scene::opening {
 struct FlatInputs {
     int32_t counter = 0, displayIndex = 0, field = 0;
     int32_t logoAlpha = 0, fadeAlpha = 0, blurLevel = 0;
+    int32_t fillSprites = 2;
 };
 
 // facts/opening.md 4.4, 4.5; verify_opening_flat.mjs, verify_opening_ghost.mjs, verify_opening_overlays_v2.mjs. NTSC 640 x 224.
 // A call adds the passes of its packets that draw: the `Framebuffer` clear sprites land outside the scissor and are not here.
+// OpeningProcess's SCISSOR_1 write (vif1SetSCISSOR_1 with 1, 1, W - 2, H - 2): the towers and the ghost are drawn under it.
+constexpr std::array<int32_t, 4> kProcessScissor{1, 1, 638, 222};
+
 template <class A>
 struct Flat {
     // The fill at the frame's start (OpeningProcess).
+    static void scissor(const FlatInputs&, std::vector<Pass>&);
     static void scissor(std::vector<Pass>&);
     // func_0021D140(1, 2, 0x50, 0xFFFFFF, 0x80): the store over the frame, FixedOver 0x50.
     static void ghost(const FlatInputs&, std::vector<Pass>&);

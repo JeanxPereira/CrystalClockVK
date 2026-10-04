@@ -15,6 +15,8 @@ const Vec4 kClipMin = {1728.0f, 1936.0f, 0.0f, 5.0f};
 const Vec4 kClipMax = {2368.0f, 2160.0f, 0.0f, 16777215.0f};
 constexpr int32_t kCornerX = 1728 * 16, kCornerY = 1936 * 16;
 constexpr int32_t kLightTexture = 8;
+// The FIX field of the lights' ALPHA register as the dump records it (the blend does not read it: C is the source alpha).
+constexpr uint8_t kAlphaFix = 0x80;
 
 int32_t mod128(int32_t x) { return x - (((x < 0 ? x + 127 : x) >> 7) << 7); }
 
@@ -35,6 +37,7 @@ Pass spritePass() {
     pass.material.sampling = Sampling::Repeat;
     pass.material.bilinear = true;
     pass.material.blend = BlendOp::Add;
+    pass.material.blendConstant = kAlphaFix;
     pass.material.depthTest = DepthTest::Always;
     pass.material.depthWrite = false;
     pass.material.gouraud = true;
@@ -48,6 +51,7 @@ Pass trailPass() {
     pass.target = TargetName::Display;
     pass.topology = PassTopology::Lines;
     pass.material.blend = BlendOp::Add;
+    pass.material.blendConstant = kAlphaFix;
     pass.material.depthTest = DepthTest::Always;
     pass.material.depthWrite = false;
     pass.material.gouraud = true;

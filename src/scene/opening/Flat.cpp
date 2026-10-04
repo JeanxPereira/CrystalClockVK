@@ -8,6 +8,8 @@ namespace {
 constexpr int32_t kWidth = 640, kHeight = 224;
 constexpr uint32_t kFarthest = 0xffffff;
 constexpr float kPixel = 0.0625f;
+// The copy reads the page through a 1024 x 512 texture (TEX0 of the dump's draws; the helper that sets it was not read), every other target read is 1024 x 256.
+constexpr int32_t kCopySourceHeight = 512;
 
 // verify_opening_flat.mjs: the texture colour at 0x00365118 and the bars' colour at 0x00365128
 constexpr uint8_t kTextureColour = 0x80;
@@ -71,18 +73,23 @@ Pass sprites(const char* name, TargetName target, const Material& material, bool
 
 }
 
-// The black fill that opens every frame in the dump (measured, writer not read); OpeningProcess's own SCISSOR_1 write (vif1SetSCISSOR_1 with 1, 1, W - 2, H - 2) is the ghost's Pass::scissor
+// The black fill that opens every frame in the dump (measured, writer not read; two sprites; one in the first frame after a cold boot (opening-full counter 1; a saved-state run has no dump frame for its first call)); OpeningProcess's own SCISSOR_1 write (vif1SetSCISSOR_1 with 1, 1, W - 2, H - 2) is the ghost's Pass::scissor
 template <class A>
-void Flat<A>::scissor(std::vector<Pass>& out) {
+void Flat<A>::scissor(const FlatInputs& in, std::vector<Pass>& out) {
     Material m;
     m.depthTest = DepthTest::Always;
     m.depthWrite = true;
     Pass pass = sprites("scissor", TargetName::Display, m, true);
-    for (int i = 0; i < 2; ++i) {
+    for (int i = 0; i < in.fillSprites; ++i) {
         pass.vertices.push_back(corner(0, 0, 0, 0, 0, 0, 0, 0, 0));
         pass.vertices.push_back(corner(static_cast<float>(kWidth), static_cast<float>(kHeight), 0, 0, 0, 0, 0, 0, 0));
     }
     out.push_back(std::move(pass));
+}
+
+template <class A>
+void Flat<A>::scissor(std::vector<Pass>& out) {
+    scissor(FlatInputs{}, out);
 }
 
 // verify_opening_ghost.mjs verify (ghost)
@@ -93,7 +100,7 @@ void Flat<A>::ghost(const FlatInputs&, std::vector<Pass>& out) {
     m.blendConstant = 0x50;
     m.depthTest = DepthTest::Always;
     Pass pass = sprites("ghost", TargetName::Display, m, true);
-    pass.scissor = std::array<int32_t, 4>{1, 1, kWidth - 2, kHeight - 2};
+    pass.scissor = kProcessScissor;
     const int32_t place[4] = {0, 0, kWidth, kHeight}, source[4] = {0, 0, kWidth >> 1, kHeight};
     texturedSprite(pass, place, source, kFarthest, 0x80, 0x80);
     out.push_back(std::move(pass));
@@ -102,7 +109,9 @@ void Flat<A>::ghost(const FlatInputs&, std::vector<Pass>& out) {
 // verify_opening_flat.mjs expect (frame copy)
 template <class A>
 void Flat<A>::copyToStore(const FlatInputs&, std::vector<Pass>& out) {
-    Pass pass = sprites("copy", TargetName::Store, fromTarget(TargetName::Display, false), false);
+    Material material = fromTarget(TargetName::Display, false);
+    material.sourceHeight = kCopySourceHeight;
+    Pass pass = sprites("copy", TargetName::Store, material, false);
     const int32_t place[4] = {0, 0, kWidth >> 1, kHeight}, source[4] = {0, 0, kWidth, kHeight};
     texturedSprite(pass, place, source, kFarthest, kTextureColour, kTextureColour);
     out.push_back(std::move(pass));
@@ -152,6 +161,7 @@ void Flat<A>::logo(const FlatInputs& in, std::vector<Pass>& out) {
     m.blend = BlendOp::AlphaOver;
     m.depthTest = DepthTest::GreaterEqual;
     m.depthWrite = false;
+    m.blendConstant = static_cast<uint8_t>(in.logoAlpha);
     Pass pass = sprites("logo", TargetName::Display, m, true);
     const uint8_t alpha = static_cast<uint8_t>(in.logoAlpha);
     texturedSprite(pass, kLogoPlace[0], kLogoSource, 0xfffffe, 0x80, alpha);

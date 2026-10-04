@@ -48,6 +48,7 @@ struct Material {
     Sampling sampling = Sampling::Repeat;
     std::array<int32_t, 4> region{};
     bool bilinear = false;
+    int32_t sourceHeight = 0;
     BlendOp blend = BlendOp::Opaque;
     uint8_t blendConstant = 0;
     DepthTest depthTest = DepthTest::Always;

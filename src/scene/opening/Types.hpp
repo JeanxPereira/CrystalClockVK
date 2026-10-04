@@ -27,6 +27,9 @@ struct BootOptions {
     bool clockForced = false, hddReady = false;
     int32_t hddExec = 0;
     bool pal = false;
+    // False for a run that starts from a state saved inside the scene set-up (towers-whole): the first frame is drawn with the placed camera and the matrices
+    // never computed (zero, measured in the tower probes); a cold boot's first frame holds one black fill sprite where every other frame holds two (measured, writer not read).
+    bool coldStart = true;
 };
 
 // facts/opening.md section 3: the sound commands the scene reports; the app drops them.

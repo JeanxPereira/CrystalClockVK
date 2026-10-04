@@ -51,8 +51,8 @@ GsTexture textureOf(const scene::Material& m, const GsFrameLayout& layout, const
         t.source = layout.targets[static_cast<size_t>(m.sourceTarget)];
         t.sourceIsTarget = true;
         t.width = layout.targetTextureWidth;
-        t.height = layout.targetTextureHeight;
-    } else if (m.texture == scene::kGlyphTexture) {
+        t.height = m.sourceHeight ? static_cast<uint32_t>(m.sourceHeight) : layout.targetTextureHeight;
+    } else if (m.texture == scene::kGlyphTexture && !layout.textures.contains(m.texture)) {
         t.source = glyphTextureId(glyphs);
         t.width = 1u << glyphs.logWidth;
         t.height = 1u << glyphs.logHeight;
