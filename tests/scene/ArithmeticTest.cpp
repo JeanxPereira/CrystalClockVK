@@ -248,6 +248,13 @@ int openingVectors(const std::string& path) {
         CHECK(sameBits(Ee::rootExact(x), v.at("r"), "rootExact"));
         CHECK(close(NativeArithmetic::rootExact(x), scene::hexFloat(v.at("r")), 1e-6f));
     }
+    for (uint32_t bits : {0x43490f81u, 0xc3490f81u, 0x44000000u, 0x7f7fffffu, 0x7f800000u, 0xff800000u, 0x7fc00000u}) {
+        CHECK(isNan(Ee::sinf(asFloat(bits))));
+        CHECK(isNan(Ee::cosf(asFloat(bits))));
+    }
+    CHECK(sameBits(Ee::mul(1e-22f, 1e-22f), 0x00000000u, "denormal product flushes to zero"));
+    CHECK(sameBits(Ee::mul(-1e-22f, 1e-22f), 0x80000000u, "negative denormal product flushes to -0"));
+    CHECK(sameBits(Ee::quotientExact(1e-30f, 1e30f), 0x00000000u, "denormal quotient flushes to zero"));
     CHECK(sameBits(Ee::addExact(1.0f, -1e-22f), 0x3f7fffffu, "addExact(1, -1e-22)"));
     CHECK(sameBits(Ee::addExact(1.0f, 1e-22f), 0x3f800000u, "addExact(1, 1e-22)"));
     CHECK(sameBits(Ee::quotientExact(1.0f, 0.0f), 0x7f7fffffu, "quotientExact(1, 0)"));
