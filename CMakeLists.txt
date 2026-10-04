@@ -337,3 +337,12 @@ target_link_libraries(ClockScreen PUBLIC ClockSceneNative SceneInputs)
 add_executable(ClockScreenTest tests/scene/opening/ClockScreenTest.cpp)
 target_link_libraries(ClockScreenTest PRIVATE ClockScreen)
 add_test(NAME ClockScreenTest COMMAND ClockScreenTest ${CMAKE_CURRENT_SOURCE_DIR}/resources/clock/start-boot.json ${CMAKE_CURRENT_SOURCE_DIR}/facts/data/rod-mesh.json)
+
+# opening: flat
+add_executable(FlatTest tests/scene/opening/FlatTest.cpp)
+target_sources(FlatTest PRIVATE src/scene/opening/Flat.cpp)
+target_link_libraries(FlatTest PRIVATE OpeningTestSupport)
+set(OPENING_FLAT_FIXTURE ${OPENING_FIXTURES}/hddosd-110U-opening2-flat/opening.json)
+if(EXISTS ${OPENING_FLAT_FIXTURE} AND EXISTS ${OPENING_FULL_FIXTURE})
+    add_test(NAME FlatTest COMMAND FlatTest ${OPENING_FLAT_FIXTURE} ${OPENING_FULL_FIXTURE})
+endif()
