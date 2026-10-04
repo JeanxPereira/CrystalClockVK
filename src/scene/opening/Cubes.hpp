@@ -5,6 +5,7 @@
 
 #include "scene/Frame.hpp"
 #include "scene/Matrix.hpp"
+#include "scene/ProgramImage.hpp"
 #include "scene/opening/Timeline.hpp"
 
 namespace scene::opening {
@@ -46,7 +47,7 @@ const std::array<CubePassSetup, 10>& cubePassSetups();
 template <class A>
 class Cubes {
 public:
-    Cubes();
+    explicit Cubes(const ProgramImage& program);
 
     // Per cube: turn, matrices, clip test, work record, then up to ten passes in the table's order (away faces into Extra, toward faces
     // into Display), the faces of a pass split wherever the antialiasing of a refracting face changes. field: the frame counter's parity.

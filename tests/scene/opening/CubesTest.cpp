@@ -12,6 +12,7 @@
 #include "../SceneFixture.hpp"
 #include "OpeningFixture.hpp"
 #include "scene/Arithmetic.hpp"
+#include "scene/ProgramImage.hpp"
 #include "scene/opening/Cubes.hpp"
 
 namespace {
@@ -165,9 +166,9 @@ bool checkPasses(const std::vector<scene::Pass>& out, size_t first, size_t last,
 }
 
 template <class T>
-int run(const OpeningFixture& fixture, bool exact, Counts& counts, std::map<int32_t, std::vector<scene::Pass>>* keep = nullptr) {
+int run(const OpeningFixture& fixture, const scene::ProgramImage& program, bool exact, Counts& counts, std::map<int32_t, std::vector<scene::Pass>>* keep = nullptr) {
     const std::string name = fixture.capture();
-    T cubes;
+    T cubes(program);
     size_t frames = 0;
     for (size_t k = 0; k < fixture.frameCount(); ++k) {
         const Frame f = framesOf(fixture, k);
@@ -232,7 +233,8 @@ bool gateFrame(const nlohmann::json& dump, int32_t counter, const std::vector<sc
     const std::string where = "dump frame " + std::to_string(counter + 5);
     std::vector<const nlohmann::json*> theirs;
     for (const nlohmann::json& p : frame.at("passes")) {
-        if (p.at("primitive") != "Triangles") continue;
+        const bool sprites = p.at("primitive") == "Sprites";
+        if (p.at("primitive") != "Triangles" && !(sprites && counter < 214)) continue;
         const std::string target = p.at("target");
         const bool extraTarget = target == "fb1a40";
         bool cubeTexture = false;
@@ -247,14 +249,17 @@ bool gateFrame(const nlohmann::json& dump, int32_t counter, const std::vector<sc
         }
         if (extraTarget || cubeTexture) theirs.push_back(&p);
     }
-    if (theirs.size() != mine.size()) {
-        std::fprintf(stderr, "%s: %zu cube passes in the dump, %zu in the scene\n", where.c_str(), theirs.size(), mine.size());
+    std::vector<const scene::Pass*> kept;
+    for (const scene::Pass& m : mine)
+        if (m.topology != scene::PassTopology::Sprites || counter < 214) kept.push_back(&m);
+    if (theirs.size() != kept.size()) {
+        std::fprintf(stderr, "%s: %zu cube passes in the dump, %zu in the scene\n", where.c_str(), theirs.size(), kept.size());
         return false;
     }
     std::string display;
     const int field = frame.at("field").get<int>();
-    for (size_t i = 0; i < mine.size(); ++i) {
-        const scene::Pass& m = mine[i];
+    for (size_t i = 0; i < kept.size(); ++i) {
+        const scene::Pass& m = *kept[i];
         const nlohmann::json& t = *theirs[i];
         const std::string target = t.at("target");
         if (m.target == scene::TargetName::Extra) {
@@ -265,6 +270,7 @@ bool gateFrame(const nlohmann::json& dump, int32_t counter, const std::vector<sc
         }
         CHECK(t.at("antialias").get<bool>() == m.edgeSmoothing);
         CHECK(t.at("depth").at("test") == "Always" && t.at("depth").at("write") == false);
+        CHECK(t.at("primitive") == (m.topology == scene::PassTopology::Sprites ? "Sprites" : "Triangles"));
         const nlohmann::json& blend = t.at("blend");
         if (m.material.blend == scene::BlendOp::Opaque) {
             CHECK(blend.is_null());
@@ -277,8 +283,17 @@ bool gateFrame(const nlohmann::json& dump, int32_t counter, const std::vector<sc
             CHECK(blend.at("fixed").get<int>() == m.material.blendConstant);
         }
         const nlohmann::json& tex = t.at("texture");
-        CHECK(tex.at("coordinates") == "Projective" && tex.at("filter") == "Bilinear");
-        if (m.material.source == scene::SourceKind::Target) {
+        const bool clearing = m.material.source == scene::SourceKind::None;
+        if (clearing) {
+            CHECK(tex.is_null());
+        } else {
+            CHECK(tex.at("coordinates") == (m.topology == scene::PassTopology::Sprites ? "Texel" : "Projective") && tex.at("filter") == "Bilinear");
+        }
+        if (m.topology == scene::PassTopology::Sprites && !clearing) {
+            if (display.empty()) display = tex.at("source").at("target");
+            CHECK(tex.at("source").at("target") == display && tex.at("alpha").at("mode") == "Constant" && tex.at("alpha").at("zeroWhenBlack") == true);
+        } else if (clearing) {
+        } else if (m.material.source == scene::SourceKind::Target) {
             CHECK(tex.at("source").contains("target") && tex.at("width") == 1024 && tex.at("height") == 256);
             CHECK((m.material.sourceTarget == scene::TargetName::Extra) == (tex.at("source").at("target") == "fb1a40"));
         } else {
@@ -293,7 +308,7 @@ bool gateFrame(const nlohmann::json& dump, int32_t counter, const std::vector<sc
                 const scene::Vertex& u = m.vertices[v];
                 const float shift = m.halfLine && field == 1 ? 0.5f : 0.0f;
                 const bool ok = d[0].get<float>() == u.x && d[1].get<float>() == u.y - shift && d[2].get<uint32_t>() == u.z && d[3].get<int>() == u.r && d[4].get<int>() == u.g &&
-                                d[5].get<int>() == u.b && d[6].get<int>() == u.a && d[7].get<float>() == u.u && d[8].get<float>() == u.v && d[9].get<float>() == u.q;
+                                d[5].get<int>() == u.b && d[6].get<int>() == u.a && (clearing || (d[7].get<float>() == u.u && d[8].get<float>() == u.v)) && d[9].get<float>() == u.q;
                 if (!ok) {
                     std::fprintf(stderr, "%s pass %zu (%s) vertex %zu: dump %s, scene x %g y %g z %u rgba %d %d %d %d uvq %g %g %g\n", where.c_str(), i, m.name.c_str(), v, d.dump().c_str(), u.x,
                                  u.y - shift, u.z, u.r, u.g, u.b, u.a, u.u, u.v, u.q);
@@ -312,15 +327,17 @@ bool gateFrame(const nlohmann::json& dump, int32_t counter, const std::vector<sc
 int main(int argc, char** argv) {
     return scenetest::run(argc, argv, [](int count, char** arguments) {
         CHECK(count >= 2);
+        CHECK(count >= 4);
         const OpeningFixture fixture = OpeningFixture::load(arguments[1]);
+        const scene::ProgramImage program = scene::ProgramImage::load(arguments[3]);
         Counts counts;
         std::map<int32_t, std::vector<scene::Pass>> passes;
-        if (int failed = run<Cubes<EeArithmetic>>(fixture, true, counts, &passes)) return failed;
+        if (int failed = run<Cubes<EeArithmetic>>(fixture, program, true, counts, &passes)) return failed;
         std::printf("%s: %zu cubes drawn, %zu left out by the clip test, angles %zu, matrices %zu, centres %zu, work values %zu, pass descriptors %zu\n",
                     fixture.capture().c_str(), counts.cubes, counts.clipped, counts.angles, counts.matrices, counts.centres, counts.values, counts.descriptors);
         CHECK(counts.cubes == 994 && counts.clipped == 96 && counts.angles == 994 && counts.matrices == 1988 && counts.centres == 994 &&
               counts.values == 75544 && counts.descriptors == 9940);
-        if (count >= 3) {
+        if (count >= 3 && std::string(arguments[2]) != "-") {
             const std::set<int32_t> sample{3, 20, 60, 95, 150, 200, 218};
             std::set<int32_t> frames;
             for (const int32_t c : sample) frames.insert(c + 5);
@@ -330,7 +347,7 @@ int main(int argc, char** argv) {
             std::printf("dump: %zu frames of cube passes equal, %zu vertices equal\n", passes.size(), vertices);
         }
         Counts unused;
-        if (int failed = run<Cubes<NativeArithmetic>>(fixture, false, unused)) return failed;
+        if (int failed = run<Cubes<NativeArithmetic>>(fixture, program, false, unused)) return failed;
         std::printf("CubesTest passed\n");
         return 0;
     });

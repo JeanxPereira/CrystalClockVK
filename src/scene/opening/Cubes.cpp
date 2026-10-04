@@ -46,14 +46,6 @@ constexpr uint32_t kMirrorBits[6][4] = {{0x0u, 0x0u, 0xbf800000u, 0x3f800000u}, 
                                         {0x3f800000u, 0x0u, 0x0u, 0x3f800000u}, {0x0u, 0xbf800000u, 0x0u, 0x3f800000u}};
 constexpr float kFixedPairs[4][2] = {{0.0f, 0.0f}, {1.0f, 0.0f}, {0.0f, 1.0f}, {1.0f, 1.0f}};
 
-// InitLightsCubes 0x002209E0 as the first transform probe of hddosd-110U-opening-full reads it: places (3.5 x, 3.5 y, 150 - 15 z),
-// the three angles (equal) and the rates.
-constexpr uint32_t kPlaceBits[5][3] = {{0x4147cd69u, 0x3ff40692u, 0x42de3439u}, {0xc04a8a73u, 0xc07a4674u, 0x42ba24ddu}, {0x4136c745u, 0xc114597eu, 0x42b0c666u},
-                                       {0xc150db8bu, 0xc1049759u, 0x42a909bbu}, {0xc12db1f8u, 0x40fafb16u, 0x42a3b687u}};
-constexpr uint32_t kAngleBits[5] = {0x3e923a14u, 0xc02b2961u, 0x40de4259u, 0x3e923a14u, 0x40c69445u};
-constexpr uint32_t kRateBits[5][3] = {{0xbafdf3b6u, 0xbb66afcdu, 0xb99d4950u}, {0xbb7df3b6u, 0xbae6afcdu, 0x3a03126fu}, {0x3b61bc31u, 0x3b01c2e2u, 0x3b102ddfu},
-                                      {0x3b7df3b6u, 0x3ae6afcdu, 0x3b09a027u}, {0x3afdf3b6u, 0x3b66afcdu, 0x3b3e0dedu}};
-
 constexpr float kPi = 3.14159274101257324f, kTwoPi = 6.28318548202514648f;
 constexpr int32_t kWidth = 640, kHeight = 224;
 constexpr int32_t kOffsetX = 1728 * 16, kOffsetY = 1936 * 16;
@@ -85,12 +77,20 @@ void append(std::vector<Pass>& out, const Pass& header, const std::vector<Vertex
 
 const std::array<CubePassSetup, 10>& cubePassSetups() { return kSetups; }
 
+// facts/opening.md 4.1, InitLightsCubes 0x002209E0: the table D_002B0F40 and the constants D_0036FA50..68 are read from the program.
 template <class A>
-Cubes<A>::Cubes() {
-    for (size_t n = 0; n < 5; ++n) {
-        m_cubes[n].place = {asFloat(kPlaceBits[n][0]), asFloat(kPlaceBits[n][1]), asFloat(kPlaceBits[n][2]), 0.0f};
-        m_cubes[n].angles = {asFloat(kAngleBits[n]), asFloat(kAngleBits[n]), asFloat(kAngleBits[n]), asFloat(kAngleBits[n])};
-        m_cubes[n].rates = {asFloat(kRateBits[n][0]), asFloat(kRateBits[n][1]), asFloat(kRateBits[n][2]), 0.0f};
+Cubes<A>::Cubes(const ProgramImage& program) {
+    const float scale = program.single(0x0036fa50), spread = program.single(0x0036fa54), base = program.single(0x0036fa58), speed = program.single(0x0036fa5c);
+    const float tilt = program.single(0x0036fa60), drift = program.single(0x0036fa64), fallback = program.single(0x0036fa68);
+    for (int32_t n = 0; n < 5; ++n) {
+        const uint32_t at = 0x002b0f40u + static_cast<uint32_t>(n) * 16u;
+        State& s = m_cubes[static_cast<size_t>(n)];
+        s.place = {A::mul(3.5f, program.single(at)), A::mul(3.5f, program.single(at + 4)), A::subExact(150.0f, A::mul(15.0f, program.single(at + 8))), 0.0f};
+        float u = A::mul(static_cast<float>(n - 2), scale);
+        if (u == 0.0f) u = fallback;
+        const float angle = A::addExact(A::mul(A::mul(u, static_cast<float>(n % 3)), spread), base);
+        s.angles = {angle, angle, angle, angle};
+        s.rates = {A::quotientExact(speed, u), A::mul(u, tilt), A::addExact(A::quotientExact(u, 1000.0f), drift), 0.0f};
     }
 }
 
@@ -158,6 +158,31 @@ void Cubes<A>::draw(const Matrices& matrices, const Vec4& camera, std::vector<Pa
                 face.edge[k] = L::absolute(d);
             }
         }
+
+        // module_opening_225728: the clear of the extra buffer (outside the scissor) and the copy of the frame into it, before the passes.
+        Pass clear;
+        clear.name = "cube" + std::to_string(n) + " clear";
+        clear.target = TargetName::Extra;
+        clear.topology = PassTopology::Sprites;
+        clear.halfLine = true;
+        clear.material.depthWrite = false;
+        clear.vertices = {Vertex{-1728.0f, -1936.0f, 0, 0, 0, 1, 0, 0, 0, 0}, Vertex{-1088.0f, -1712.0f, 0, 0, 0, 1, 0, 0, 0, 0}};
+        out.push_back(clear);
+        Pass copy;
+        copy.name = "cube" + std::to_string(n) + " copy";
+        copy.target = TargetName::Extra;
+        copy.topology = PassTopology::Sprites;
+        copy.halfLine = true;
+        copy.material.source = SourceKind::Target;
+        copy.material.sourceTarget = TargetName::Display;
+        copy.material.colourOnly = true;
+        copy.material.coordinates = CoordinateKind::Texel;
+        copy.material.sampling = Sampling::Repeat;
+        copy.material.bilinear = true;
+        copy.material.perPixelAlpha = true;
+        copy.material.depthWrite = false;
+        copy.vertices = {Vertex{0.0f, 0.0f, 0, 0.5f, 0.5f, 1, 128, 128, 128, 0}, Vertex{639.5f, 223.5f, 0, 640.0f, 224.0f, 1, 128, 128, 128, 0}};
+        out.push_back(copy);
 
         // The ten passes (verify_opening_cubes_v2.mjs pass, func_002254E0 with the callback at 0x0021FEB8).
         for (int32_t p = 0; p < 10; ++p) {
