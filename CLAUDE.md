@@ -2,7 +2,7 @@
 
 ## Project Overview
 Native C++23 / Vulkan 1.4 reimplementation of the PlayStation 2 OSDSYS Crystal Clock. The code is written from what `facts/` verified, not ported from the original. `facts/` is the truth; the GS parity rule is a measuring instrument (the native frame is compared with the GS oracle), not the product.
-Design: `docs/superpowers/specs/2026-10-03-native-clock-design.md`. Plan: `docs/superpowers/plans/2026-10-03-native-clock.md` (done, merged 2026-10-03). Assets (`src/assets`: the clock's data read from the console's raw files, cached in a local `assets.bin`) merged 2026-10-04. Open fronts in `D:/CodingProjects/CrystalClockVK-wt/`: `menus` (`feat/native-menus`, lanes `menus-<lane>`), `sound` (`feat/native-sound`), `opening` (`feat/native-opening`), `icon` (`feat/icon-lab`). Watson traces are gzip (`.trace.jsonl.gz`); read them through `References/lib/trace.mjs`. Read `facts/README.md` first.
+Design: `docs/superpowers/specs/2026-10-03-native-clock-design.md`. Plan: `docs/superpowers/plans/2026-10-03-native-clock.md` (done, merged 2026-10-03). Assets (`src/assets`: the clock's data read from the console's raw files, cached in a local `assets.bin`) merged 2026-10-04. Menus (main menu, System Configuration, Version, live keyboard/gamepad navigation) and the boot opening merged 2026-10-04: `CrystalClock --boot` plays the opening and lands on the main menu; no flag starts at the main menu, `--clock` at the clock. Open fronts in `D:/CodingProjects/CrystalClockVK-wt/`: `sound` (`feat/native-sound`). Branch `feat/icon-lab` (IconLab) is kept unmerged. Watson traces are gzip (`.trace.jsonl.gz`); read them through `References/lib/trace.mjs`. Read `facts/README.md` first.
 
 ## Layers
 | Layer | Role |
