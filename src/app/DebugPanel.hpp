@@ -20,6 +20,7 @@ struct PanelState {
     bool setTime = false;
     bool localTime = false;
     bool screenshot = false;
+    bool restartOpening = false;
 };
 
 // What the panel shows.
@@ -31,6 +32,10 @@ struct PanelInfo {
     uint32_t validationErrors = 0;
     std::string clock;
     std::string lastScreenshot;
+    std::string screen, handOff;
+    int32_t counter = 0, stage = 0;
+    float cameraZ = 0;
+    size_t sounds = 0;
 };
 
 void drawPanel(PanelState& state, const PanelInfo& info);

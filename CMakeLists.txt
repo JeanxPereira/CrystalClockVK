@@ -263,6 +263,7 @@ get_filename_component(CLOCK_REFERENCES_DEFAULT ${CLOCK_FIXTURE}/../../.. ABSOLU
 set(CLOCK_REFERENCES ${CLOCK_REFERENCES_DEFAULT} CACHE PATH "References folder with textures/ and fixtures/ (the main checkout's)")
 set(CLOCK_TEXTURES ${CLOCK_REFERENCES}/textures)
 set(CLOCK_START ${CMAKE_SOURCE_DIR}/resources/clock/start.json)
+set(CLOCK_START_BOOT ${CMAKE_SOURCE_DIR}/resources/clock/start-boot.json)
 
 add_executable(NativeRendererTest tests/render/NativeRendererTest.cpp)
 target_link_libraries(NativeRendererTest PRIVATE ClockRender ClockSceneNative SceneInputs)
@@ -276,7 +277,7 @@ endif()
 add_executable(CrystalClock src/app/Main.cpp src/app/DebugPanel.cpp src/app/Png.cpp)
 target_link_libraries(CrystalClock PRIVATE ClockRender ClockSceneNative SceneInputs ImGui)
 target_compile_definitions(CrystalClock PRIVATE
-    CLOCK_SHADERS="${CMAKE_SOURCE_DIR}/bin/shaders" CLOCK_TEXTURES="${CLOCK_TEXTURES}" CLOCK_START="${CLOCK_START}"
+    CLOCK_SHADERS="${CMAKE_SOURCE_DIR}/bin/shaders" CLOCK_TEXTURES="${CLOCK_TEXTURES}" CLOCK_START="${CLOCK_START}" CLOCK_START_BOOT="${CLOCK_START_BOOT}"
     CLOCK_MESH="${CMAKE_SOURCE_DIR}/facts/data/rod-mesh.json" CLOCK_SCREENSHOTS="${CMAKE_SOURCE_DIR}/out/screenshots"
     CLOCK_FONT="${CLOCK_DUMPS}/FNTOSD" CLOCK_PROGRAM="${CLOCK_DUMPS}/hddosd.elf")
 target_link_libraries(ParityTool PRIVATE ClockRender ClockSceneNative SceneInputs)
@@ -487,6 +488,23 @@ if(MSVC)
 else()
     target_compile_options(OpeningScene PRIVATE -ffp-contract=off -fno-fast-math)
 endif()
+# The app's opening: the same sources with NativeArithmetic only, linked into CrystalClock.
+add_library(OpeningSceneNative STATIC src/scene/opening/Timeline.cpp src/scene/opening/Cubes.cpp src/scene/opening/Fog.cpp src/scene/opening/Lights.cpp src/scene/opening/Flat.cpp
+    src/scene/opening/Handoff.cpp src/scene/opening/Opening.cpp src/scene/opening/Towers.cpp src/scene/opening/TowerVu1.cpp)
+target_include_directories(OpeningSceneNative PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_compile_definitions(OpeningSceneNative PRIVATE SCENE_NATIVE_ONLY)
+target_link_libraries(OpeningSceneNative PUBLIC ClockSceneNative)
+if(MSVC)
+    target_compile_options(OpeningSceneNative PRIVATE /fp:strict)
+else()
+    target_compile_options(OpeningSceneNative PRIVATE -ffp-contract=off -fno-fast-math)
+endif()
+add_library(BootScreens STATIC src/app/OpeningScreen.cpp src/app/BootChain.cpp)
+target_link_libraries(BootScreens PUBLIC OpeningSceneNative ClockScreen)
+target_link_libraries(CrystalClock PRIVATE BootScreens)
+add_executable(BootChainTest tests/app/BootChainTest.cpp)
+target_link_libraries(BootChainTest PRIVATE BootScreens)
+add_test(NAME BootChainTest COMMAND BootChainTest ${CMAKE_CURRENT_SOURCE_DIR}/resources/clock/start-boot.json ${CMAKE_CURRENT_SOURCE_DIR}/facts/data/rod-mesh.json ${CLOCK_DUMPS}/hddosd.elf)
 add_executable(OpeningCarriedTest tests/scene/opening/OpeningCarriedTest.cpp)
 target_link_libraries(OpeningCarriedTest PRIVATE OpeningTestSupport OpeningScene)
 add_executable(OpeningGateTest tests/scene/opening/OpeningGateTest.cpp)

@@ -87,7 +87,9 @@ Frame Opening<A>::frame(int32_t displayIndex, int32_t field) {
     return out;
 }
 
+#ifndef SCENE_NATIVE_ONLY
 template class Opening<EeArithmetic>;
+#endif
 template class Opening<NativeArithmetic>;
 
 }

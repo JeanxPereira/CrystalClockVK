@@ -11,6 +11,13 @@ void drawPanel(PanelState& state, const PanelInfo& info) {
     ImGui::Text("%s", info.clock.c_str());
     ImGui::Text("output %ux%u, %.1f fps, logic frame %llu", info.outputWidth, info.outputHeight, info.framesPerSecond, static_cast<unsigned long long>(info.logicFrames));
     ImGui::Text("validation errors: %u", info.validationErrors);
+    if (!info.screen.empty()) {
+        ImGui::Text("screen: %s", info.screen.c_str());
+        ImGui::Text("module counter %d, stage %d, camera z %.2f", info.counter, info.stage, info.cameraZ);
+        ImGui::Text("hand-off: %s", info.handOff.empty() ? "pending" : info.handOff.c_str());
+        ImGui::Text("sound events of the last frame: %zu", info.sounds);
+        if (ImGui::Button("Restart opening")) state.restartOpening = true;
+    }
     ImGui::Separator();
 
     static const char* resolutions[] = {"640x448 (native)", "window", "x2", "x4"};

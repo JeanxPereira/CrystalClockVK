@@ -12,12 +12,17 @@
 #include <exception>
 #include <filesystem>
 #include <functional>
+#include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
 #include "scene/SceneInputs.hpp"
 #include "app/DebugPanel.hpp"
+#include "app/BootChain.hpp"
+#include "app/ClockScreen.hpp"
 #include "app/NativeFrames.hpp"
+#include "app/OpeningScreen.hpp"
 #include "app/Png.hpp"
 #include "render/Device.hpp"
 #include "render/NativeRenderer.hpp"
@@ -32,6 +37,12 @@ struct Options {
     bool validation = true;
     bool smoke = false;
     double soak = 0;
+    bool boot = false;
+    bool towersDemo = false;
+    uint32_t lightsPhase = 0xD80;
+    std::filesystem::path openingTextures;
+    std::filesystem::path bootStart = CLOCK_START_BOOT;
+    std::string capture;
     std::filesystem::path shaders = CLOCK_SHADERS;
     std::filesystem::path textures = CLOCK_TEXTURES;
     std::filesystem::path start = CLOCK_START;
@@ -92,6 +103,11 @@ int main(int argc, char** argv) {
         const std::string arg = argv[i];
         const bool more = i + 1 < argc;
         if (arg == "--smoke") options.smoke = true;
+        else if (arg == "--boot") options.boot = true;
+        else if (arg == "--towers" && more) options.towersDemo = std::string(argv[++i]) == "demo";
+        else if (arg == "--lights-phase" && more) options.lightsPhase = static_cast<uint32_t>(std::strtoul(argv[++i], nullptr, 0));
+        else if (arg == "--opening-textures" && more) options.openingTextures = argv[++i];
+        else if (arg == "--capture" && more) options.capture = argv[++i];
         else if (arg == "--no-validation") options.validation = false;
         else if (arg == "--soak" && more) options.soak = std::atof(argv[++i]);
         else if (arg == "--shaders" && more) options.shaders = argv[++i];
@@ -102,7 +118,7 @@ int main(int argc, char** argv) {
         else if (arg == "--font" && more) options.font = argv[++i];
         else if (arg == "--program" && more) options.program = argv[++i];
         else {
-            std::fprintf(stderr, "usage: CrystalClock [--smoke] [--soak seconds] [--no-validation] [--shaders dir] [--textures dir] [--start scene.json] [--mesh rod-mesh.json] [--screenshots dir] [--font FNTOSD] [--program hddosd.elf]\n");
+            std::fprintf(stderr, "usage: CrystalClock [--boot [--towers none|demo] [--lights-phase N] [--opening-textures dir] [--capture all|n,n,...]] [--smoke] [--soak seconds] [--no-validation] [--shaders dir] [--textures dir] [--start scene.json] [--mesh rod-mesh.json] [--screenshots dir] [--font FNTOSD] [--program hddosd.elf]\n");
             return 1;
         }
     }
@@ -120,6 +136,7 @@ int main(int argc, char** argv) {
         render::Device device(window, {options.validation});
         render::NativeRenderer renderer(device, options.shaders);
         renderer.loadClockTextures(options.textures);
+        if (options.boot) renderer.loadOpeningTextures(options.openingTextures.empty() ? options.textures / "opening" : options.openingTextures);
 
         // The clock as the whole3-clock capture holds it at its first frame (resources/clock/start.json, or a
         // capture's scene.json through --start), then real time.
@@ -137,6 +154,50 @@ int main(int argc, char** argv) {
         Clock clock(clockInputs);
         scene::FrameInputs inputs = scene::frameInputs(input);
         app::firstFrame(inputs);
+
+        std::unique_ptr<app::BootChain> chain;
+        app::ClockScreen* bootClock = nullptr;
+        app::OpeningScreen* bootOpening = nullptr;
+        const auto buildBoot = [&] {
+            const nlohmann::json bootInput = scene::firstInput(options.bootStart.string());
+            scene::ClockInputs bootInputs = scene::clockInputs(bootInput, scene::loadRodMesh(options.mesh));
+            const auto program = std::make_shared<const scene::ProgramImage>(scene::ProgramImage::load(options.program));
+            if (bootInput.contains("font")) {
+                font = std::make_shared<const scene::Font>(scene::Font::load(options.font));
+                bootInputs.font = font;
+                bootInputs.program = program;
+            } else {
+                font.reset();
+            }
+            scene::opening::BootOptions boot;
+            boot.lightsPhase = options.lightsPhase;
+            if (options.towersDemo) {
+                scene::opening::History history{};
+                const char* names[] = {"DEMO A", "DEMO B", "DEMO C", "DEMO D", "DEMO E"};
+                for (size_t i = 0; i < 5; ++i) {
+                    for (size_t c = 0; names[i][c]; ++c) history[i].name[c] = names[i][c];
+                    history[i].count = static_cast<uint8_t>(3 + 4 * i);
+                    history[i].mask = static_cast<uint8_t>(0x0F << i);
+                    history[i].mainCell = static_cast<uint8_t>(i);
+                }
+                boot.history = history;
+            }
+            auto opening = std::make_unique<app::OpeningScreen>(boot, program);
+            bootOpening = opening.get();
+            auto screen = std::make_unique<app::ClockScreen>(bootInputs, scene::frameInputs(bootInput));
+            bootClock = screen.get();
+            chain = std::make_unique<app::BootChain>(std::move(opening), std::move(screen), scene::opening::kFramesToClock);
+        };
+        if (options.boot) buildBoot();
+        const bool captureAll = options.capture == "all";
+        std::set<uint64_t> captureAt;
+        for (size_t at = 0; at < options.capture.size() && !captureAll;) {
+            captureAt.insert(std::strtoull(options.capture.c_str() + at, nullptr, 10));
+            const size_t comma = options.capture.find(',', at);
+            if (comma == std::string::npos) break;
+            at = comma + 1;
+        }
+        const bool capturing = options.boot && !options.capture.empty();
 
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
@@ -170,8 +231,14 @@ int main(int argc, char** argv) {
             const system_clock::time_point now = system_clock::now() + offset;
             inputs.time = clockTime(now);
             inputs.items = clockItems(now);
-            frame = clock.frame(inputs);
-            app::nextFrame(inputs);
+            if (chain) {
+                bootClock->setTime(inputs.time, inputs.items);
+                chain->step();
+                frame = chain->frame();
+            } else {
+                frame = clock.frame(inputs);
+                app::nextFrame(inputs);
+            }
             ++logicFrames;
             fresh = true;
         };
@@ -278,6 +345,8 @@ int main(int argc, char** argv) {
             if (panel.paused) {
                 owed = 0;
                 if (panel.step) produce();
+            } else if (capturing) {
+                if (!fresh) produce();
             } else {
                 owed += std::min(delta, 0.25);
                 for (int n = 0; owed >= step; ++n) {
@@ -287,7 +356,7 @@ int main(int argc, char** argv) {
             }
             panel.step = false;
             const double sincePresent = double(now - lastPresent) * 1e-9;
-            if (panel.paused ? sincePresent < step : !fresh) {
+            if (!capturing && (panel.paused ? sincePresent < step : !fresh)) {
                 const double wait = panel.paused ? step - sincePresent : step - owed;
                 SDL_DelayPrecise(static_cast<Uint64>(std::max(0.0, wait) * 1e9));
                 continue;
@@ -297,6 +366,14 @@ int main(int argc, char** argv) {
             char text[64];
             std::snprintf(text, sizeof text, "%02d:%02d:%02d", shownTime.hours, shownTime.minutes, shownTime.seconds);
             info.clock = text;
+            if (chain) {
+                info.screen = chain->name();
+                info.counter = bootOpening->counter();
+                info.stage = bootOpening->stage();
+                info.cameraZ = bootOpening->cameraZ();
+                if (const scene::opening::HandOff* h = bootOpening->handOff()) info.handOff = "module " + std::to_string(h->module) + ", execute type " + std::to_string(h->executeAppType);
+                info.sounds = bootOpening->sounds().size();
+            }
             info.logicFrames = logicFrames;
             info.framesPerSecond = fps;
             info.validationErrors = device.validationErrors();
@@ -306,7 +383,7 @@ int main(int argc, char** argv) {
             app::drawPanel(panel, info);
             ImGui::Render();
 
-            if (font) renderer.setGlyphCache(*font, frame.glyphs);
+            if (font && frame.textureSet == scene::TextureSet::Clock) renderer.setGlyphCache(*font, frame.glyphs);
             auto context = device.beginFrame();
             if (!context) {
                 SDL_Delay(10);
@@ -350,6 +427,20 @@ int main(int argc, char** argv) {
             }
             lastPresent = shown;
 
+            if (capturing) {
+                if (captureAll || captureAt.count(logicFrames)) {
+                    char name[32];
+                    std::snprintf(name, sizeof name, "boot-%03llu", static_cast<unsigned long long>(logicFrames));
+                    shoot(name);
+                }
+                if (logicFrames >= 246 + (captureAll ? 40 : 0)) running = false;
+            }
+            if (panel.restartOpening && chain) {
+                panel.restartOpening = false;
+                buildBoot();
+                logicFrames = 0;
+                produce();
+            }
             if (panel.screenshot || !screenshotName.empty()) {
                 shoot(screenshotName.empty() ? "clock" : screenshotName);
                 panel.screenshot = false;
