@@ -285,6 +285,12 @@ What is verified and what is still open is kept, line by line, in [`facts/README
 | [Dear ImGui](https://github.com/ocornut/imgui) | submodule | Debug panel |
 | [stb_image](https://github.com/nothings/stb) | bundled | Texture loading |
 
+## License
+
+CrystalClockVK is free software under the [GNU General Public License v3.0](LICENSE). Copyright (C) 2026 Jean Pereira.
+
+The license covers this code only. Sony's data (BIOS, HDD OSD, textures, fonts, sounds) is not part of this repository and is read from your own console's files.
+
 ---
 
 <p align="center">
