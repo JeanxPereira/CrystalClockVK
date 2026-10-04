@@ -5,6 +5,14 @@
 
 namespace parity {
 
+// facts/text.md section 2: the glyph cache, 4 bits a texel through its colour table (PSM 0x14), named as frame_passes.mjs
+// names a texture: TBP0, TBW, PSM, TW x TH.
+std::string glyphTextureId(const scene::GlyphCache& g) {
+    char id[48];
+    std::snprintf(id, sizeof id, "t%04x-%d-20-%dx%d", g.address >> 6, g.width >> 6, g.logWidth, g.logHeight);
+    return id;
+}
+
 namespace {
 
 std::string blockName(const char* prefix, uint32_t block) {
@@ -35,13 +43,17 @@ GsAddress addressOf(const scene::Material& m, int32_t min, int32_t max) {
     throw std::runtime_error("unknown sampling");
 }
 
-GsTexture textureOf(const scene::Material& m, const GsFrameLayout& layout) {
+GsTexture textureOf(const scene::Material& m, const GsFrameLayout& layout, const scene::GlyphCache& glyphs) {
     GsTexture t{};
     if (m.source == scene::SourceKind::Target) {
         t.source = layout.targets[static_cast<size_t>(m.sourceTarget)];
         t.sourceIsTarget = true;
         t.width = layout.targetTextureWidth;
         t.height = layout.targetTextureHeight;
+    } else if (m.texture == scene::kGlyphTexture) {
+        t.source = glyphTextureId(glyphs);
+        t.width = 1u << glyphs.logWidth;
+        t.height = 1u << glyphs.logHeight;
     } else {
         const GsTextureImage& image = layout.textures.at(m.texture);
         t.source = image.id;
@@ -99,7 +111,7 @@ GsFrame fromScene(const scene::Frame& frame, const GsFrameLayout& layout) {
         if (m.blend != scene::BlendOp::Opaque) p.blend = blendOf(m.blend, m.blendConstant);
         p.antialias = pass.edgeSmoothing;
         p.depth = {tests[static_cast<size_t>(m.depthTest)], m.depthWrite};
-        if (m.source != scene::SourceKind::None) p.texture = textureOf(m, layout);
+        if (m.source != scene::SourceKind::None) p.texture = textureOf(m, layout, frame.glyphs);
         const float shift = pass.halfLine && frame.field ? 0.5f : 0.0f;
         for (const scene::Vertex& v : pass.vertices)
             p.vertices.push_back({v.x, v.y - shift, v.z, float(v.r), float(v.g), float(v.b), float(v.a), v.u, v.v, v.q});

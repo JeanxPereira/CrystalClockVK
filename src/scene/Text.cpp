@@ -1,0 +1,609 @@
+#include "scene/Text.hpp"
+
+#include <bit>
+#include <cmath>
+#include <optional>
+#include <stdexcept>
+#include <string>
+#include <utility>
+
+namespace scene {
+
+namespace {
+
+// HDD OSD 1.10U data the text reads, by EE address (facts/text.md sections 4 and 5; disassembly in
+// CrystalOSD/asm: func_00226300, do_format_date, do_format_time, draw_button_panel_hkdosd_p4_tgt, DrawIcon).
+constexpr uint32_t kLanguageTables = 0x002ad200;                 // langtblptrs: one string table per language
+constexpr uint32_t kEscapeColours = 0x00348b20;                  // the escape c's colours, three words each
+constexpr uint32_t kDateNone[3] = {0x00360d00, 0x00360d38, 0x00360d38};  // aP0P00P0P00P0P0, _0: a negative year
+constexpr uint32_t kDateYearFirst = 0x00360d28;                  // "%04d/%02d/%02d"
+constexpr uint32_t kDateYearLast = 0x00360d60;                   // "%02d/%02d/%04d"
+constexpr uint32_t kTimeNone[2] = {0x00360d70, 0x00360db0};      // aP0P00P0P00P0P0_1, _2: a negative hour
+constexpr uint32_t kTime24 = 0x00360d98;                         // "\ap@0%2d\ap00:%02d:%02d"
+constexpr uint32_t kTime12 = 0x00360df0;                         // the same and " %s"
+constexpr uint32_t kMorning = 0x00360e10, kAfternoon = 0x00360e28;  // "\ar0.80\ap@AA\ap00M\ar0.00", the same with P
+constexpr uint32_t kSummerMark = 0x00365558, kNoMark = 0x00370138;  // "\ar0.88\ao020\ar0.00", ""
+constexpr uint32_t kTimeLine = 0x00370130;                       // "%s %s"
+constexpr uint32_t kDateRatio = 0x0036fb94, kHintRatio = 0x0036fb98;
+constexpr uint32_t kPalMultiply = 0x00365570, kPalDivide = 0x00365578;          // func_00226300
+constexpr uint32_t kHintPalMultiply = 0x00365590, kHintPalDivide = 0x00365598;  // func_00226958
+constexpr uint32_t kIconPalMultiply = 0x00365580, kIconPalDivide = 0x00365588;  // DrawIcon
+constexpr uint32_t kPanels = 0x002b2318, kPanel8 = 0x002b2300;  // four string ids per panel, 0x14 apart; + 0xA0 by video mode
+constexpr uint32_t kSlots = 0x002b2470;                          // the four slots' x, 16 bytes per language
+constexpr uint32_t kSlotPictures = 0x002b24f0;                   // the picture of each slot
+constexpr uint32_t kHintColour = 0x002b2460;
+constexpr uint32_t kIconRecord = 0x002b2260;                     // DrawIcon's rectangle record
+constexpr uint32_t kIconPlaces = 0x002b22a0;                     // u0, v0, u1, v1 per picture
+
+int32_t clampTo(int32_t v, int32_t top) { return v < 0 ? 0 : v > top ? top : v; }
+int32_t by128(int64_t x) { return static_cast<int32_t>((x < 0 ? x + 127 : x) >> 7); }
+int32_t divide(int64_t a, int32_t b) {
+    if (b == 0) throw std::runtime_error("text: a ramp or tail of length 0 divides");
+    return static_cast<int32_t>(a / b);
+}
+int32_t scaleOf(const Ramp& r, int32_t n) { return divide(int64_t(r.counter) * n, r.length); }
+
+// sprintf as the program uses it: %s, %d with a zero flag and a width.
+std::string format(const std::string& pattern, const std::vector<std::string>& texts, const std::vector<int32_t>& numbers) {
+    std::string out;
+    size_t text = 0, number = 0;
+    for (size_t i = 0; i < pattern.size(); ++i) {
+        if (pattern[i] != '%') { out.push_back(pattern[i]); continue; }
+        ++i;
+        bool zero = false;
+        if (i < pattern.size() && pattern[i] == '0') { zero = true; ++i; }
+        int width = 0;
+        while (i < pattern.size() && pattern[i] >= '0' && pattern[i] <= '9') width = width * 10 + (pattern[i++] - '0');
+        if (i >= pattern.size()) throw std::runtime_error("text: a format ends in a conversion");
+        if (pattern[i] == 's') {
+            out += texts.at(text++);
+        } else if (pattern[i] == 'd') {
+            const int64_t v = numbers.at(number++);
+            std::string digits = std::to_string(v < 0 ? -v : v);
+            const size_t sign = v < 0 ? 1 : 0;
+            while (digits.size() + sign < size_t(width) && zero) digits.insert(digits.begin(), '0');
+            if (v < 0) digits.insert(digits.begin(), '-');
+            while (digits.size() < size_t(width)) digits.insert(digits.begin(), ' ');
+            out += digits;
+        } else if (pattern[i] == '%') {
+            out.push_back('%');
+        } else {
+            throw std::runtime_error(std::string("text: the conversion %") + pattern[i] + " is not modelled");
+        }
+    }
+    return out;
+}
+
+}
+
+// What the program's filter hands the library for one character (fontFilterPutc 0x00212A20).
+template <class A>
+struct Text<A>::Character {
+    int32_t code = 0;
+    Vec4 locate{};
+    std::array<float, 4> colour{};
+    Mat4 matrix{};
+    bool fresh = false;
+};
+
+template <class A>
+Text<A>::Text(std::shared_ptr<const Font> font, std::shared_ptr<const ProgramImage> program, const TextInputs& inputs)
+    : m_fontFile(std::move(font)), m_program(std::move(program)), m_cache(inputs.cache), m_font(inputs.font), m_ramps(inputs.ramps), m_settings(inputs.settings) {
+    if (!m_fontFile || !m_program) throw std::runtime_error("text: no font or program");
+    m_libraryColour = m_font.colour;
+    m_cells.assign(static_cast<size_t>(m_cache.cells), 0);
+    for (const FontCacheEntry& e : m_cache.list)
+        if (e.loaded && e.cell >= 0 && e.cell < m_cache.cells) m_cells[static_cast<size_t>(e.cell)] = e.code;
+}
+
+// func_002132B8: the size, times the width in percent when one is set.
+template <class A>
+float Text<A>::scaleX(const FontState& s) const {
+    return s.percent ? A::div(A::mul(s.ratio, static_cast<float>(s.percent)), 100.0f) : s.ratio;
+}
+
+// updateTransMatrix (0x00213380): diag(x, x tv, 1, 1) moved by (pitch x, ascent 0.7 tv size), when the size changed.
+template <class A>
+void Text<A>::updateMatrix(FontState& s) const {
+    if (!s.dirty) return;
+    s.dirty = 0;
+    const float x = scaleX(s);
+    s.matrix = {{{x, 0, 0, 0}, {0, A::mul(x, s.tv), 0, 0}, {0, 0, 1, 0},
+                 {A::mul(static_cast<float>(s.pitch), x), A::mul(A::mul(A::mul(static_cast<float>(s.ascent), asFloat(0x3f333333)), s.tv), s.ratio), 0, 1}}};
+}
+
+// Font_SetRatio (0x002127B8): the size, and the matrix marked to be made again.
+template <class A>
+void Text<A>::setRatio(float ratio) {
+    m_font.ratio = ratio;
+    m_font.dirty = 1;
+}
+
+// Font_SetColor: each int times 1/128.
+template <class A>
+void Text<A>::setColour(int32_t r, int32_t g, int32_t b, int32_t a) {
+    const float step = asFloat(0x3c000000);
+    m_font.colour = {A::mul(static_cast<float>(r), step), A::mul(static_cast<float>(g), step), A::mul(static_cast<float>(b), step), A::mul(static_cast<float>(a), step)};
+}
+
+template <class A>
+void Text<A>::setLocate(int32_t x, int32_t y) {
+    m_font.locate = {static_cast<float>(x), static_cast<float>(y)};
+}
+
+// config_get_osd_language (0x00203DD8) with get_vidmode_with_fallback: the layout row of the hints.
+template <class A>
+int32_t Text<A>::language() const {
+    const int32_t field = static_cast<int32_t>((m_settings.settingsWord >> 4) & 0x1f);
+    if (m_settings.videoMode <= 0) return field == 1 ? 1 : 0;
+    if (field == 0 || field >= 8) return 1;
+    return field;
+}
+
+// References/model/clock_text.mjs putString with verify_text2.mjs stringOf: one string through Font_PutsPackets
+// (0x00213BA8) or calcDrawArea (0x00213D38), the library asked for each character in turn. Returns the farthest the pen
+// went (x), which is what a measurement gives.
+template <class A>
+float Text<A>::putString(const std::string& text, bool measuring, TextFrame& out) {
+    out.strings.push_back({text, measuring, m_font});
+    FontState& s = m_font;
+    if (!measuring) m_cache.setUp = 1;
+    updateMatrix(s);
+    std::array<float, 4> colour = measuring ? m_libraryColour : s.colour;
+    const float startX = measuring ? 0.0f : s.locate[0], startY = measuring ? 0.0f : s.locate[1];
+    std::array<float, 2> pen{startX, startY};
+    std::array<float, 2> reach{startX, startY};
+    bool fresh = true;
+    const auto widest = [&] {
+        if (reach[0] < pen[0]) reach[0] = pen[0];
+        if (reach[1] < pen[1]) reach[1] = pen[1];
+    };
+    const Font& font = *m_fontFile;
+    bool drew = false;
+    float lastPen = 0;
+
+    // _scePFont_Getc (0x002928F8): UTF-8, 0 at the end, -1 on a broken sequence.
+    size_t i = 0;
+    const auto take = [&]() -> int32_t {
+        if (i >= text.size()) return 0;
+        int32_t c = static_cast<uint8_t>(text[i++]);
+        if (c < 0x80) return c;
+        int32_t more;
+        if (c < 0xc0) return -1;
+        if (c < 0xe0) { c &= 0x1f; more = 1; }
+        else if (c < 0xf0) { c &= 0x0f; more = 2; }
+        else if (c < 0xf8) { c &= 7; more = 3; }
+        else return -1;
+        for (; more > 0; --more) {
+            const int32_t next = i < text.size() ? static_cast<uint8_t>(text[i++]) : 0;
+            if ((next & 0xc0) != 0x80) return -1;
+            c = (c << 6) | (next & 0x3f);
+        }
+        return c;
+    };
+
+    // fontFilterPutc (0x00212A20): a fixed width centres the character in it; the clip skips what is off the screen.
+    const auto character = [&](int32_t code) {
+        if (s.decoration) throw std::runtime_error("text: a string with a background or an underline is not modelled");
+        bool fixedAfter = false;
+        float after = 0;
+        if (s.fixed != 0 || s.clip != 0) {
+            std::optional<Glyph> glyph = font.glyph(code);
+            if (!glyph) glyph = font.glyph(0xd818);
+            if (!glyph) return;
+            const float before = pen[0], x = s.matrix[0][0], pitch = s.matrix[3][0];
+            if (s.fixed != 0) {
+                pen[0] = A::add(before, A::mul(static_cast<float>((s.fixed - glyph->metrics[6]) / 2), x));
+                after = A::add(A::add(before, pitch), A::mul(static_cast<float>(s.fixed), x));
+                fixedAfter = true;
+            } else {
+                after = A::add(A::add(before, pitch), A::mul(static_cast<float>(glyph->metrics[6]), x));
+            }
+            if (s.clip && (640.0f < before || after < 0.0f)) {
+                pen[0] = after;
+                widest();
+                return;
+            }
+        }
+        Character c{code, {pen[0], pen[1], 0, 0}, colour, s.matrix, fresh};
+        const float penX = putCharacter(c, measuring, out);
+        drew = true;
+        lastPen = penX;
+        m_libraryColour = colour;
+        pen[0] = fixedAfter ? after : penX;
+        fresh = false;
+    };
+
+    for (int32_t c = take(); c > 0; c = take()) {
+        if (c >= 0x20) {
+            if (c == 0xfeff || c == 0xfffe || c == 0xffff) continue;
+            character(c);
+        } else if (c == 9) {
+            const float along = A::sub(A::add(pen[0], 63.0f), 1.0f);
+            pen[0] = A::sub(along, A::cut(std::fmod(double(along), 63.0)));
+        } else if (c == 10) {
+            fresh = true;
+            pen[0] = startX;
+            pen[1] = A::add(pen[1], static_cast<float>(s.lineHeight));
+        } else if (c == 7) {
+            const int32_t letter = take();
+            const auto digit = [&] { return take() - 0x30; };
+            if (letter == 'c') {
+                const int32_t n = digit();
+                const uint32_t at = kEscapeColours + 12u * static_cast<uint32_t>(n);
+                const float step = asFloat(0x3c000000);
+                colour = {A::mul(static_cast<float>(m_program->integer(at)), step), A::mul(static_cast<float>(m_program->integer(at + 4)), step),
+                          A::mul(static_cast<float>(m_program->integer(at + 8)), step), colour[3]};
+            } else if (letter == 'a') {
+                const int32_t n = digit() * 100 + digit() * 10 + digit();
+                colour[3] = A::div(static_cast<float>(n), 255.0f);
+            } else if (letter == 'p') {
+                const int32_t first = take();
+                if (first == 0x40) {
+                    if (const std::optional<Glyph> glyph = font.glyph(take())) s.fixed = glyph->metrics[6];
+                } else {
+                    s.fixed = (first - 0x30) * 10 + digit();
+                }
+            } else if (letter == 'r') {
+                int32_t n = digit() * 100;
+                take();
+                n += digit() * 10;
+                n += digit();
+                s.percent = n;
+                s.dirty = 1;
+                updateMatrix(s);
+            } else if (letter == 's') {
+                pen[0] = A::add(pen[0], static_cast<float>(s.blank));
+            } else if (letter == 'y') {
+                const int32_t sign = take();
+                const auto hex = [](int32_t v) { return v >= 0x30 && v <= 0x39 ? v - 0x30 : ((v | 0x20) >= 0x61 && (v | 0x20) <= 0x66) ? (v | 0x20) - 0x57 : 0; };
+                int32_t n = hex(take()) * 16;
+                n += hex(take());
+                if (n != 0 && sign == 0x2d) n = -n;
+                pen[1] = A::add(startY, A::mul(static_cast<float>(n), 0.0625f));
+            } else if (letter == 'o') {
+                character(0xd800 + digit() * 100 + digit() * 10 + digit());
+            }
+        }
+        widest();
+    }
+    // Font_PutsPackets reads the pen and the colour back from the library.
+    if (!measuring) {
+        s.colour = colour;
+        if (drew) s.locate = {lastPen, pen[1]};
+    }
+    return reach[0];
+}
+
+// References/model/clock_text.mjs carryList with verify_text2.mjs putCharacter: the cache entry for the code moves to
+// the head of the list (taking the cell of the least recently used entry passed when it has none), its picture is
+// uploaded when it is not loaded, and the twelve-vertex fan is placed (facts/text.md sections 2 and 3).
+template <class A>
+float Text<A>::putCharacter(const Character& c, bool measuring, TextFrame& out) {
+    const Font& font = *m_fontFile;
+    std::vector<FontCacheEntry>& list = m_cache.list;
+    size_t at = 0;
+    std::optional<size_t> spare;
+    if (list[0].cell != -1) spare = 0;
+    if (list[0].code != c.code && list[0].code != 0 && list.size() > 1) {
+        for (at = 1;; ++at) {
+            if (list[at].code == c.code) break;
+            if (list[at].cell != -1) spare = at;
+            if (at == list.size() - 1 || list[at].code == 0) break;
+        }
+    }
+    FontCacheEntry entry = list[at];
+    if (entry.cell == -1 && spare && *spare != at) {
+        entry.loaded = 0;
+        entry.cell = list[*spare].cell;
+        list[*spare].cell = -1;
+        list[*spare].loaded = 0;
+    }
+    const std::optional<Glyph> found = font.glyph(c.code);
+    if (entry.code != c.code) {
+        entry.loaded = 0;
+        entry.code = c.code;
+        entry.block = found ? found->block->at : 0;
+    }
+    list.erase(list.begin() + static_cast<std::ptrdiff_t>(at));
+    list.insert(list.begin(), entry);
+    if (!found || entry.block == 0) throw std::runtime_error("text: the character " + std::to_string(c.code) + " has no glyph (the library gives it up)");
+    const Glyph& glyph = *found;
+    const FontBlock& block = *glyph.block;
+
+    if (!measuring) {
+        if (entry.loaded == 0) {
+            // _scePFontSetupTexCache: a block of another cell size lays the cache out again.
+            if (m_cache.block != block.at) {
+                if ((block.flags & 7) != 0) throw std::runtime_error("text: a block that is not 4 bits a pixel: its cache is not modelled");
+                const int32_t cellW = (block.width + 2 + 7) & ~7, cellH = (block.height + 2 + 3) & ~3;
+                if (!(m_cache.format == 0x14 && m_cache.cellW == cellW && m_cache.cellH == cellH)) {
+                    const int32_t pages = static_cast<int32_t>((m_cache.memory + 0x7ff) >> 11);
+                    int32_t across = A::toInt(A::sqrt(static_cast<float>(pages)));
+                    while (pages % across != 0) across -= 1;
+                    m_cache.format = 0x14;
+                    m_cache.cellW = cellW;
+                    m_cache.cellH = cellH;
+                    m_cache.width = across * 0x80;
+                    m_cache.height = (pages / across) * 0x80;
+                    m_cache.cells = (m_cache.width / cellW) * (m_cache.height / cellH);
+                    m_cache.logW = 32 - std::countl_zero(static_cast<uint32_t>(m_cache.width - 1));
+                    m_cache.logH = 32 - std::countl_zero(static_cast<uint32_t>(m_cache.height - 1));
+                    for (size_t i = 0; i < list.size(); ++i) {
+                        list[i].loaded = 0;
+                        list[i].cell = static_cast<int32_t>(i) < m_cache.cells ? static_cast<int32_t>(i) : -1;
+                    }
+                    m_cells.assign(static_cast<size_t>(m_cache.cells), 0);
+                    m_drawn.assign(static_cast<size_t>(m_cache.cells), false);
+                }
+                m_cache.setUp = 1;
+                m_cache.block = block.at;
+            }
+            // _scePFontUpdateTex: the picture into the entry's cell.
+            const size_t cell = static_cast<size_t>(entry.cell);
+            if (m_drawn.at(cell)) throw std::runtime_error("text: a cell drawn in this frame is given another glyph in the same frame");
+            m_cells.at(cell) = c.code;
+            list[0].loaded = 1;
+        }
+        m_cache.setUp = 0;
+    }
+
+    const auto [originX, baseline, left, right, top, bottom, advance] = glyph.metrics;
+    const float x0 = float(left - 1), x1 = float(right + 1), yTop = float(-(top + 1)), yBottom = float(-(bottom - 1)), pen = 0, step = float(advance);
+    const std::array<std::array<float, 2>, 11> shape{{{pen, 0}, {pen, yTop}, {x0, yTop}, {x0, 0}, {x0, yBottom}, {pen, yBottom}, {step, yBottom}, {x1, yBottom}, {x1, 0},
+                                                     {x1, yTop}, {step, yTop}}};
+    const Vec4 scale{block.scaleX, block.scaleY, 1, 1};
+    Mat4 m{};
+    for (int r = 0; r < 4; ++r)
+        for (int i = 0; i < 4; ++i) m[r][i] = A::mul(c.matrix[r][i], scale[i]);
+    for (int i = 0; i < 4; ++i) m[3][i] = A::add(m[3][i], c.locate[i]);
+    std::array<Vec4, 11> placed{};
+    for (size_t k = 0; k < shape.size(); ++k) placed[k] = Matrix<A>::apply(m, {shape[k][0], shape[k][1], 0, 1});
+    // The first character after the pen was set starts at the pen: the column through the pen is brought back to it.
+    if (c.fresh) {
+        const float rise = A::sub(placed[5][1], placed[1][1]);
+        const float shift = rise == 0.0f ? A::sub(placed[1][0], c.locate[0])
+                                         : A::sub(A::add(A::div(A::mul(A::sub(c.locate[1], placed[1][1]), A::sub(placed[5][0], placed[1][0])), rise), placed[1][0]), c.locate[0]);
+        for (Vec4& v : placed) v[0] = A::sub(v[0], shift);
+    }
+    // The pen moves to where the advance's column crosses the pen's height.
+    const float rise = A::sub(placed[10][1], placed[6][1]);
+    const float penX = rise == 0.0f ? placed[6][0] : A::add(A::div(A::mul(A::sub(c.locate[1], placed[6][1]), A::sub(placed[10][0], placed[6][0])), rise), placed[6][0]);
+    if (measuring) return penX;
+
+    const int32_t columns = m_cache.width / m_cache.cellW;
+    const int32_t cellX = (entry.cell % columns) * m_cache.cellW, cellY = (entry.cell / columns) * m_cache.cellH;
+    m_drawn.at(static_cast<size_t>(entry.cell)) = true;
+    const int32_t s0 = cellX + 1, t0 = cellY + 1;
+    const int32_t sPen = originX + s0, tBase = baseline + t0;
+    const int32_t sLeft = left - 1 + sPen, sRight = right + 1 + sPen, sAdvance = advance + sPen, tTop = -(top + 1) + tBase, tBottom = -(bottom - 1) + tBase;
+    const std::array<std::array<int32_t, 2>, 11> texel{{{sPen, tBase}, {sPen, tTop}, {sLeft, tTop}, {sLeft, tBase}, {sLeft, tBottom}, {sPen, tBottom}, {sAdvance, tBottom},
+                                                       {sRight, tBottom}, {sRight, tBase}, {sRight, tTop}, {sAdvance, tTop}}};
+    const float perS = A::div(1.0f, static_cast<float>(1 << m_cache.logW)), perT = A::div(1.0f, static_cast<float>(1 << m_cache.logH));
+    std::array<uint8_t, 4> colour{};
+    for (int i = 0; i < 4; ++i) colour[i] = static_cast<uint8_t>(A::toInt(A::mul(c.colour[i], 128.0f)));
+    // The screen matrix: the unit matrix moved to the GS's centre (2048 - W/2, 2048 - H/2).
+    const float originXs = static_cast<float>(0x800 - (m_width >> 1)), originYs = static_cast<float>(0x800 - (m_height >> 1));
+    const Mat4 screen{{{1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 1, 0}, {originXs, originYs, 0, 1}}};
+    TextDraw draw;
+    draw.kind = TextDraw::Kind::Glyph;
+    draw.glyph.region = {s0 - 1, s0 + block.width, t0 - 1, t0 + block.height};
+    for (size_t k = 0; k < placed.size(); ++k) {
+        const Vec4 on = Matrix<A>::apply(screen, placed[k]);
+        const float q = A::div(1.0f, on[3]);
+        GlyphVertex& v = draw.glyph.fan[k];
+        v.s = A::mul(A::mul(static_cast<float>(texel[k][0]), perS), q);
+        v.t = A::mul(A::mul(static_cast<float>(texel[k][1]), perT), q);
+        v.q = A::mul(A::mul(1.0f, 1.0f), q);
+        v.colour = colour;
+        v.x = static_cast<float>(A::toInt(A::mul(A::mul(on[0], q), 16.0f))) / 16.0f - originXs;
+        v.y = static_cast<float>(A::toInt(A::mul(A::mul(on[1], q), 16.0f))) / 16.0f - originYs;
+    }
+    draw.glyph.fan[11] = draw.glyph.fan[1];
+    out.draws.push_back(draw);
+    return penX;
+}
+
+// func_00213EE8: the measured width, (int)((int)reach + pitch x scale).
+template <class A>
+int32_t Text<A>::widthOf(const std::string& text, TextFrame& out) {
+    const float x = scaleX(m_font);
+    const float reach = putString(text, true, out);
+    return A::toInt(A::add(static_cast<float>(A::toInt(reach)), A::mul(static_cast<float>(m_font.pitch), x)));
+}
+
+// DrawIcon (0x00226508): a button's picture, 28 wide from texture 8 (pictures 0 and 1) or 25 wide from texture 9, half
+// as high, its corners from D_002B22A0; in PAL its bottom is scaled by 0.5405 / 0.47 (facts/text.md section 5).
+template <class A>
+void Text<A>::icon(int32_t picture, int32_t x, int32_t y, int32_t alpha, const TextFrameInputs&, TextFrame& out) {
+    const bool wide = picture >= 0 && picture < 2;
+    const int32_t size = wide ? 0x1c : 0x19;
+    const ProgramImage& p = *m_program;
+    Rect r;
+    for (int i = 0; i < 4; ++i) r.colour[i] = p.integer(kIconRecord + 4 * i);
+    r.z = p.integer(kIconRecord + 0x30);
+    r.blend = p.integer(kIconRecord + 0x34);
+    r.textured = p.integer(kIconRecord + 0x38);
+    r.colour[3] = alpha;
+    r.x0 = x << 4;
+    r.y0 = y << 4;
+    r.x1 = (x + size) << 4;
+    r.y1 = (y + static_cast<int32_t>(static_cast<uint32_t>(size) >> 1)) << 4;
+    const uint32_t place = kIconPlaces + 16u * static_cast<uint32_t>(picture);
+    r.u0 = (p.integer(place) << 4) + 8;
+    r.v0 = (p.integer(place + 4) << 4) + 8;
+    r.u1 = (p.integer(place + 8) << 4) + 8;
+    r.v1 = (p.integer(place + 12) << 4) + 8;
+    if (pal())
+        r.y1 = static_cast<int32_t>(std::trunc(double(r.y0) + double(static_cast<float>(r.y1 - r.y0)) * p.doubleAt(kIconPalMultiply) / p.doubleAt(kIconPalDivide)));
+    TextDraw draw;
+    draw.kind = TextDraw::Kind::Icon;
+    draw.icon = r;
+    draw.texture = wide ? 8 : 9;
+    out.draws.push_back(draw);
+}
+
+// draw_button_panel (0x00226770): the panel's four slots, each a string id (1 for none); a slot's picture at the
+// slot's x for the language and its text 28 to the right, one line lower; the fourth slot ends 24 from the right.
+template <class A>
+void Text<A>::buttonPanel(int32_t panel, int32_t alpha, int32_t y, const TextFrameInputs& in, TextFrame& out) {
+    const ProgramImage& p = *m_program;
+    const int32_t row = language();
+    setRatio(p.single(kHintRatio));
+    const int32_t video = m_settings.videoMode > -1 ? m_settings.videoMode : 0;
+    const uint32_t table = panel == 8 ? kPanel8 : kPanels + 0x14u * static_cast<uint32_t>(panel) + (video != 0 ? 0xa0u : 0u);
+    const uint32_t slots = kSlots + 16u * static_cast<uint32_t>(row);
+    // get_lang_string (0x002081B8): the language's table, as config_set_langtbl chose it (clock_text.mjs languageOf).
+    const uint32_t language = ((m_settings.settingsWord >> 4) & 0x1f) ? ((m_settings.settingsWord >> 4) & 0x1f) : 1;
+    const uint32_t strings = p.word(kLanguageTables + 4 * language);
+    for (uint32_t slot = 0; slot < 4; ++slot) {
+        const int32_t id = p.integer(table + 4 * slot);
+        if (id == 1) continue;
+        const std::string text = p.string(p.word(strings + 4 * static_cast<uint32_t>(id)));
+        int32_t x;
+        if (slot == 3) {
+            const int32_t reach = widthOf(text, out) + 0x18;
+            icon(p.integer(kSlotPictures + 0xc), in.width - reach - 0x1c, y, alpha, in, out);
+            x = in.width - reach;
+        } else {
+            icon(p.integer(kSlotPictures + 4 * slot), p.integer(slots + 4 * slot), y, alpha, in, out);
+            x = p.integer(slots + 4 * slot) + 0x1c;
+        }
+        // DrawNonSelectableItem: the colour D_002B2460 with the panel's alpha, one line under the picture's top.
+        setColour(p.integer(kHintColour), p.integer(kHintColour + 4), p.integer(kHintColour + 8), alpha);
+        setLocate(x, y + 1);
+        putString(text, false, out);
+    }
+    setRatio(1.0f);
+}
+
+template <class A>
+TextFrame Text<A>::frame(const TextFrameInputs& in) {
+    const ProgramImage& p = *m_program;
+    m_width = in.width;
+    m_height = in.height;
+    m_drawn.assign(m_cells.size(), false);
+    TextFrame out;
+
+    // func_00226300: the date at the left and the time ending 22 from the right, 14 from the top (32 when item 0 is 2).
+    int32_t y = in.item0 == 2 ? 0x20 : 0xe;
+    if (pal()) y = static_cast<int32_t>(std::trunc(double(static_cast<float>(y)) * p.doubleAt(kPalMultiply) / p.doubleAt(kPalDivide)));
+    setRatio(p.single(kDateRatio));
+    // func_00230008: 128 unless a dialog closes (or the first run's ramp holds it at 0), by the ramps of System
+    // Configuration otherwise; times the overlay level.
+    int32_t dateAlpha;
+    if (m_ramps.dialogClosing.state != 0) dateAlpha = 0x80;
+    else if (m_ramps.firstRun.state != 0) dateAlpha = 0;
+    else dateAlpha = divide(int64_t(clampTo(m_ramps.config.counter - (m_ramps.lead + m_ramps.body), in.tail)) << 7, in.tail);
+    setColour(0x60, 0x60, 0x60, by128(int64_t(dateAlpha) * in.overlayLevel));
+
+    // do_format_date (0x00214550) by item 0xE; do_format_time (0x00214640) by item 0xD.
+    const ClockItems& t = in.items;
+    std::string date;
+    switch (m_settings.dateFormat) {
+    case 0: date = t.year < 0 ? p.string(kDateNone[0]) : format(p.string(kDateYearFirst), {}, {t.year, t.month, t.day}); break;
+    case 1: date = t.year < 0 ? p.string(kDateNone[1]) : format(p.string(kDateYearLast), {}, {t.month, t.day, t.year}); break;
+    case 2: date = t.year < 0 ? p.string(kDateNone[2]) : format(p.string(kDateYearLast), {}, {t.day, t.month, t.year}); break;
+    default: throw std::runtime_error("text: date format " + std::to_string(m_settings.dateFormat) + " gives no string");
+    }
+    setLocate(0x16, y);
+    putString(date, false, out);
+    // config_get_daylight_saving: bit 29 of the settings word.
+    const std::string mark = p.string(((m_settings.settingsWord >> 29) & 1) ? kSummerMark : kNoMark);
+    std::string time;
+    switch (m_settings.timeFormat) {
+    case 0: time = t.hour < 0 ? p.string(kTimeNone[0]) : format(p.string(kTime24), {}, {t.hour, t.minute, t.second}); break;
+    case 1: {
+        if (t.hour < 0) { time = p.string(kTimeNone[1]); break; }
+        const int32_t twelve = t.hour % 12 != 0 ? t.hour % 12 : 12;
+        time = format(p.string(kTime12), {p.string(t.hour < 12 ? kMorning : kAfternoon)}, {twelve, t.minute, t.second});
+        break;
+    }
+    default: throw std::runtime_error("text: time format " + std::to_string(m_settings.timeFormat) + " gives no string");
+    }
+    const std::string line = format(p.string(kTimeLine), {mark, time}, {});
+    const int32_t width = widthOf(line, out);
+    setLocate(in.width - width - 0x16, y);
+    putString(line, false, out);
+
+    // func_002269E0: the button panels and their alpha; func_00226958: their line, 200 (182 when item 0 is 2).
+    int32_t hintY = in.item0 == 2 ? 0xb6 : 0xc8;
+    if (pal()) hintY = static_cast<int32_t>(std::trunc(double(static_cast<float>(hintY)) * p.doubleAt(kHintPalMultiply) / p.doubleAt(kHintPalDivide)));
+    if (m_ramps.panel7 == 1) {
+        buttonPanel(7, 0x80, hintY, in, out);
+    } else {
+        if (m_ramps.panel8On != 0) buttonPanel(8, m_ramps.panel8, hintY, in, out);
+        // func_002326F0: panels 1 to 6 by func_00231E78, func_00230E10, func_0022A238 (1 and 0), func_00228F40,
+        // func_00230C28, capped at 128 (verify_text2.mjs panelsOf).
+        const Ramp& menu = in.menu;
+        const int32_t tail = in.tail;
+        const auto mainMenu = [&] {
+            int32_t a = scaleOf(m_ramps.mainMenu, 0x80);
+            a = divide(int64_t(a) * clampTo(tail - m_ramps.config.counter, tail), tail);
+            a = by128(int64_t(a) * (0x80 - scaleOf(m_ramps.version, 0x80)));
+            a = by128(int64_t(a) * in.overlayLevel);
+            if (m_ramps.dialogClosing.state != 0 || m_ramps.firstRun.state != 0) a = 0;
+            return a;
+        };
+        const auto configuration = [&] {
+            const int32_t a = divide(int64_t(clampTo(m_ramps.config.counter - (m_ramps.body + m_ramps.lead), tail)) << 7, tail);
+            return divide(int64_t(a) * clampTo(tail - menu.counter, tail), tail);
+        };
+        const auto adjust = [&](int32_t side) {
+            const int32_t a = by128(int64_t(scaleOf(m_ramps.version, 0x80)) * (0x80 - scaleOf(m_ramps.dialog, 0x80)));
+            if (a <= 0) return 0;
+            return ((m_ramps.adjustRow != 0 ? 1 : 0) ^ side) == 0 ? a : 0;
+        };
+        const auto clock = [&] { return divide(int64_t(clampTo(menu.counter - m_ramps.body, tail)) << 7, tail); };
+        for (int32_t panel = 1; panel < 7; ++panel) {
+            int32_t a = 0;
+            switch (panel) {
+            case 1: a = mainMenu(); break;
+            case 2: a = configuration(); break;
+            case 3: a = adjust(1); break;
+            case 4: a = adjust(0); break;
+            case 5: a = scaleOf(m_ramps.dialog, 0x80); break;
+            case 6: a = clock(); break;
+            }
+            if (a > 0x80) a = 0x80;
+            if (a > 0) buttonPanel(panel, a, hintY, in, out);
+        }
+    }
+
+    out.glyphs.address = m_cache.texture;
+    out.glyphs.cellWidth = m_cache.cellW;
+    out.glyphs.cellHeight = m_cache.cellH;
+    out.glyphs.width = m_cache.width;
+    out.glyphs.logWidth = m_cache.logW;
+    out.glyphs.logHeight = m_cache.logH;
+    out.glyphs.cells = m_cells;
+    return out;
+}
+
+std::vector<uint8_t> glyphCacheImage(const Font& font, const GlyphCache& cache) {
+    const int32_t size = 1 << cache.logWidth, rows = 1 << cache.logHeight;
+    std::vector<uint8_t> out(size_t(size) * size_t(rows) * 4, 0);
+    if (cache.cellWidth <= 0) return out;
+    const int32_t columns = cache.width / cache.cellWidth;
+    for (size_t n = 0; n < cache.cells.size(); ++n) {
+        if (cache.cells[n] == 0) continue;
+        const std::optional<Glyph> glyph = font.glyph(cache.cells[n]);
+        if (!glyph) throw std::runtime_error("glyph cache: no glyph for a cell's code");
+        const std::array<Rgba, 16> table = font.table(*glyph->block);
+        const int32_t cellX = (static_cast<int32_t>(n) % columns) * cache.cellWidth, cellY = (static_cast<int32_t>(n) / columns) * cache.cellHeight;
+        for (int32_t y = 0; y < glyph->block->height; ++y)
+            for (int32_t x = 0; x < glyph->block->width; ++x) {
+                const Rgba& c = table[static_cast<size_t>(font.pixel(*glyph, x, y))];
+                const size_t at = (size_t(cellY + 1 + y) * size_t(size) + size_t(cellX + 1 + x)) * 4;
+                for (size_t i = 0; i < 4; ++i) out[at + i] = c[i];
+            }
+    }
+    return out;
+}
+
+#ifndef SCENE_NATIVE_ONLY
+template class Text<EeArithmetic>;
+#endif
+template class Text<NativeArithmetic>;
+
+}

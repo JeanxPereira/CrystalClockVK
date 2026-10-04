@@ -36,6 +36,10 @@ public:
     void lines(const std::vector<Vertex>& strip) {
         for (size_t i = 0; i + 1 < strip.size(); ++i) put({strip[i], strip[i + 1]});
     }
+    // A triangle fan: triangle i is the centre, vertex i and vertex i + 1.
+    void fan(const std::vector<Vertex>& vertices) {
+        for (size_t i = 1; i + 1 < vertices.size(); ++i) put({vertices[0], vertices[i], vertices[i + 1]});
+    }
     void sprite(Vertex first, const Vertex& second) {
         first.z = second.z;
         put({first, second});
@@ -245,6 +249,34 @@ void emitOrb(Builder& out, const OrbDraw& orb) {
     }
 }
 
+// facts/text.md: the text's draws, all to the display with its field half line. A glyph is a Gouraud, textured,
+// blended fan (PRIM 0x5D) of the glyph cache, ST, region clamp to its cell, bilinear (TEX1 0x60), blend 0x44, depth
+// test always (Font_PutsPackets' TEST 0x30000); the hint's picture is DrawIcon's rectangle (func_00233770) of a clock
+// texture bound with blend 0x44 and depth test always (func_002349E0).
+void emitText(Builder& out, const TextFrame& text) {
+    for (const TextDraw& d : text.draws) {
+        if (d.kind == TextDraw::Kind::Glyph) {
+            Material m = fromTexture(kGlyphTexture, CoordinateKind::Projective, Sampling::ClampToRegion);
+            m.region = d.glyph.region;
+            m.blend = BlendOp::AlphaOver;
+            m.gouraud = true;
+            out.use({"text", TargetName::Display, PassTopology::Triangles, m, false, true});
+            std::vector<Vertex> fan;
+            for (const GlyphVertex& g : d.glyph.fan) fan.push_back({g.x, g.y, 0, g.s, g.t, g.q, g.colour[0], g.colour[1], g.colour[2], g.colour[3]});
+            out.fan(fan);
+            continue;
+        }
+        const Rect& r = d.icon;
+        out.use({"hint picture", TargetName::Display, PassTopology::Sprites, withState(fromTexture(d.texture, CoordinateKind::Texel, Sampling::Clamp), BlendOp::AlphaOver, DepthTest::Always),
+                 false, true});
+        const auto corner = [&](int32_t x, int32_t y, int32_t u, int32_t v) {
+            return Vertex{float(x) / 16.0f, float(y) / 16.0f, static_cast<uint32_t>(r.z) & 0xffffff, float(u & 0xffff) / 16.0f, float(v & 0xffff) / 16.0f, 1,
+                          static_cast<uint8_t>(r.colour[0]), static_cast<uint8_t>(r.colour[1]), static_cast<uint8_t>(r.colour[2]), static_cast<uint8_t>(r.colour[3])};
+        };
+        out.sprite(corner(r.x0, r.y0, r.u0, r.v0), corner(r.x1, r.y1, r.u1, r.v1));
+    }
+}
+
 // clock_frame.mjs stateWriters work/display with a clear: a sprite over the whole target at depth 0.
 void clearTarget(Builder& out, const std::string& name, TargetName target, const Colour& colour, int32_t width, int32_t height) {
     out.use({name, target, PassTopology::Sprites, Material{}, false, true});
@@ -261,7 +293,9 @@ void clearTarget(Builder& out, const std::string& name, TargetName target, const
 template <class A>
 Clock<A>::Clock(const ClockInputs& in)
     : m_state(in.state), m_head(in.head), m_rods(in.mesh, in.rodTemplate), m_orbs(in.orbs), m_clearColour(in.clearColour), m_firstDisplayClear(in.firstDisplayClear), m_tube(in.tube),
-      m_minuteFactor(in.minuteFactor), m_fractionEasing(in.fractionEasing), m_orbColour(in.orbColour), m_width(in.width), m_height(in.height) {}
+      m_minuteFactor(in.minuteFactor), m_fractionEasing(in.fractionEasing), m_orbColour(in.orbColour), m_width(in.width), m_height(in.height) {
+    if (in.font && in.program) m_text.emplace(in.font, in.program, in.text);
+}
 
 // References/model/clock_frame.mjs frame(), the clock screen's parts, in its order.
 template <class A>
@@ -359,6 +393,22 @@ Frame Clock<A>::frame(const FrameInputs& in) {
     emitHead(out, m_head.bars(head), m_width, m_height);
     frame.textAt = frame.passes.size();
     out.cut();
+    m_strings.clear();
+    if (m_text) {
+        TextFrameInputs text;
+        text.items = in.items;
+        text.item0 = in.item0;
+        text.overlayLevel = m_state.overlayLevel;
+        text.tail = m_state.tail;
+        text.menu = m_state.menuRamp;
+        text.width = m_width;
+        text.height = m_height;
+        TextFrame drawn = m_text->frame(text);
+        emitText(out, drawn);
+        frame.glyphs = std::move(drawn.glyphs);
+        m_strings = std::move(drawn.strings);
+        out.cut();
+    }
     emitHead(out, m_head.column(head), m_width, m_height);
 
     ClockLogic<A>::step(m_state);

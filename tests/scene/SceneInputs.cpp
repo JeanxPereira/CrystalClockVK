@@ -122,6 +122,46 @@ RodRecord rodRecord(const json& j) {
     return r;
 }
 
+// The text's inputs (tools/scene/instrument.mjs fontContext, fontState; export_fixture.mjs textRamps).
+TextInputs textInputs(const json& in) {
+    TextInputs t;
+    const json& font = in.at("font");
+    for (const json& e : font.at("list")) t.cache.list.push_back({e.at("code"), e.at("loaded"), e.at("cell"), e.at("block")});
+    t.cache.format = font.at("format");
+    t.cache.cellW = font.at("cellW");
+    t.cache.cellH = font.at("cellH");
+    t.cache.cells = font.at("cells");
+    t.cache.width = font.at("width");
+    t.cache.height = font.at("height");
+    t.cache.logW = font.at("logW");
+    t.cache.logH = font.at("logH");
+    t.cache.setUp = font.at("setUp");
+    t.cache.block = font.at("block");
+    t.cache.memory = font.at("memory");
+    t.cache.texture = font.at("texture");
+    t.cache.table = font.at("table");
+    t.font = fontState(font.at("state"));
+    const json& r = in.at("textRamps");
+    t.ramps.config = ramp(r.at("config"));
+    t.ramps.mainMenu = ramp(r.at("mainMenu"));
+    t.ramps.version = ramp(r.at("version"));
+    t.ramps.dialogClosing = ramp(r.at("dialogClosing"));
+    t.ramps.firstRun = ramp(r.at("firstRun"));
+    t.ramps.dialog = ramp(r.at("dialog"));
+    t.ramps.lead = r.at("lead");
+    t.ramps.body = r.at("body");
+    t.ramps.panel7 = r.at("panel7");
+    t.ramps.panel8On = r.at("panel8On");
+    t.ramps.panel8 = r.at("panel8");
+    t.ramps.adjustRow = r.at("adjustRow");
+    const json& items = in.at("configItems");
+    t.settings.timeFormat = items.at(0xd);
+    t.settings.dateFormat = items.at(0xe);
+    t.settings.settingsWord = in.at("mechaconParam").at(0).get<uint32_t>();
+    t.settings.videoMode = in.at("videoMode");
+    return t;
+}
+
 OrbState orbState(const json& in) {
     OrbState s;
     for (int k = 0; k < kOrbCount; ++k) {
@@ -158,7 +198,27 @@ ClockInputs clockInputs(const json& in, const RodMesh& mesh) {
     c.orbColour = colour(in.at("orbColour"));
     c.width = in.at("screen").at("width");
     c.height = in.at("screen").at("height");
+    if (in.contains("font")) c.text = textInputs(in);
     return c;
+}
+
+FontState fontState(const json& j) {
+    FontState s;
+    s.lineHeight = j.at("lineHeight");
+    s.fixed = j.at("fixed");
+    s.percent = j.at("percent");
+    s.pitch = j.at("pitch");
+    s.decoration = j.at("decoration");
+    s.clip = j.at("clip");
+    s.blank = j.at("blank");
+    s.ascent = j.at("ascent");
+    s.dirty = j.at("dirty");
+    s.tv = f(j.at("tv"));
+    s.ratio = f(j.at("ratio"));
+    s.locate = {f(j.at("locate").at(0)), f(j.at("locate").at(1))};
+    for (int i = 0; i < 4; ++i) s.colour[i] = f(j.at("colour").at(i));
+    s.matrix = hexMat4(j.at("matrix"));
+    return s;
 }
 
 json firstInput(const std::string& path) {
@@ -188,7 +248,12 @@ json firstInput(const std::string& path) {
 
 FrameInputs frameInputs(const json& in) {
     const json& t = in.at("time");
-    return {{f(t.at("ms")), t.at("seconds"), t.at("minutes"), t.at("hours")}, in.at("scene").at("field"), in.at("index"), in.at("item0")};
+    FrameInputs out{{f(t.at("ms")), t.at("seconds"), t.at("minutes"), t.at("hours")}, in.at("scene").at("field"), in.at("index"), in.at("item0"), {}};
+    if (in.contains("configItems")) {
+        const json& items = in.at("configItems");
+        out.items = {items.at(6), items.at(7), items.at(8), items.at(9), items.at(10), items.at(11)};
+    }
+    return out;
 }
 
 }
