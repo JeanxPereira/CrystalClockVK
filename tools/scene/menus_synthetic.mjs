@@ -20,15 +20,24 @@ const bytesOf = (words) => { const out = Buffer.alloc(words.length * 4); words.f
 const meshOf = (file) => { const j = JSON.parse(fs.readFileSync(file, 'utf8')); return { positions: bytesOf(j.positions.bits), normals: bytesOf(j.normals.bits), coordinates: bytesOf(j.coordinates.bits) }; };
 const mesh = { ...meshOf(new URL('../../facts/data/rod-mesh.json', import.meta.url)), cube: meshOf(new URL(`${REFERENCES}model/cube-mesh.json`)) };
 
-function snapshot() {
-  const probes = readTraceFor(TRACE, PROBES).probes.filter((p) => !p.preroll);
+function firstBlocks() {
+  const trace = readTraceFor(TRACE, PROBES);
+  if (!trace.complete) throw new Error(`${TRACE}: ${trace.reason}`);
+  const probes = trace.probes.filter((p) => !p.preroll);
   const from = probes.findIndex((p) => p.pc === START);
   const to = probes.findIndex((p, i) => i > from && p.pc === START);
+  if (from < 0 || to < 0) throw new Error(`${TRACE}: no whole frame`);
   const inside = probes.slice(from, to);
   const blocks = [];
   for (let k = 0; k < 5; k++) blocks.push(...(inside.find((p) => p.pc === START + 4 * k)?.mem ?? []));
-  return new Memory('hdd', blocks);
+  if (blocks.length === 0 || blocks.some((b) => !b.bytes)) throw new Error(`${TRACE}: the first snapshot is not whole`);
+  return blocks;
 }
+const BLOCKS = firstBlocks();
+// Memory copies the blocks' bytes, so every scenario starts from the same snapshot.
+const snapshot = () => new Memory('hdd', BLOCKS);
+const MASH = ['cross', 'circle', 'square', 'up', 'down', 'triangle'];
+const mash = (from, to) => Array.from({ length: Math.floor((to - from) / 4) + 1 }, (_, i) => [from + 4 * i, MASH[i % MASH.length]]);
 
 /** [frame, button] pairs; each press is one frame of `pressed` and six of `held`. */
 const presses = (list) => (k) => list.filter(([at]) => k === at).reduce((w, [, b]) => w | B[b], 0);
@@ -42,6 +51,8 @@ const SCENARIOS = {
   entries: (m) => { const a = adjustIndex(m); const downs = Array.from({ length: a }, (_, i) => [150 + 8 * i, 'down']); const t = 150 + 8 * a;
     return { frames: t + 120, list: [[2, 'down'], [6, 'cross'], [110, 'down'], [118, 'cross'], [126, 'cross'], [134, 'up'], ...downs, [t + 8, 'cross'], [t + 20, 'up'], [t + 30, 'circle'], [t + 50, 'cross'], [t + 70, 'cross']] }; },
   back: () => ({ frames: 220, list: [[2, 'down'], [6, 'cross'], [110, 'circle']] }),
+  'back-mash': () => ({ frames: 260, list: [[2, 'down'], [6, 'cross'], [110, 'circle'], ...mash(114, 196)] }),
+  'square-mash': () => ({ frames: 320, list: [[2, 'down'], [6, 'cross'], [110, 'square'], ...mash(111, 160), [200, 'square'], ...mash(201, 250)] }),
   browser: () => ({ frames: 140, list: [[2, 'up'], [8, 'cross']] }),
   long: () => ({ frames: 420, spin: 0xff00, list: [[2, 'down'], [6, 'cross'], ...Array.from({ length: 70 }, (_, i) => [110 + 4 * i, 'down'])] }),
 };
@@ -62,6 +73,7 @@ for (const [name, make] of Object.entries(SCENARIOS)) {
     if (k > 0) between(m, []);
     frame({ memory: m }, mesh);
   }
+  if (recording.frames.length !== s.frames) throw new Error(`${name}: ${recording.frames.length} frames recorded, ${s.frames} run`);
   fs.mkdirSync(`${out}/${name}`, { recursive: true });
   fs.writeFileSync(`${out}/${name}/scene.json`, `${JSON.stringify({ capture: `synthetic-menus-${name}`, build: 'hdd', stagesOnly: true, frames: recording.frames })}\n`);
   console.log(`${name}: ${recording.frames.length} frames`);

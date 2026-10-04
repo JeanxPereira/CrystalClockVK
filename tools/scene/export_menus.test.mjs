@@ -47,7 +47,7 @@ test('the opening of System Configuration, the cubes and the page strings are re
 
 test('whole3-clock keeps every old key byte for byte', () => {
   const fresh = exportOf('hddosd-110U-whole3-clock');
-  const installed = JSON.parse(fs.readFileSync(`${REFERENCES}/fixtures/hddosd-110U-whole3-clock/scene.json`, 'utf8'));
+  const installed = JSON.parse(fs.readFileSync(`${REFERENCES}/fixtures/hddosd-110U-whole3-clock/scene.pre-menus.json`, 'utf8'));
   const pick = (from, keys) => Object.fromEntries(Object.keys(keys).filter((key) => key in from).map((key) => [key, from[key]]));
   assert.equal(fresh.frames.length, installed.frames.length);
   fresh.frames.forEach((frame, i) => {
@@ -58,23 +58,96 @@ test('whole3-clock keeps every old key byte for byte', () => {
   });
 });
 
-test('the scripted scenarios run through the model', () => {
-  const out = path.join(dir, 'synthetic');
-  run('menus_synthetic.mjs', [out]);
-  for (const name of ['menu-cursor', 'enter-mash', 'config-wrap', 'square', 'entries', 'back', 'browser', 'long']) {
-    const scene = JSON.parse(fs.readFileSync(path.join(out, name, 'scene.json'), 'utf8'));
+const out = path.join(dir, 'synthetic');
+const NAMES = ['menu-cursor', 'enter-mash', 'config-wrap', 'square', 'entries', 'back', 'back-mash', 'square-mash', 'browser', 'long'];
+let generated = false;
+const scenario = (name) => {
+  if (!generated) { run('menus_synthetic.mjs', [out]); generated = true; }
+  return JSON.parse(fs.readFileSync(path.join(out, name, 'scene.json'), 'utf8'));
+};
+const after = (f, stage = 'menus') => f.expect.stages[stage].after;
+const UP = 0x1000;
+
+test('every scripted scenario runs through the model, its state carried from frame to frame', () => {
+  for (const name of NAMES) {
+    const scene = scenario(name);
     assert.equal(scene.stagesOnly, true);
     assert.ok(scene.frames.length > 30, name);
-    assert.ok(scene.frames.every((f) => STAGES.every((s) => f.expect.stages[s])), name);
+    scene.frames.forEach((f, i) => {
+      assert.equal(f.index, i, name);
+      assert.ok(STAGES.every((s) => f.expect.stages[s]), `${name} frame ${i}`);
+      if (i === 0) return;
+      const { pad, scene: written, ...left } = scene.frames[i - 1].expect.stages.endOfFrame.after;
+      const { pad: _, scene: __, ...entered } = f.between.before;
+      assert.deepEqual(entered, left, `${name} frame ${i}: the state between frames moved outside the model`);
+    });
   }
-  const square = JSON.parse(fs.readFileSync(path.join(out, 'square', 'scene.json'), 'utf8'));
-  const states = square.frames.map((f) => f.expect.stages.menuStep.after.menuRamp.state);
-  assert.ok(states.includes(2) && states.lastIndexOf(3) > states.indexOf(2), 'square hides the menu, then shows it');
-  const long = JSON.parse(fs.readFileSync(path.join(out, 'long', 'scene.json'), 'utf8'));
-  const positions = long.frames.map((f) => f.expect.stages.cubes.after.cubeList.position);
+});
+
+test('menu-cursor stops at both ends of the main menu', () => {
+  const { frames } = scenario('menu-cursor');
+  assert.deepEqual([2, 8, 14, 20, 26].map((k) => after(frames[k]).mainMenu.selected), [1, 1, 0, 0, 0]);
+});
+
+test('config-wrap wraps the list both ways', () => {
+  const selected = scenario('config-wrap').frames.map((f) => after(f).configPage.selected);
+  const steps = selected.flatMap((v, i) => (i > 0 && v !== selected[i - 1] ? [[selected[i - 1], v]] : []));
+  assert.deepEqual(steps, [[0, 6], [6, 5], [5, 6], [6, 0], [0, 1]]);
+});
+
+test('entries: confirm pulses the cube, cancel does not, and up raises the year', () => {
+  const { frames } = scenario('entries');
+  const level = frames.map((f) => after(f).configPage.level);
+  const rising = level.flatMap((v, i) => (i > 0 && v === 1 && level[i - 1] === 0 ? [i] : []));
+  const falling = level.flatMap((v, i) => (i > 0 && v === 0 && level[i - 1] === 1 ? [i] : []));
+  assert.equal(rising.length, 3);
+  assert.equal(falling.length, 3);
+  const pulse = (k) => after(frames[k], 'cubes').cubeList.pulse;
+  const start = pulse(falling[0] + 1);
+  assert.equal(pulse(falling[0]), '0x00000000', 'no pulse before the first confirm');
+  assert.notEqual(start, '0x00000000', 'the first confirm pulses');
+  assert.notEqual(pulse(falling[1] + 1), start, 'the cancel does not restart the pulse');
+  assert.equal(pulse(falling[2] + 1), start, 'the second confirm restarts the pulse');
+  const raised = frames.find((f) => f.input.pad.pressed & UP && f.expect.stages.menus.before.configPage.level === 1);
+  assert.ok(raised, 'up inside an entry');
+  assert.equal(after(raised).configItems[6], raised.expect.stages.menus.before.configItems[6] + 1, 'up raises the year');
+});
+
+test('back closes System Configuration', () => {
+  const ramp = scenario('back').frames.map((f) => after(f).configRamp.state);
+  assert.ok(ramp.includes(3) && ramp.lastIndexOf(0) > ramp.indexOf(3), 'the page ramp reaches 3 then 0');
+});
+
+test('buttons mashed while System Configuration closes change nothing', () => {
+  const { frames } = scenario('back-mash');
+  const page = frames.map((f) => after(f).configPage.ramp.state);
+  assert.ok(page.includes(3) && page.at(-1) === 0, 'the page closes and the ramp finishes');
+  assert.ok(frames.every((f) => after(f, 'menuStep').menuRamp.state === 0 && after(f, 'endOfFrame').scene.leaving === 0 && after(f).mainMenu.ramp.state === 2));
+});
+
+test('square hides the menu and shows it, also with buttons mashed during its transitions', () => {
+  for (const name of ['square', 'square-mash']) {
+    const { frames } = scenario(name);
+    const states = frames.map((f) => after(f, 'menuStep').menuRamp.state);
+    assert.ok(states.includes(2) && states.lastIndexOf(3) > states.indexOf(2), `${name}: square hides the menu, then shows it`);
+    assert.equal(states.at(-1), 0, `${name}: the menu ramp finishes`);
+    assert.equal(after(frames.at(-1)).configPage.ramp.state, 2, `${name}: System Configuration stays open`);
+    assert.ok(frames.every((f) => after(f).configPage.level === 0), `${name}: no entry is entered`);
+  }
+});
+
+test('cross on Browser leaves the clock (the model, option on)', () => {
+  const { frames } = scenario('browser');
+  assert.ok(frames.some((f) => f.between?.after.mainMenu.selected === 0 && f.input.pad.pressed & 0x20), 'cross is pressed on Browser');
+  assert.ok(frames.every((f) => after(f).configPage.ramp.state === 0), 'Browser never opens System Configuration');
+  const last = after(frames.at(-1), 'endOfFrame');
+  assert.equal(last.scene.leaving, 1);
+  assert.equal(last.screenCode, 9999);
+});
+
+test('long wraps the list position and the spin', () => {
+  const { frames } = scenario('long');
+  const positions = frames.map((f) => after(f, 'cubes').cubeList.position);
   assert.ok(positions.some((p, i) => i > 0 && p > positions[i - 1] + 90000), 'the list position wraps');
-  assert.ok(long.frames.some((f, i) => i > 0 && f.input.spin < long.frames[i - 1].input.spin), 'the spin wraps');
-  const browser = JSON.parse(fs.readFileSync(path.join(out, 'browser', 'scene.json'), 'utf8'));
-  assert.ok(browser.frames.some((f) => f.between?.after.mainMenu.selected === 0 && f.input.pad.pressed & 0x20), 'cross is pressed on Browser');
-  assert.ok(browser.frames.every((f) => f.expect.stages.menus.after.configPage.ramp.state === 0), 'Browser never opens System Configuration');
+  assert.ok(frames.some((f, i) => i > 0 && f.input.spin < frames[i - 1].input.spin), 'the spin wraps');
 });

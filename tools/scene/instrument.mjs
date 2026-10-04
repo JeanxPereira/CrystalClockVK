@@ -32,7 +32,7 @@ const wrap = (source, names, file) => names.reduce((text, name) => {
 registerHooks({
   load(url, context, nextLoad) {
     const result = nextLoad(url, context);
-    const file = Object.keys(WRAPPED).find((name) => url.endsWith(`/References/model/${name}`));
+    const file = Object.keys(WRAPPED).find((name) => url.toLowerCase() === `${REFERENCES}model/${name}`.toLowerCase());
     if (!file) return result;
     return { ...result, source: wrap(String(result.source), WRAPPED[file], file) };
   },

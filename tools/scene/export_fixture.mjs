@@ -61,6 +61,7 @@ async function addTextRamps(traceFile, frames) {
   const { readTraceFor } = await import(`${REFERENCES}lib/trace.mjs`);
   const { PROBES } = await import(`${REFERENCES}scripts/verify_text2.mjs`);
   const trace = readTraceFor(traceFile, PROBES);
+  if (!trace.complete) throw new Error(`${traceFile}: ${trace.reason}`);
   const probes = trace.probes.filter((probe) => !probe.preroll);
   const before = (pc, at) => probes.filter((probe) => probe.pc === pc && probe.at <= at).at(-1);
   const reader = (probe) => {
@@ -95,8 +96,13 @@ async function addTextRamps(traceFile, frames) {
 async function addListFade(traceFile, frames) {
   const { readTraceFor } = await import(`${REFERENCES}lib/trace.mjs`);
   const { PROBES } = await import(`${REFERENCES}scripts/verify_text2.mjs`);
-  const probes = readTraceFor(traceFile, PROBES).probes.filter((p) => !p.preroll);
-  const word = (probe, address) => { for (const m of probe.mem) if (m.bytes && address >= m.address && address + 4 <= m.address + m.bytes.length) return m.bytes.readInt32LE(address - m.address); return null; };
+  const trace = readTraceFor(traceFile, PROBES);
+  if (!trace.complete) throw new Error(`${traceFile}: ${trace.reason}`);
+  const probes = trace.probes.filter((p) => !p.preroll);
+  const word = (probe, address) => {
+    for (const m of probe.mem) if (m.bytes && address >= m.address && address + 4 <= m.address + m.bytes.length) return m.bytes.readInt32LE(address - m.address);
+    throw new Error(`${traceFile}: 0x${(address >>> 0).toString(16)} was not probed at 0x${probe.pc.toString(16)}`);
+  };
   let last = null;
   frames.forEach((frame) => {
     const pages = frame.expect.text?.pages ?? [];
