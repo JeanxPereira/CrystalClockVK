@@ -293,7 +293,7 @@ void clearTarget(Builder& out, const std::string& name, TargetName target, const
 template <class A>
 Clock<A>::Clock(const ClockInputs& in)
     : m_state(in.state), m_head(in.head), m_rods(in.mesh, in.rodTemplate), m_orbs(in.orbs), m_clearColour(in.clearColour), m_firstDisplayClear(in.firstDisplayClear), m_tube(in.tube),
-      m_minuteFactor(in.minuteFactor), m_fractionEasing(in.fractionEasing), m_orbColour(in.orbColour), m_width(in.width), m_height(in.height) {
+      m_minuteFactor(in.minuteFactor), m_fractionEasing(in.fractionEasing), m_orbColour(in.orbColour), m_hasEntryData(in.hasEntryData), m_wide(in.wide), m_orbRandom(in.orbRandom), m_orbColours(in.orbColours), m_width(in.width), m_height(in.height) {
     if (in.font && in.program) m_text.emplace(in.font, in.program, in.text);
 }
 
@@ -308,6 +308,7 @@ Frame Clock<A>::frame(const FrameInputs& in) {
     Builder out(frame);
 
     m_state.time = in.time;
+    m_state.timeFilled = in.timeFilled;
     m_state.scene.field = in.field;
     const CameraMatrices camera = Camera<A>::matrices(m_state);
 
@@ -353,6 +354,12 @@ Frame Clock<A>::frame(const FrameInputs& in) {
     orbs.fractionEasing = m_fractionEasing;
     orbs.sceneScale = m_state.scene.scale;
     orbs.colour = m_orbColour;
+    orbs.mode = m_state.mode;
+    orbs.overlayLevel = m_state.overlayLevel;
+    orbs.hasEntryData = m_hasEntryData;
+    orbs.wide = m_wide;
+    orbs.random = m_orbRandom;
+    for (size_t k = 0; k < kOrbCount; ++k) orbs.colours[k] = m_orbColours[k];
     orbs.width = m_width;
     orbs.height = m_height;
     m_orbs.fraction = m_state.eased.fraction;
