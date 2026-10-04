@@ -36,8 +36,9 @@ public:
     NativeRenderer& operator=(const NativeRenderer&) = delete;
 
     void setTexture(int32_t number, uint32_t width, uint32_t height, std::span<const uint8_t> rgba);
-    // The ten clock textures (References/textures, written by References/scripts/extract_textures.mjs and
-    // checked against the ROM by extract_rom_textures.mjs), texture n at its 640 x 224 address.
+    // The ten clock textures as PNG files (References/textures, written by References/scripts/extract_textures.mjs),
+    // texture n at its 640 x 224 address: the fallback when no resource file is found (app/ClockAssets uploads the
+    // decoded ones through setTexture).
     void loadClockTextures(const std::filesystem::path& directory);
     // The glyph cache (scene::kGlyphTexture) a frame's text samples; made again only when its cells change.
     void setGlyphCache(const scene::Font& font, const scene::GlyphCache& cache);
