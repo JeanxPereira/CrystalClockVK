@@ -46,17 +46,17 @@ TimelineStep Timeline<A>::step(uint32_t discState) {
     // facts/opening.md 3 stages 1 to 3 (verify_opening3_stages.mjs stages)
     if (s.stage == 1) {
         if (m_options.hddReady) {
-            b[BlockAt::RollVel] = 0.0004f;
-            b[BlockAt::Vz] = s.counter < kFps * 20 / 6 ? -0.00014f : 2.5e-5f;
+            b[BlockAt::RollVel] = TimelineConstant::HddRollVelocity;
+            b[BlockAt::Vz] = s.counter < kFps * 20 / 6 ? TimelineConstant::HddWaitVz : TimelineConstant::HddLateVz;
             if (m_options.hddExec != 0) {
-                b[BlockAt::Vz] = 0.003f;
+                b[BlockAt::Vz] = TimelineConstant::HddExecVz;
                 s.go = true;
                 s.stage += 1;
             } else if (kFps * 20 < s.counter) {
                 m_options.hddReady = false;
             }
         } else {
-            b[BlockAt::Az] = 4e-7f;
+            b[BlockAt::Az] = TimelineConstant::StageOneAz;
             const uint32_t index = discState - 0x64u;
             const bool releases = index < 17 && ((0x1DFC1u >> index) & 1u) != 0;
             if (releases && 2 * kFps < s.counter) {
@@ -88,11 +88,11 @@ TimelineStep Timeline<A>::step(uint32_t discState) {
                 s.pending = -1;
             }
             if (m_options.hddReady || m_options.hddExec != 0) {
-                b[BlockAt::Az] = 4e-4f;
-                b[BlockAt::RollAcc] = 8e-5f;
+                b[BlockAt::Az] = TimelineConstant::HddAz;
+                b[BlockAt::RollAcc] = TimelineConstant::HddRollAcc;
             } else {
-                b[BlockAt::Vz] = 0.0099f;
-                b[BlockAt::RollAcc] = 0.000195f;
+                b[BlockAt::Vz] = TimelineConstant::PlainVz;
+                b[BlockAt::RollAcc] = TimelineConstant::PlainRollAcc;
             }
             b[BlockAt::Vx] = b[BlockAt::Vy] = b[BlockAt::Wx] = b[BlockAt::Wy] = 0.0f;
         }
@@ -102,20 +102,20 @@ TimelineStep Timeline<A>::step(uint32_t discState) {
 
     // facts/opening.md 3 integrator (0x0021F37C..0x0021F508, verify_opening_camera_v2.mjs integrate), NTSC k = 1
     const float k = 1.0f;
-    const auto step = [&](float twice, float add) { return A::mul(A::mul(A::addExact(A::addExact(twice, twice), add), 0.5f), k); };
+    const auto advance = [&](float twice, float add) { return A::mul(A::mul(A::addExact(A::addExact(twice, twice), add), 0.5f), k); };
     const Block in = b;
-    b[BlockAt::RollVel] = A::addExact(in[BlockAt::RollVel], step(in[BlockAt::RollAcc], 0.0f));
-    b[BlockAt::Px] = A::addExact(in[BlockAt::Px], step(in[BlockAt::Vx], in[BlockAt::Ax]));
-    b[BlockAt::Py] = A::addExact(in[BlockAt::Py], step(in[BlockAt::Vy], in[BlockAt::Ay]));
-    b[BlockAt::Pz] = A::addExact(in[BlockAt::Pz], step(in[BlockAt::Vz], in[BlockAt::Az]));
+    b[BlockAt::RollVel] = A::addExact(in[BlockAt::RollVel], advance(in[BlockAt::RollAcc], 0.0f));
+    b[BlockAt::Px] = A::addExact(in[BlockAt::Px], advance(in[BlockAt::Vx], in[BlockAt::Ax]));
+    b[BlockAt::Py] = A::addExact(in[BlockAt::Py], advance(in[BlockAt::Vy], in[BlockAt::Ay]));
+    b[BlockAt::Pz] = A::addExact(in[BlockAt::Pz], advance(in[BlockAt::Vz], in[BlockAt::Az]));
     b[BlockAt::Vz] = A::addExact(in[BlockAt::Vz], A::mul(in[BlockAt::Az], k));
-    float roll = A::addExact(s.roll, step(b[BlockAt::RollVel], in[BlockAt::RollAcc]));
-    b[BlockAt::Qx] = A::addExact(in[BlockAt::Qx], step(in[BlockAt::Wx], 0.0f));
-    b[BlockAt::Qy] = A::addExact(in[BlockAt::Qy], step(in[BlockAt::Wy], 0.0f));
-    s.camera[0] = A::addExact(s.camera[0], step(b[BlockAt::Px], in[BlockAt::Vx]));
-    s.camera[1] = A::addExact(s.camera[1], step(b[BlockAt::Py], in[BlockAt::Vy]));
-    s.camera[2] = A::addExact(s.camera[2], step(b[BlockAt::Pz], b[BlockAt::Vz]));
-    constexpr float kPi = 3.14159274101257324f, kTwoPi = 6.28318548202514648f;
+    float roll = A::addExact(s.roll, advance(b[BlockAt::RollVel], in[BlockAt::RollAcc]));
+    b[BlockAt::Qx] = A::addExact(in[BlockAt::Qx], advance(in[BlockAt::Wx], 0.0f));
+    b[BlockAt::Qy] = A::addExact(in[BlockAt::Qy], advance(in[BlockAt::Wy], 0.0f));
+    s.camera[0] = A::addExact(s.camera[0], advance(b[BlockAt::Px], in[BlockAt::Vx]));
+    s.camera[1] = A::addExact(s.camera[1], advance(b[BlockAt::Py], in[BlockAt::Vy]));
+    s.camera[2] = A::addExact(s.camera[2], advance(b[BlockAt::Pz], b[BlockAt::Vz]));
+    constexpr float kPi = TimelineConstant::Pi, kTwoPi = TimelineConstant::TwoPi;
     if (kPi < roll) roll = A::subExact(roll, kTwoPi);
     if (roll < -kPi) roll = A::addExact(roll, kTwoPi);
     s.roll = roll;

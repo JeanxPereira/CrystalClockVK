@@ -14,6 +14,11 @@ namespace BlockAt {
 constexpr int Ax = 0, Ay = 1, Az = 2, Vx = 3, Vy = 4, Vz = 5, Px = 6, Py = 7, Pz = 8, Wx = 9, Wy = 10, RollAcc = 11, Qx = 12, Qy = 13, RollVel = 14;
 }
 
+namespace TimelineConstant {
+constexpr float HddRollVelocity = 0.0004f, HddWaitVz = -0.00014f, HddLateVz = 2.5e-5f, HddExecVz = 0.003f, StageOneAz = 4e-7f, HddAz = 4e-4f,
+                HddRollAcc = 8e-5f, PlainVz = 0.0099f, PlainRollAcc = 0.000195f, Pi = 3.14159274101257324f, TwoPi = 6.28318548202514648f;
+}
+
 // verify_opening_camera_v2.mjs read(probe), verify_opening3_stages.mjs read(probe), the logo of func_0021DB50.
 struct TimelineState {
     int32_t counter = 1, stage = 0;

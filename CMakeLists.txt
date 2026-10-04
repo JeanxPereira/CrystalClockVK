@@ -342,5 +342,5 @@ add_test(NAME ClockScreenTest COMMAND ClockScreenTest ${CMAKE_CURRENT_SOURCE_DIR
 add_executable(TimelineTest tests/scene/opening/TimelineTest.cpp src/scene/opening/Timeline.cpp)
 target_link_libraries(TimelineTest PRIVATE OpeningTestSupport)
 if(EXISTS ${OPENING_FULL_FIXTURE})
-    add_test(NAME TimelineTest COMMAND TimelineTest ${OPENING_FIXTURES})
+    add_test(NAME TimelineTest COMMAND TimelineTest ${OPENING_FIXTURES} ${CLOCK_DUMPS}/hddosd.elf)
 endif()

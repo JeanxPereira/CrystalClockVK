@@ -11,6 +11,7 @@
 #include "../SceneFixture.hpp"
 #include "OpeningFixture.hpp"
 #include "scene/Arithmetic.hpp"
+#include "scene/ProgramImage.hpp"
 #include "scene/opening/Timeline.hpp"
 
 namespace {
@@ -106,6 +107,8 @@ TimelineState stateFrom(const OpeningFixture& fixture, const Logo& logo, size_t 
 BootOptions optionsOf(const OpeningFixture& fixture, size_t k) {
     BootOptions o;
     o.clockForced = fixture.timeline(k)->forcedClock.value_or(false);
+    o.hddReady = fixture.externals().hddReady.value_or(0) != 0;
+    o.hddExec = fixture.externals().hddExec.value_or(0);
     return o;
 }
 
@@ -134,7 +137,7 @@ std::vector<SoundEvent> soundsOf(const OpeningFixture& fixture, size_t k) {
     std::vector<SoundEvent> out;
     for (const auto& r : fixture.records(k, "stages3")) {
         if (r.k != 4 && r.k != 5) continue;
-        if (r.k == 5) continue;
+        if (r.k == 5 || (r.a0 != 0x6140 && r.a0 != 0x6150)) continue;
         out.push_back({r.a0, static_cast<int32_t>(r.a0 == 0x6140 ? r.a1 : r.a3), *fixture.counter(k)});
     }
     return out;
@@ -145,6 +148,22 @@ bool hasSoundProbes(const OpeningFixture& fixture) {
         for (const auto& r : fixture.records(k, "stages3"))
             if (r.k == 4) return true;
     return false;
+}
+
+int constants(const std::string& elf) {
+    const scene::ProgramImage image = scene::ProgramImage::load(elf);
+    using namespace scene::opening::TimelineConstant;
+    const std::pair<uint32_t, float> table[] = {{0x36f9d4, HddRollVelocity}, {0x36f9d8, HddWaitVz}, {0x36f9dc, HddLateVz}, {0x36f9e0, HddExecVz}, {0x36f9e4, StageOneAz},
+                                                {0x36f9e8, HddAz}, {0x36f9ec, HddRollAcc}, {0x36f9f0, PlainVz}, {0x36f9f4, PlainRollAcc}, {0x36f9f8, Pi},
+                                                {0x36f9fc, TwoPi}, {0x36fa04, TwoPi}};
+    for (const auto& [address, value] : table)
+        if (image.word(address) != scene::floatBits(value)) {
+            std::fprintf(stderr, "constant at 0x%08x: the program has 0x%08x, the scene 0x%08x\n", address, image.word(address), scene::floatBits(value));
+            return 1;
+        }
+    CHECK(image.word(0x36fa00) == scene::floatBits(-Pi));
+    std::printf("%zu constants equal the program's words\n", sizeof table / sizeof table[0] + 1);
+    return 0;
 }
 
 struct Totals {
@@ -168,7 +187,7 @@ int isolated(const std::string& path, Totals& totals) {
         CHECK(checkMatrices(fixture, k, step.matrices, name.c_str(), counter, totals.matrices));
         if (soundProbes) {
             const auto want = soundsOf(fixture, k);
-            const bool exact = name == "hddosd-110U-opening3-intro";
+            const bool exact = step.result == 0 && k > 0;
             if (exact ? step.sounds.size() != want.size() : step.sounds.size() > want.size()) {
                 std::fprintf(stderr, "%s counter %d: %zu sound commands computed, %zu sent\n", name.c_str(), counter, step.sounds.size(), want.size());
                 return 1;
@@ -328,10 +347,12 @@ int main(int argc, char** argv) {
             std::printf("MISSING capture, not checked: %s\n", capture);
             return false;
         };
+        if (count >= 3)
+            if (int failed = constants(arguments[2])) return failed;
         Totals totals;
         const bool debugSubset = count >= 3 && std::string(arguments[2]) == "--quick";
         for (const char* capture : {"opening-full", "opening3-intro", "opening3-disc65-b", "opening3-disc69", "opening3-disc71", "opening3-disc6a", "opening3-disc6b",
-                                    "opening3-disc6c", "opening3-disc6d", "opening3-disc6e", "opening3-disc6f", "opening3-disc70", "opening3-disc73", "opening3-forced"}) {
+                                    "opening3-disc6c", "opening3-disc6d", "opening3-disc6e", "opening3-disc6f", "opening3-disc70", "opening3-disc73", "opening3-forced", "opening3-ready-a", "opening3-ready-b", "opening3-readymid"}) {
             if (!present(capture)) continue;
             if (int failed = isolated(path(capture), totals)) return failed;
             if (debugSubset && std::string(capture) == "opening3-intro") break;
