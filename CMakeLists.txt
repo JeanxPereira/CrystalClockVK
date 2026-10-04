@@ -280,3 +280,41 @@ target_compile_definitions(CrystalClock PRIVATE
     CLOCK_MESH="${CMAKE_SOURCE_DIR}/facts/data/rod-mesh.json" CLOCK_SCREENSHOTS="${CMAKE_SOURCE_DIR}/out/screenshots"
     CLOCK_FONT="${CLOCK_DUMPS}/FNTOSD" CLOCK_PROGRAM="${CLOCK_DUMPS}/hddosd.elf")
 target_link_libraries(ParityTool PRIVATE ClockRender ClockSceneNative SceneInputs)
+
+# The clock's assets from the console's own resource files (src/assets: no Vulkan), and their decoded cache.
+add_library(ClockAssets STATIC src/assets/Bytes.cpp src/assets/Expand.cpp src/assets/Romdir.cpp src/assets/ElfImage.cpp src/assets/ImageCipher.cpp
+    src/assets/ClockTextures.cpp src/assets/Resources.cpp src/assets/AssetPack.cpp src/assets/Program.cpp)
+target_include_directories(ClockAssets PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_sources(CrystalClock PRIVATE src/app/ClockAssets.cpp)
+target_link_libraries(CrystalClock PRIVATE ClockAssets)
+target_compile_definitions(CrystalClock PRIVATE CLOCK_RESOURCES="${CLOCK_DUMPS}")
+# The ROM 2.30 BIOS image the tests extract from (References/bios/megadump in the main checkout).
+set(CLOCK_BIOS ${CLOCK_REFERENCES}/bios/megadump/ps2-0230a-20080220.bin CACHE FILEPATH "A PS2 BIOS ROM image, ROM 2.30 (0230A, 2008-02-20)")
+find_program(CLOCK_NODE node)
+add_executable(AssetsTest tests/assets/AssetsTest.cpp)
+target_link_libraries(AssetsTest PRIVATE ClockAssets ClockStb ClockSceneNative nlohmann_json::nlohmann_json)
+add_executable(AssetFrameTest tests/render/AssetFrameTest.cpp src/app/ClockAssets.cpp)
+target_link_libraries(AssetFrameTest PRIVATE ClockAssets ClockRender ClockSceneNative SceneInputs)
+set(ASSETS_SCRATCH ${CMAKE_BINARY_DIR}/assets-scratch)
+add_test(NAME AssetsRobustTest COMMAND AssetsTest robust ${ASSETS_SCRATCH}/robust)
+# The original HDD OSD 1.10U ELF (SHA-1 e932f350...), beside the host copy in CLOCK_DUMPS, for the program check.
+get_filename_component(CLOCK_HDDOSD_ELF_DEFAULT ${CLOCK_REFERENCES}/../../hddosd-recomp-artifacts/hddosd.elf ABSOLUTE)
+set(CLOCK_HDDOSD_ELF ${CLOCK_HDDOSD_ELF_DEFAULT} CACHE FILEPATH "HDD OSD 1.10U's original hddosd.elf")
+if(EXISTS ${CLOCK_HDDOSD_ELF} AND EXISTS ${CLOCK_DUMPS}/TEXIMAGE AND EXISTS ${CLOCK_DUMPS}/hddosd.elf)
+    add_test(NAME AssetsProgramTest COMMAND AssetsTest program ${CLOCK_DUMPS} ${CLOCK_HDDOSD_ELF} ${ASSETS_SCRATCH}/program)
+endif()
+if(EXISTS ${CLOCK_DUMPS}/TEXIMAGE AND EXISTS ${CLOCK_DUMPS}/hddosd.elf AND EXISTS ${CLOCK_DUMPS}/FNTOSD AND EXISTS ${CLOCK_BIOS})
+    if(CLOCK_NODE AND EXISTS ${CLOCK_TEXTURES}/tbp-2bc0-64x64.png)
+        set(ASSETS_MODEL ${CMAKE_BINARY_DIR}/assets-model)
+        add_test(NAME AssetsModelOutputs COMMAND ${CLOCK_NODE} ${CMAKE_SOURCE_DIR}/tests/assets/model_outputs.mjs ${CMAKE_SOURCE_DIR}/References/model/sound_data.mjs
+            ${CLOCK_DUMPS} ${CLOCK_BIOS} ${ASSETS_MODEL})
+        set_tests_properties(AssetsModelOutputs PROPERTIES FIXTURES_SETUP AssetsModel)
+        add_test(NAME AssetsPortTest COMMAND AssetsTest ports ${ASSETS_MODEL} ${CLOCK_DUMPS} ${CLOCK_BIOS})
+        add_test(NAME AssetsTextureTest COMMAND AssetsTest textures ${ASSETS_MODEL} ${CLOCK_DUMPS} ${CLOCK_BIOS} ${CLOCK_TEXTURES}
+            ${CMAKE_SOURCE_DIR}/facts/data/rod-mesh.json ${ASSETS_SCRATCH}/textures)
+        set_tests_properties(AssetsPortTest AssetsTextureTest PROPERTIES FIXTURES_REQUIRED AssetsModel)
+        add_test(NAME AssetFrameTest COMMAND AssetFrameTest ${CMAKE_SOURCE_DIR}/bin/shaders ${CLOCK_START} ${CMAKE_SOURCE_DIR}/facts/data/rod-mesh.json ${CLOCK_TEXTURES}
+            ${CLOCK_DUMPS}/FNTOSD ${CLOCK_DUMPS}/hddosd.elf ${CLOCK_DUMPS} ${ASSETS_SCRATCH}/frame)
+    endif()
+    add_test(NAME AssetsPackTest COMMAND AssetsTest pack ${CLOCK_DUMPS} ${CLOCK_BIOS} ${ASSETS_SCRATCH}/pack)
+endif()

@@ -12,13 +12,18 @@
 #include <exception>
 #include <filesystem>
 #include <functional>
+#include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
 #include "scene/SceneInputs.hpp"
+#include "app/ClockAssets.hpp"
 #include "app/DebugPanel.hpp"
 #include "app/NativeFrames.hpp"
 #include "app/Png.hpp"
+#include "assets/AssetPack.hpp"
+#include "assets/Program.hpp"
 #include "render/Device.hpp"
 #include "render/NativeRenderer.hpp"
 #include "scene/Clock.hpp"
@@ -39,7 +44,25 @@ struct Options {
     std::filesystem::path screenshots = CLOCK_SCREENSHOTS;
     std::filesystem::path font = CLOCK_FONT;
     std::filesystem::path program = CLOCK_PROGRAM;
+    std::filesystem::path resources;
+    std::filesystem::path bios;
+    std::filesystem::path pack;
 };
+
+// The folder of raw OSD resource files: --resources, else the user's own (where --bios extracts to) when it holds a
+// TEXIMAGE or a BIOS is given, else the configured one (CLOCK_RESOURCES).
+std::filesystem::path resourceFolder(const Options& options) {
+    if (!options.resources.empty()) return options.resources;
+    const std::filesystem::path own = assets::userDataDirectory() / "resources";
+    std::error_code error;
+    if (!options.bios.empty() || std::filesystem::exists(own / "TEXIMAGE", error)) return own;
+    return CLOCK_RESOURCES;
+}
+
+std::vector<uint8_t> fileOrEmpty(const std::filesystem::path& path) {
+    std::error_code error;
+    return std::filesystem::is_regular_file(path, error) ? assets::readFile(path) : std::vector<uint8_t>{};
+}
 
 // The OSD's time keeper gives hours, minutes, seconds and the milliseconds into the second; here the local time.
 scene::ClockTime clockTime(system_clock::time_point now) {
@@ -88,9 +111,11 @@ struct Step {
 
 int main(int argc, char** argv) {
     Options options;
+    std::set<std::string> explicitFlags;
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
         const bool more = i + 1 < argc;
+        explicitFlags.insert(arg);
         if (arg == "--smoke") options.smoke = true;
         else if (arg == "--no-validation") options.validation = false;
         else if (arg == "--soak" && more) options.soak = std::atof(argv[++i]);
@@ -101,11 +126,70 @@ int main(int argc, char** argv) {
         else if (arg == "--screenshots" && more) options.screenshots = argv[++i];
         else if (arg == "--font" && more) options.font = argv[++i];
         else if (arg == "--program" && more) options.program = argv[++i];
+        else if (arg == "--resources" && more) options.resources = argv[++i];
+        else if (arg == "--bios" && more) options.bios = argv[++i];
+        else if (arg == "--assets" && more) options.pack = argv[++i];
         else {
-            std::fprintf(stderr, "usage: CrystalClock [--smoke] [--soak seconds] [--no-validation] [--shaders dir] [--textures dir] [--start scene.json] [--mesh rod-mesh.json] [--screenshots dir] [--font FNTOSD] [--program hddosd.elf]\n");
+            std::fprintf(stderr, "usage: CrystalClock [--resources dir] [--bios rom.bin] [--assets assets.bin] [--smoke] [--soak seconds] [--no-validation] [--shaders dir]\n"
+                                 "                    [--start scene.json] [--screenshots dir] [--textures dir] [--mesh rod-mesh.json] [--font FNTOSD] [--program hddosd.elf]\n");
             return 1;
         }
     }
+    if (options.pack.empty()) options.pack = assets::userDataDirectory() / "assets.bin";
+    // The clock's assets: the console's raw resource files decoded (or their cache), else the loose files.
+    // A failure falls through: extraction or decode, then the cache, then the loose files, each with a warning.
+    std::optional<assets::LoadedAssets> loaded;
+    const std::filesystem::path folder = resourceFolder(options);
+    if (!options.bios.empty()) {
+        try {
+            std::string names;
+            for (const std::string& name : assets::extractBios(options.bios, folder)) names += " " + name;
+            std::printf("bios: %s gives%s, in %s\n", options.bios.string().c_str(), names.c_str(), folder.string().c_str());
+        } catch (const std::exception& error) {
+            std::fprintf(stderr, "bios: %s\n", error.what());
+        }
+    }
+    try {
+        loaded = assets::loadAssets(folder, options.pack);
+    } catch (const std::exception& error) {
+        std::fprintf(stderr, "assets: %s\n", error.what());
+    }
+    if (loaded) {
+        std::printf("assets: %zu in %.1f ms, %s %s\n", loaded->set.assets.size(), loaded->milliseconds, loaded->fromPack ? "from the cache" : "decoded and cached in",
+                    options.pack.string().c_str());
+    } else {
+        std::printf("assets: no resource files in %s and no cache: the loose files are used\n", folder.string().c_str());
+    }
+    const assets::AssetSet* decoded = loaded ? &loaded->set : nullptr;
+    const auto sourceOf = [&](const assets::Asset& a) { return "decoded from " + decoded->sourceOf(a).path; };
+
+    // Each group from one place: the decoded set, or a loose file named on the command line; the loose defaults only
+    // when nothing was decoded. The mesh falls back to the committed facts/data/rod-mesh.json.
+    const bool useTextureFiles = !decoded || explicitFlags.contains("--textures");
+    const std::string textureSource = useTextureFiles ? "PNG files in " + options.textures.string() : sourceOf(*decoded->find("TEXCFLOW"));
+    const assets::Asset* meshAsset = decoded && !explicitFlags.contains("--mesh") ? decoded->find("RODMESH") : nullptr;
+    const std::string meshSource = meshAsset ? sourceOf(*meshAsset) : options.mesh.string();
+    const assets::Asset* fontAsset = decoded ? decoded->find("FNTOSD") : nullptr;
+    const assets::Asset* programAsset = decoded ? decoded->find("PROGRAM") : nullptr;
+    const bool fontLoose = explicitFlags.contains("--font") || !decoded;
+    const bool programLoose = explicitFlags.contains("--program") || !decoded;
+    std::vector<uint8_t> fontFile = fontLoose ? fileOrEmpty(options.font) : fontAsset ? fontAsset->data : std::vector<uint8_t>{};
+    std::vector<uint8_t> programFile = programLoose ? fileOrEmpty(options.program) : programAsset ? programAsset->data : std::vector<uint8_t>{};
+    if (programLoose && !programFile.empty()) {
+        bool known = false;
+        try {
+            known = assets::isHddOsd110U(assets::ElfImage(programFile));
+        } catch (const std::exception&) {
+        }
+        if (!known) {
+            std::fprintf(stderr, "text: %s is not HDD OSD 1.10U's hddosd.elf: not read\n", options.program.string().c_str());
+            programFile.clear();
+        }
+    }
+    const std::string textSource = fontFile.empty() || programFile.empty()
+                                       ? std::string("none (no FNTOSD or no HDD OSD 1.10U hddosd.elf)")
+                                       : (fontLoose ? options.font.string() : sourceOf(*fontAsset)) + " and " + (programLoose ? options.program.string() : sourceOf(*programAsset));
+    std::printf("textures: %s\nmesh: %s\ntext: %s\n", textureSource.c_str(), meshSource.c_str(), textSource.c_str());
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         std::fprintf(stderr, "SDL: %s\n", SDL_GetError());
         return 1;
@@ -119,20 +203,21 @@ int main(int argc, char** argv) {
     try {
         render::Device device(window, {options.validation});
         render::NativeRenderer renderer(device, options.shaders);
-        renderer.loadClockTextures(options.textures);
+        if (useTextureFiles) renderer.loadClockTextures(options.textures);
+        else app::uploadClockTextures(renderer, *decoded);
 
         // The clock as the whole3-clock capture holds it at its first frame (resources/clock/start.json, or a
         // capture's scene.json through --start), then real time.
         const nlohmann::json input = scene::firstInput(options.start.string());
-        scene::ClockInputs clockInputs = scene::clockInputs(input, scene::loadRodMesh(options.mesh));
-        // The text needs the font library's context of the start state; a start without it runs without text.
+        scene::ClockInputs clockInputs = scene::clockInputs(input, meshAsset ? app::rodMeshOf(*meshAsset) : scene::loadRodMesh(options.mesh));
+        // The text needs the font library's context of the start state, FNTOSD and hddosd.elf; without them no text.
         std::shared_ptr<const scene::Font> font;
-        if (input.contains("font")) {
-            font = std::make_shared<const scene::Font>(scene::Font::load(options.font));
-            clockInputs.font = font;
-            clockInputs.program = std::make_shared<const scene::ProgramImage>(scene::ProgramImage::load(options.program));
-        } else {
+        if (!input.contains("font")) {
             std::printf("%s has no font context: the clock runs without text\n", options.start.string().c_str());
+        } else if (!fontFile.empty() && !programFile.empty()) {
+            font = std::make_shared<const scene::Font>(std::move(fontFile));
+            clockInputs.font = font;
+            clockInputs.program = std::make_shared<const scene::ProgramImage>(std::move(programFile));
         }
         Clock clock(clockInputs);
         scene::FrameInputs inputs = scene::frameInputs(input);

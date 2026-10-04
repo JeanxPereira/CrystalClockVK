@@ -173,20 +173,37 @@ Executables land in `bin/`. CI builds them on every push to `main`.
 
 ### Your own data
 
-The textures, the font and the program are Sony's and are not in this repository. They come from your own
-console's BIOS and HDD OSD, through the scripts in `References/scripts/`:
+The textures, the font and the program are Sony's and are not in this repository. The app reads them from your
+own console's files, the raw resource files the OSD itself loads (`TEXIMAGE`, `FNTOSD`, ... and `hddosd.elf`),
+and decodes them at start-up (ROMDIR, the HDD OSD container decrypt, Expand, the 32-bit conversion of
+`func_002344F8`; `src/assets/`).
 
 ```powershell
-# The ten clock textures, decoded from the GS memory of a PCSX2 GS dump of the clock screen
-node References/scripts/extract_textures.mjs <clock.gs> References/textures
-# Optional: check them against your BIOS's TEXIMAGE, texture by texture
-node References/scripts/extract_rom_textures.mjs <bios.bin> References/textures
-
-# FNTOSD and hddosd.elf for the text, from an installed HDD OSD 1.10U (the ELF's SHA-1 is checked)
-node References/scripts/make_hddosd_host.mjs <hddosd.elf> <installed HDD OSD folder> References/dumps/hddosd-host
+# From a BIOS ROM image: its TEXIMAGE, SNDIMAGE and ICOIMAGE are written, unchanged, to your resource folder
+bin\CrystalClock.exe --bios <rom.bin>
+# From an installed HDD OSD 1.10U: a folder with hddosd.elf, FNTOSD, TEXIMAGE (encrypted), ...
+bin\CrystalClock.exe --resources <folder>
 ```
 
-Configure finds them there by default; `-DCLOCK_REFERENCES=<dir>` and `-DCLOCK_DUMPS=<dir>` point elsewhere.
+The first run decodes the files and writes a cache, `%LOCALAPPDATA%\CrystalClockVK\assets.bin` (`--assets`
+moves it); later runs read the cache while the files' hashes are unchanged. `--bios` extracts into
+`%LOCALAPPDATA%\CrystalClockVK\resources` unless `--resources` names a folder; when a file there holds other
+bytes it writes nothing. With no flag the app uses that folder when it holds a `TEXIMAGE`, else the configured
+`CLOCK_DUMPS` folder. A folder that cannot be decoded falls back to the cache, and with no cache to the loose
+files (`--textures`, `--font`, `--program`, `--mesh` defaults), each with a warning; the cache is also decoded
+again when the decoder changes.
+
+The text needs `FNTOSD` and HDD OSD 1.10U's `hddosd.elf` (the original or the host copy; any other ELF is
+recognised and not read): a BIOS gives the textures only, and the clock then runs without text and with the
+committed `facts/data/rod-mesh.json`. Once files are decoded, a loose file is used only when its flag is given.
+At start-up the app prints where the textures, the mesh and the text come from. The decryption tables and key
+words are read from your `hddosd.elf`.
+
+The tests read your files by configurable absolute paths: `-DCLOCK_DUMPS=<folder>` (HDD OSD resource files),
+`-DCLOCK_BIOS=<rom.bin>` (ROM 2.30, `0230A` of 2008-02-20), `-DCLOCK_REFERENCES=<dir>` (`textures/`, the PNGs
+`References/scripts/extract_textures.mjs` writes from a GS dump, against which the decoded textures are compared,
+and `fixtures/`), `-DCLOCK_HDDOSD_ELF=<hddosd.elf>` (the original ELF, for the program check). A test whose file is
+missing is not registered; `AssetsRobustTest` (synthetic, truncated and corrupted inputs) needs no file and always runs.
 
 ## Running
 
@@ -204,7 +221,10 @@ first seconds the rods sweep from the captured hour to yours.
 | `--smoke` | A 5.5 s resize and minimise run |
 | `--no-validation` | Runs without the Vulkan validation layers |
 | `--start <scene.json>` | Starts from another capture's first frame |
-| `--textures`, `--font`, `--program`, `--mesh`, `--shaders` | Override the data paths |
+| `--resources <dir>` | The folder of raw OSD resource files to decode |
+| `--bios <rom.bin>` | Extracts the BIOS's resource files into the resource folder first |
+| `--assets <assets.bin>` | Where the decoded cache is read and written |
+| `--textures`, `--font`, `--program`, `--mesh`, `--shaders` | The loose files used when no resource file or cache is found |
 | `--screenshots <dir>` | Where the panel's screenshot button writes; `out/screenshots` by default |
 
 ## Tests
