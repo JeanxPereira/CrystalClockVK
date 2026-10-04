@@ -10,6 +10,7 @@
 #include "scene/Frame.hpp"
 #include "scene/FrameHead.hpp"
 #include "scene/Matrix.hpp"
+#include "scene/MenuTypes.hpp"
 #include "scene/ProgramImage.hpp"
 #include "scene/Ramp.hpp"
 
@@ -55,6 +56,7 @@ struct TextRamps {
     int32_t panel8On = 0; // D_00370140
     int32_t panel8 = 0;   // D_0037013C
     int32_t adjustRow = 0;  // the flag of the row D_002B2FF8 selects in the table D_002B2FEC points at
+    std::array<int32_t, 4> panel8Ids{1, 1, 1, 1};  // the string ids of panel 8, D_002B2300 (func_002266E0 writes them)
 };
 
 // The console's settings the text reads: configuration items 0xD (time format) and 0xE (date format), the settings
@@ -86,6 +88,7 @@ struct TextFrameInputs {
     int32_t tail = 0;
     Ramp menu;
     int32_t width = 640, height = 224;
+    std::optional<TextRamps> ramps;
 };
 
 // A glyph: the twelve-vertex fan (facts/text.md section 3) in native units (pixels without the field's half line,
@@ -121,6 +124,30 @@ struct TextFrame {
     GlyphCache glyphs;
 };
 
+// facts/text.md section 5: what the pages' strings read: the main menu, System Configuration's list and entries, the
+// crossfade (R4), the configuration items (the clock's value) and the ramps of the alpha rules.
+struct PagesInputs {
+    MainMenu mainMenu;
+    ConfigPage page;
+    std::array<ConfigEntry, 9> entries{};
+    ListFade listFade;
+    ListConstants listConstants;
+    std::array<AdjustField, 6> adjustFields{};
+    ConfigItems items{};
+    Ramp menuRamp;
+    int32_t tail = 0, overlayLevel = 0;
+    TextRamps ramps;
+    int32_t width = 640, height = 224;
+    int32_t pending = 0;   // D_003701D0, what func_0022AAF0 answers
+};
+struct PagesFrame {
+    TextFrame text;
+    std::optional<int32_t> titleWidth;   // configPage + 0xC as the list's drawing measures it (browser_str_related2)
+};
+// TextRamps from the menus' live ramps (config, mainMenu, version, dialogClosing, firstRun, lead, body); the rest from `constants`.
+TextRamps textRampsOf(const MenusState& menus, const TextRamps& constants);
+PagesInputs pagesOf(const MenusState& menus, const ClockState& clock, const ConfigItems& items, const TextRamps& ramps, int32_t width, int32_t height);
+
 // facts/text.md: the date and time (func_00226300) and the button hint (func_002269E0) of the clock screen, through
 // the program's font code (Font_PutsPackets 0x00213BA8, fontFilter 0x00212D78) and the library's
 // (_scePFont_Putc 0x00291858), the cache carried from string to string and frame to frame.
@@ -129,6 +156,8 @@ class Text {
 public:
     Text(std::shared_ptr<const Font> font, std::shared_ptr<const ProgramImage> program, const TextInputs& inputs);
     TextFrame frame(const TextFrameInputs& in);
+    // The pages function's text (the main menu's items, System Configuration's list), before the bars, the cache carried.
+    PagesFrame pages(const PagesInputs& in);
     // One string through Font_PutsPackets at the font state as it stands, as a frame of its own (for tests).
     TextFrame drawString(const std::string& text, int32_t width = 640, int32_t height = 224);
 
@@ -150,6 +179,17 @@ private:
     void buttonPanel(int32_t panel, int32_t alpha, int32_t y, const TextFrameInputs& in, TextFrame& out);
     void icon(int32_t picture, int32_t x, int32_t y, int32_t alpha, const TextFrameInputs& in, TextFrame& out);
     int32_t language() const;
+    std::string languageString(int32_t id) const;
+    void colourFrom(uint32_t at, int32_t alpha);
+    int32_t drawItem(int32_t x, int32_t y, uint32_t colour, int32_t alpha, const std::string& text, TextFrame& out);
+    void menuItem(int32_t x, int32_t y, uint32_t colour, int32_t alpha, const std::string& text, TextFrame& out);
+    int32_t templateWidth(int32_t timeFormat, TextFrame& out);
+    void mainMenuItems(const PagesInputs& in, TextFrame& out);
+    std::optional<int32_t> list(const PagesInputs& in, TextFrame& out);
+    void listEntry(const PagesInputs& in, int32_t index, int32_t alpha, TextFrame& out);
+    void clockValue(const PagesInputs& in, const ConfigEntry& entry, const std::array<AdjustField, 6>& fields, int32_t x, int32_t y, int32_t alpha, bool editing, TextFrame& out);
+    void valueRow(const ConfigEntry& entry, int32_t x, int32_t y, int32_t alpha, TextFrame& out);
+    void entryValue(const PagesInputs& in, const ConfigEntry& entry, int32_t x, int32_t y, int32_t alpha, bool editing, TextFrame& out);
     bool pal() const { return m_settings.videoMode == 2; }
 
     std::shared_ptr<const Font> m_fontFile;
@@ -162,6 +202,10 @@ private:
     std::vector<int32_t> m_cells;
     std::vector<bool> m_drawn;
     int32_t m_width = 640, m_height = 224;
+    // D_00370158 and D_0037015C: the width of the clock value's template and the time format it was measured for.
+    int32_t m_templateWidth = 0, m_templateFormat = 0;
+    bool m_afterPages = false;
+    std::array<int32_t, 4> m_panel8{1, 1, 1, 1};
 };
 
 extern template class Text<EeArithmetic>;

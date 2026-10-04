@@ -313,3 +313,14 @@ target_compile_definitions(CrystalClock PRIVATE
     CLOCK_MESH="${CMAKE_SOURCE_DIR}/facts/data/rod-mesh.json" CLOCK_SCREENSHOTS="${CMAKE_SOURCE_DIR}/out/screenshots"
     CLOCK_FONT="${CLOCK_DUMPS}/FNTOSD" CLOCK_PROGRAM="${CLOCK_DUMPS}/hddosd.elf")
 target_link_libraries(ParityTool PRIVATE ClockRender ClockSceneNative SceneInputs)
+
+add_library(StringCompare STATIC tests/scene/StringCompare.cpp)
+target_link_libraries(StringCompare PUBLIC SceneTestSupport)
+add_executable(MenuTextTest tests/scene/MenuTextTest.cpp)
+target_link_libraries(MenuTextTest PRIVATE StringCompare StageCompare)
+file(GLOB MENU_TEXT_SCENES CONFIGURE_DEPENDS ${MENU_FIXTURES}/hddosd-110U-whole3-*/scene.json)
+list(FILTER MENU_TEXT_SCENES EXCLUDE REGEX "whole3-clock")
+if(MENU_TEXT_SCENES AND EXISTS ${CLOCK_DUMPS}/FNTOSD)
+    add_test(NAME MenuTextTest COMMAND MenuTextTest ${CLOCK_DUMPS}/FNTOSD ${CLOCK_DUMPS}/hddosd.elf ${CMAKE_SOURCE_DIR}/facts/data/rod-mesh.json ${MENU_TEXT_SCENES})
+    set_tests_properties(MenuTextTest PROPERTIES TIMEOUT 3600)
+endif()
