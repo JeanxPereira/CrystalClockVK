@@ -324,6 +324,15 @@ void NativeRenderer::setTexture(int32_t number, uint32_t width, uint32_t height,
     m_textures.emplace(number, texture);
 }
 
+// facts/text.md sections 1 and 2: 4-bit pictures through the block's colour table. The GS looks a texel's colour up
+// before it filters, so the table is applied here, once, and the pass samples the colours.
+void NativeRenderer::setGlyphCache(const scene::Font& font, const scene::GlyphCache& cache) {
+    if (cache == m_glyphs && m_textures.contains(scene::kGlyphTexture)) return;
+    const std::vector<uint8_t> image = scene::glyphCacheImage(font, cache);
+    setTexture(scene::kGlyphTexture, 1u << cache.logWidth, 1u << cache.logHeight, image);
+    m_glyphs = cache;
+}
+
 void NativeRenderer::loadClockTextures(const std::filesystem::path& directory) {
     for (int32_t n = 0; n < 10; ++n) {
         const std::string path = (directory / kClockTextures[n]).string();
@@ -557,6 +566,7 @@ void NativeRenderer::record(VkCommandBuffer cmd, const scene::Frame& frame) {
         if (m.source == scene::SourceKind::Texture) {
             const auto found = m_textures.find(m.texture);
             if (found == m_textures.end()) throw std::runtime_error("pass " + pass.name + ": no texture " + std::to_string(m.texture));
+            if (m.texture == scene::kGlyphTexture && !(frame.glyphs == m_glyphs)) throw std::runtime_error("pass " + pass.name + ": the glyph cache set is not the frame's");
             const Image& image = found->second.image;
             view = image.view;
             push.source[0] = push.source[2] = float(image.width);

@@ -34,6 +34,8 @@ struct Options {
     std::filesystem::path start = CLOCK_START;
     std::filesystem::path mesh = CLOCK_MESH;
     std::filesystem::path screenshots = CLOCK_SCREENSHOTS;
+    std::filesystem::path font = CLOCK_FONT;
+    std::filesystem::path program = CLOCK_PROGRAM;
 };
 
 // The OSD's time keeper gives hours, minutes, seconds and the milliseconds into the second; here the local time.
@@ -43,6 +45,16 @@ scene::ClockTime clockTime(system_clock::time_point now) {
     const std::chrono::hh_mm_ss day{second - std::chrono::floor<std::chrono::days>(local)};
     const float milliseconds = std::chrono::duration<float, std::milli>(local - second).count();
     return {milliseconds, static_cast<int32_t>(day.seconds().count()), static_cast<int32_t>(day.minutes().count()), static_cast<int32_t>(day.hours().count())};
+}
+
+// Configuration items 6 to 0xB, which the clock screen's text formats: the local date and time.
+scene::ClockItems clockItems(system_clock::time_point now) {
+    const auto local = std::chrono::current_zone()->to_local(now);
+    const auto day = std::chrono::floor<std::chrono::days>(local);
+    const std::chrono::year_month_day date{day};
+    const std::chrono::hh_mm_ss time{std::chrono::floor<std::chrono::seconds>(local - day)};
+    return {static_cast<int32_t>(date.year()), static_cast<int32_t>(static_cast<unsigned>(date.month())), static_cast<int32_t>(static_cast<unsigned>(date.day())),
+            static_cast<int32_t>(time.hours().count()), static_cast<int32_t>(time.minutes().count()), static_cast<int32_t>(time.seconds().count())};
 }
 
 std::chrono::seconds secondsOfDay(system_clock::time_point now) {
@@ -84,8 +96,10 @@ int main(int argc, char** argv) {
         else if (arg == "--start" && more) options.start = argv[++i];
         else if (arg == "--mesh" && more) options.mesh = argv[++i];
         else if (arg == "--screenshots" && more) options.screenshots = argv[++i];
+        else if (arg == "--font" && more) options.font = argv[++i];
+        else if (arg == "--program" && more) options.program = argv[++i];
         else {
-            std::fprintf(stderr, "usage: CrystalClock [--smoke] [--soak seconds] [--no-validation] [--shaders dir] [--textures dir] [--start scene.json] [--mesh rod-mesh.json] [--screenshots dir]\n");
+            std::fprintf(stderr, "usage: CrystalClock [--smoke] [--soak seconds] [--no-validation] [--shaders dir] [--textures dir] [--start scene.json] [--mesh rod-mesh.json] [--screenshots dir] [--font FNTOSD] [--program hddosd.elf]\n");
             return 1;
         }
     }
@@ -106,7 +120,11 @@ int main(int argc, char** argv) {
 
         // The clock's state when the whole3-clock capture starts (frames[0].input of its scene.json), then real time.
         const nlohmann::json input = scenetest::firstInput(options.start.string());
-        Clock clock(scenetest::clockInputs(input, scene::loadRodMesh(options.mesh)));
+        scene::ClockInputs clockInputs = scenetest::clockInputs(input, scene::loadRodMesh(options.mesh));
+        const auto font = std::make_shared<const scene::Font>(scene::Font::load(options.font));
+        clockInputs.font = font;
+        clockInputs.program = std::make_shared<const scene::ProgramImage>(scene::ProgramImage::load(options.program));
+        Clock clock(clockInputs);
         scene::FrameInputs inputs = scenetest::frameInputs(input);
 
         IMGUI_CHECKVERSION();
@@ -138,7 +156,9 @@ int main(int argc, char** argv) {
         bool fresh = false;
         uint64_t logicFrames = 0;
         const auto produce = [&] {
-            inputs.time = clockTime(system_clock::now() + offset);
+            const system_clock::time_point now = system_clock::now() + offset;
+            inputs.time = clockTime(now);
+            inputs.items = clockItems(now);
             frame = clock.frame(inputs);
             inputs.field ^= 1;
             inputs.displayIndex ^= 1;
@@ -260,6 +280,7 @@ int main(int argc, char** argv) {
             app::drawPanel(panel, info);
             ImGui::Render();
 
+            renderer.setGlyphCache(*font, frame.glyphs);
             auto context = device.beginFrame();
             if (!context) {
                 SDL_Delay(10);

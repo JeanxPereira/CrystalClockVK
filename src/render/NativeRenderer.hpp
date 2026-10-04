@@ -11,7 +11,9 @@
 #include <vector>
 
 #include "render/Device.hpp"
+#include "scene/Font.hpp"
 #include "scene/Frame.hpp"
+#include "scene/Text.hpp"
 
 namespace render {
 
@@ -37,6 +39,8 @@ public:
     // The ten clock textures (References/textures, written by References/scripts/extract_textures.mjs and
     // checked against the ROM by extract_rom_textures.mjs), texture n at its 640 x 224 address.
     void loadClockTextures(const std::filesystem::path& directory);
+    // The glyph cache (scene::kGlyphTexture) a frame's text samples; made again only when its cells change.
+    void setGlyphCache(const scene::Font& font, const scene::GlyphCache& cache);
 
     void configure(const NativeOutput& output);
     const NativeOutput& output() const { return m_output; }
@@ -106,6 +110,7 @@ private:
     NativeOutput m_output{0, 0, 0};
     std::array<Buffer, 3> m_vertices{};
     uint32_t m_slot{0};
+    scene::GlyphCache m_glyphs;
 };
 
 }  // namespace render

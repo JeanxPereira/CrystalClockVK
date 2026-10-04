@@ -171,11 +171,43 @@ int msaa(render::NativeRenderer& renderer) {
     return 0;
 }
 
+// The date, the time and the button hint: drawn from the glyph cache through its colour table, they light the
+// places facts/text.md section 5 gives them (date from x 22, time ending 22 from the right, both from line 14; the
+// hint's picture at x 24 and its text at 52 on line 200), against the same frame without its text.
+int text(render::NativeRenderer& renderer, const scene::Font& font, const scene::Frame& frame) {
+    renderer.configure({kWidth, kHeight, 1});
+    renderer.setGlyphCache(font, frame.glyphs);
+    renderer.draw(frame);
+    const auto with = renderer.readTarget(TargetName::Display);
+    scene::Frame plain = frame;
+    std::erase_if(plain.passes, [](const Pass& p) { return p.name == "text" || p.name == "hint picture"; });
+    CHECK(frame.passes.size() - plain.passes.size() == 27);
+    renderer.draw(plain);
+    const auto without = renderer.readTarget(TargetName::Display);
+    const auto changed = [&](uint32_t x0, uint32_t y0, uint32_t x1, uint32_t y1) {
+        size_t n = 0;
+        for (uint32_t y = 2 * y0; y < 2 * y1; ++y)
+            for (uint32_t x = x0; x < x1; ++x)
+                if (pixel(with, x, y) != pixel(without, x, y)) ++n;
+        return n;
+    };
+    const size_t date = changed(20, 10, 180, 26), time = changed(500, 10, 620, 26), picture = changed(24, 199, 50, 212), hint = changed(50, 198, 120, 212),
+                 elsewhere = changed(200, 60, 440, 160);
+    std::printf("text: %zu pixels changed by the date, %zu by the time, %zu by the hint's picture, %zu by its text, %zu elsewhere\n", date, time, picture, hint, elsewhere);
+    CHECK(date > 500 && time > 500 && picture > 100 && hint > 300 && elsewhere == 0);
+    return 0;
+}
+
 // Real clock frames: every blended pass multiplies by at most 0x80, and they draw without validation errors.
-int clockFrames(render::NativeRenderer& renderer, const std::string& scenePath, const std::string& meshPath, const std::string& textures) {
+int clockFrames(render::NativeRenderer& renderer, const std::string& scenePath, const std::string& meshPath, const std::string& textures, const std::string& fontPath,
+                const std::string& programPath) {
     renderer.loadClockTextures(textures);
     const nlohmann::json input = scenetest::firstInput(scenePath);
-    scene::Clock<scene::NativeArithmetic> clock(scenetest::clockInputs(input, scene::loadRodMesh(meshPath)));
+    scene::ClockInputs inputs = scenetest::clockInputs(input, scene::loadRodMesh(meshPath));
+    const auto font = std::make_shared<const scene::Font>(scene::Font::load(fontPath));
+    inputs.font = font;
+    inputs.program = std::make_shared<const scene::ProgramImage>(scene::ProgramImage::load(programPath));
+    scene::Clock<scene::NativeArithmetic> clock(inputs);
     scene::FrameInputs in = scenetest::frameInputs(input);
     renderer.configure({kWidth, kHeight, 4});
     uint32_t largest = 0, passes = 0, written = 0;
@@ -189,6 +221,7 @@ int clockFrames(render::NativeRenderer& renderer, const std::string& scenePath, 
             for (const scene::Vertex& v : p.vertices) written = std::max<uint32_t>(written, v.a);
             ++passes;
         }
+        renderer.setGlyphCache(*font, frame.glyphs);
         renderer.draw(frame);
         in.field ^= 1;
         in.displayIndex ^= 1;
@@ -199,14 +232,14 @@ int clockFrames(render::NativeRenderer& renderer, const std::string& scenePath, 
     std::printf("clock: %u passes over 8 frames, largest blend alpha 0x%x, largest vertex alpha 0x%x, %zu lit pixels\n", passes, largest, written, lit);
     CHECK(largest <= 0x80);
     CHECK(lit > kWidth * kHeight / 4);
-    return 0;
+    return text(renderer, *font, clock.frame(in));
 }
 
 }  // namespace
 
 int main(int argc, char** argv) {
-    if (argc != 2 && argc != 5) {
-        std::fprintf(stderr, "usage: NativeRendererTest <shader dir> [scene.json rod-mesh.json textures dir]\n");
+    if (argc != 2 && argc != 7) {
+        std::fprintf(stderr, "usage: NativeRendererTest <shader dir> [scene.json rod-mesh.json textures-dir FNTOSD hddosd.elf]\n");
         return 1;
     }
     try {
@@ -216,7 +249,7 @@ int main(int argc, char** argv) {
         CHECK(sampling(renderer) == 0);
         CHECK(copies(renderer) == 0);
         CHECK(msaa(renderer) == 0);
-        if (argc == 5) CHECK(clockFrames(renderer, argv[2], argv[3], argv[4]) == 0);
+        if (argc == 7) CHECK(clockFrames(renderer, argv[2], argv[3], argv[4], argv[5], argv[6]) == 0);
         std::printf("validation errors: %u\n", device.validationErrors());
         CHECK(device.validationErrors() == 0);
     } catch (const std::exception& e) {
