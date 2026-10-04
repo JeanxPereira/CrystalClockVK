@@ -1,6 +1,8 @@
 #include "scene/Clock.hpp"
 
+#include <algorithm>
 #include <cmath>
+#include <iterator>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -18,6 +20,7 @@ struct Header {
     Material material;
     bool edgeSmoothing = false;
     bool halfLine = false;
+    bool primBlend = false;
 };
 
 // Primitives into passes: a pass is a run of primitives under one state, as the GS draws them. A strip becomes
@@ -56,8 +59,8 @@ private:
             }
         Pass* last = m_frame.passes.empty() ? nullptr : &m_frame.passes.back();
         if (!last || m_cut || last->target != m_header.target || last->topology != m_header.topology || !(last->material == m_header.material) ||
-            last->edgeSmoothing != m_header.edgeSmoothing || last->halfLine != m_header.halfLine) {
-            m_frame.passes.push_back({m_header.name, m_header.target, m_header.topology, m_header.material, m_header.edgeSmoothing, m_header.halfLine, {}});
+            last->edgeSmoothing != m_header.edgeSmoothing || last->halfLine != m_header.halfLine || last->primBlend != m_header.primBlend) {
+            m_frame.passes.push_back({m_header.name, m_header.target, m_header.topology, m_header.material, m_header.edgeSmoothing, m_header.halfLine, m_header.primBlend, {}});
             last = &m_frame.passes.back();
             m_cut = false;
         }
@@ -112,6 +115,11 @@ const char* partName(Part part) {
     case Part::BlurAfter: return "blur after";
     case Part::Bars: return "bars";
     case Part::Column: return "column";
+    case Part::CubeHalf: return "cube half";
+    case Part::CubeAdded: return "cubes added";
+    case Part::CubeChainShrink: return "cubes chain shrink";
+    case Part::CubeChainStretch: return "cubes chain stretch";
+    case Part::CubeToDisplay: return "cubes to display";
     }
     return "?";
 }
@@ -249,6 +257,64 @@ void emitOrb(Builder& out, const OrbDraw& orb) {
     }
 }
 
+// facts/config-cubes.md "Drawing one cube" and "The pass", clock_cubes.mjs drawing(): the state of each send. The far faces
+// sample the frame (gs.frameTexture) into the work buffer, the near ones the work buffer into the refraction buffer;
+// the grain sends add with an offset and subtract without; the layer's reflection is clock texture 5.
+Header cubeHeader(CubeSend send, bool edge, int32_t width, int32_t height) {
+    const BlendOp bent = edge ? BlendOp::AlphaOver : BlendOp::Opaque;
+    const Material grain = fromTexture(2, CoordinateKind::Projective, Sampling::Repeat);
+    switch (send) {
+    case CubeSend::RefractedFar:
+        return {"cube refracted far", TargetName::Work, PassTopology::Triangles, withState(fromTarget(TargetName::Display, true, width, height), bent, DepthTest::Always), edge, true};
+    case CubeSend::GrainOffsetFar:
+        return {"cube grain offset far", TargetName::Work, PassTopology::Triangles, withState(grain, BlendOp::Add, DepthTest::GreaterEqual), false, true};
+    case CubeSend::GrainPlainFar:
+        return {"cube grain plain far", TargetName::Work, PassTopology::Triangles, withState(grain, BlendOp::Subtract, DepthTest::GreaterEqual), false, true};
+    case CubeSend::EdgeColour:
+        return {"cube edge colour", TargetName::RefractionSource, PassTopology::Triangles, withState(Material{}, BlendOp::AlphaOver, DepthTest::Always), true, true, true};
+    case CubeSend::Depth:
+        return {"cube depth", TargetName::RefractionSource, PassTopology::Triangles, withState(Material{}, BlendOp::Add, DepthTest::GreaterEqual), true, true, true};
+    case CubeSend::RefractedNear:
+        return {"cube refracted near", TargetName::RefractionSource, PassTopology::Triangles, withState(fromTarget(TargetName::Work, false, width, height), bent, DepthTest::Always), edge,
+                true};
+    case CubeSend::GrainOffsetNear:
+        return {"cube grain offset near", TargetName::RefractionSource, PassTopology::Triangles, withState(grain, BlendOp::Add, DepthTest::GreaterEqual), false, true};
+    case CubeSend::GrainPlainNear:
+        return {"cube grain plain near", TargetName::RefractionSource, PassTopology::Triangles, withState(grain, BlendOp::Subtract, DepthTest::GreaterEqual), false, true};
+    case CubeSend::LayerReflection:
+        return {"cube layer reflection", TargetName::Work, PassTopology::Triangles, withState(fromTexture(5, CoordinateKind::Texel, Sampling::Clamp), bent, DepthTest::Always), edge, true};
+    case CubeSend::LayerAlpha:
+        return {"cube layer alpha", TargetName::Work, PassTopology::Triangles, withState(Material{}, BlendOp::Add, DepthTest::GreaterEqual), edge, true, true};
+    case CubeSend::LayerClear:
+    case CubeSend::HalfBuffer:
+    case CubeSend::Added:
+    case CubeSend::ChainShrink:
+    case CubeSend::ChainStretch:
+    case CubeSend::ToDisplay:
+        break;
+    }
+    throw std::runtime_error("a cube send that is not a face send");
+}
+
+void clearTarget(Builder& out, const std::string& name, TargetName target, const Colour& colour, int32_t width, int32_t height);
+
+void emitCubes(Builder& out, const std::vector<CubeDraw>& draws, int32_t width, int32_t height) {
+    for (const CubeDraw& d : draws) {
+        if (d.send == CubeSend::LayerClear) {
+            clearTarget(out, "cubes layer clear", TargetName::Work, d.clear, width, height);
+        } else if (d.rectangle) {
+            emitHead(out, {*d.rectangle}, width, height);
+        } else {
+            for (const RodFaceDraw& face : d.faces) {
+                out.use(cubeHeader(d.send, face.edgeSmoothing, width, height));
+                std::vector<Vertex> strip;
+                for (const RodVertex& r : face.strip) strip.push_back(rodVertex(r));
+                out.triangles(strip);
+            }
+        }
+    }
+}
+
 // facts/text.md: the text's draws, all to the display with its field half line. A glyph is a Gouraud, textured,
 // blended fan (PRIM 0x5D) of the glyph cache, ST, region clamp to its cell, bilinear (TEX1 0x60), blend 0x44, depth
 // test always (Font_PutsPackets' TEST 0x30000); the hint's picture is DrawIcon's rectangle (func_00233770) of a clock
@@ -293,8 +359,20 @@ void clearTarget(Builder& out, const std::string& name, TargetName target, const
 template <class A>
 Clock<A>::Clock(const ClockInputs& in)
     : m_state(in.state), m_head(in.head), m_rods(in.mesh, in.rodTemplate), m_orbs(in.orbs), m_clearColour(in.clearColour), m_firstDisplayClear(in.firstDisplayClear), m_tube(in.tube),
-      m_minuteFactor(in.minuteFactor), m_fractionEasing(in.fractionEasing), m_orbColour(in.orbColour), m_width(in.width), m_height(in.height) {
+      m_minuteFactor(in.minuteFactor), m_fractionEasing(in.fractionEasing), m_orbColour(in.orbColour), m_width(in.width), m_height(in.height), m_textRamps(in.text.ramps) {
     if (in.font && in.program) m_text.emplace(in.font, in.program, in.text);
+    if (in.menus) {
+        m_menus.emplace(in.menus->options);
+        m_cubes.emplace(in.menus->cubeMesh);
+        m_menusState = in.menus->menus;
+        m_cubeState = in.menus->cubes;
+        m_items = in.menus->items;
+    }
+}
+
+template <class A>
+MenuWorld Clock<A>::menuWorld() {
+    return {m_state, m_head.state(), m_orbs.spriteFade, m_menusState, m_cubeState, m_items, m_width, m_height};
 }
 
 // References/model/clock_frame.mjs frame(), the clock screen's parts, in its order.
@@ -309,6 +387,21 @@ Frame Clock<A>::frame(const FrameInputs& in) {
 
     m_state.time = in.time;
     m_state.scene.field = in.field;
+    m_strings.clear();
+    m_notes.clear();
+    MenuExternals ext;
+    if (m_menus) {
+        ext = in.menu;
+        if (in.timeFilled) m_state.timeFilled = *in.timeFilled;
+        if (in.configItems) {
+            const bool modelsItem0 = m_menusState.configGate.has_value() && ext.mechaconParam.has_value();
+            for (size_t i = modelsItem0 ? 1 : 0; i < m_items.size(); ++i) m_items[i] = (*in.configItems)[i];
+        }
+        if (in.threadStep) {
+            MenuWorld world = menuWorld();
+            Menus::between(world, ext, m_notes);
+        }
+    }
     const CameraMatrices camera = Camera<A>::matrices(m_state);
 
     HeadInputs head;
@@ -318,7 +411,7 @@ Frame Clock<A>::frame(const FrameInputs& in) {
     head.overlayLevel = m_state.overlayLevel;
     head.level = static_cast<uint32_t>(m_state.level);
     head.counter = m_state.counter;
-    head.item0 = in.item0;
+    head.item0 = m_menus ? m_items[0] : in.item0;
     head.proportionX = m_state.proportions.ax;
     head.proportionY = m_state.proportions.ay;
     head.clearColour = m_clearColour;
@@ -390,10 +483,56 @@ Frame Clock<A>::frame(const FrameInputs& in) {
     emitHead(out, m_head.overlay(head), m_width, m_height);
     m_state.vignetteRamp = m_head.state().vignetteRamp;
     emitHead(out, m_head.tripsAfter(head), m_width, m_height);
+
+    ClockState atMenus;
+    ConfigItems atItems{};
+    TextRamps pageRamps;
+    std::optional<PagesInputs> pages;
+    if (m_menus) {
+        emitCubes(out, m_cubes->frame(m_cubeState, m_head.state(), m_state, {m_width, m_height, in.field, m_menusState.body}), m_width, m_height);
+        MenuWorld world = menuWorld();
+        Menus::menuStep(world, ext);
+        atMenus = m_state;
+        atItems = m_items;
+        MenusState before = m_menusState;
+        {
+            // The pages' function runs before the page's input: its list crossfade is the step's without a move (clock_menus.mjs).
+            ClockState probeClock = m_state;
+            HeadState probeHead = m_head.state();
+            Ramp probeFade = m_orbs.spriteFade;
+            MenusState probeMenus = m_menusState;
+            CubeState probeCubes = m_cubeState;
+            ConfigItems probeItems = m_items;
+            MenuWorld probe{probeClock, probeHead, probeFade, probeMenus, probeCubes, probeItems, m_width, m_height};
+            MenuExternals masked = ext;
+            masked.pad.pressed &= ~(pad::Up | pad::Down);
+            std::vector<std::string> sink;
+            m_menus->step(probe, masked, sink);
+            before.listFade = probeMenus.listFade;
+        }
+        const ConfigEntry& chosen = m_menusState.entries.at(static_cast<size_t>(std::clamp(m_menusState.page.selected, 0, 8)));
+        if ((ext.pad.pressed & pad::Cross) && m_menusState.page.ramp.state == 2 && m_menusState.page.level == 0 &&
+            std::find(m_unmodelled.begin(), m_unmodelled.end(), chosen.stringCallback) != m_unmodelled.end()) {
+            ext.pad.pressed &= ~pad::Cross;
+            m_notes.push_back("an entry whose value is not modelled cannot be entered");
+        }
+        m_menus->step(world, ext, m_notes);
+        const TextRamps& constants = in.textRamps ? *in.textRamps : m_textRamps;
+        pageRamps = textRampsOf(menusAtPages(before, m_menusState), constants);
+        pages = pagesOf(menusAtPages(before, m_menusState), atMenus, atItems, pageRamps, m_width, m_height);
+        out.cut();
+        if (m_text) {
+            PagesFrame drawn = m_text->pages(*pages);
+            emitText(out, drawn.text);
+            m_strings = std::move(drawn.text.strings);
+            m_unmodelled = std::move(drawn.unmodelled);
+            if (drawn.titleWidth) m_menusState.page.titleWidth = *drawn.titleWidth;
+            out.cut();
+        }
+    }
     emitHead(out, m_head.bars(head), m_width, m_height);
     frame.textAt = frame.passes.size();
     out.cut();
-    m_strings.clear();
     if (m_text) {
         TextFrameInputs text;
         text.items = in.items;
@@ -403,15 +542,28 @@ Frame Clock<A>::frame(const FrameInputs& in) {
         text.menu = m_state.menuRamp;
         text.width = m_width;
         text.height = m_height;
+        if (m_menus) {
+            text.items = {m_items[6], m_items[7], m_items[8], m_items[9], m_items[10], m_items[11]};
+            text.item0 = m_items[0];
+            text.overlayLevel = atMenus.overlayLevel;
+            text.tail = atMenus.tail;
+            text.menu = atMenus.menuRamp;
+            text.ramps = textRampsOf(m_menusState, in.textRamps ? *in.textRamps : m_textRamps);
+        }
         TextFrame drawn = m_text->frame(text);
         emitText(out, drawn);
         frame.glyphs = std::move(drawn.glyphs);
-        m_strings = std::move(drawn.strings);
+        m_strings.insert(m_strings.end(), std::make_move_iterator(drawn.strings.begin()), std::make_move_iterator(drawn.strings.end()));
         out.cut();
     }
     emitHead(out, m_head.column(head), m_width, m_height);
 
     ClockLogic<A>::step(m_state);
+    if (m_menus) {
+        MenuWorld world = menuWorld();
+        Menus::endOfFrame(world, ext);
+        m_external = ext;
+    }
     return frame;
 }
 

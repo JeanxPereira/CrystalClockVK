@@ -2,15 +2,30 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
+#include <vector>
 
 #include "scene/ClockState.hpp"
+#include "scene/Cubes.hpp"
 #include "scene/Frame.hpp"
 #include "scene/FrameHead.hpp"
+#include "scene/MenuTypes.hpp"
+#include "scene/Menus.hpp"
 #include "scene/Orbs.hpp"
 #include "scene/Rods.hpp"
 #include "scene/Text.hpp"
 
 namespace scene {
+
+// What the menus add to the clock screen: their state, the cubes' state and mesh, the configuration items (item 0 is
+// items[0]) and the options.
+struct MenusInputs {
+    MenusState menus;
+    CubeState cubes;
+    RodMesh cubeMesh;
+    ConfigItems items{};
+    MenusOptions options;
+};
 
 // The clock's state at a frame's entry: what the logic, the head, the rods and the orbs carry,
 // and what stays constant (clear colours, tube constants, orb constants and colour, screen size).
@@ -36,6 +51,7 @@ struct ClockInputs {
     std::shared_ptr<const Font> font;
     std::shared_ptr<const ProgramImage> program;
     TextInputs text;
+    std::optional<MenusInputs> menus;            // absent: the clock screen alone, as before
 };
 
 // What comes from outside the clock each frame: the time keeper, the field flag, the display buffer
@@ -46,11 +62,17 @@ struct FrameInputs {
     int32_t displayIndex = 0;
     int32_t item0 = 0;
     ClockItems items;
+    MenuExternals menu;                          // pad, disc, configDirty, rtcMirror, mechaconParam
+    std::optional<ConfigItems> configItems;      // items 1..0x13 external; item 0 the model's when the gate is modelled
+    std::optional<int32_t> timeFilled;           // the time keeper's word (verify_frame.mjs EXTERNAL)
+    std::optional<TextRamps> textRamps;          // the words of the text's alpha rules the menus' unmodelled code writes (panel flags, the dialog ramp)
+    bool threadStep = true;                      // run between() first; false for a frame recorded after it (frame 0)
 };
 
 // facts/clock-frame.md "Order of a frame", the clock screen's parts: camera; head; rods, orbs and the
 // two extra passes; overlay; trips after the rods; bars; text (date and time, button hint); column; then the state step.
-// The menus, the cubes and the menu ramp step are not part of the clock screen.
+// With menus: the externals in, between(), then after the trips the cubes, the menu ramp step, the menus and the pages' text,
+// and endOfFrame last (clock_frame.mjs frame()).
 template <class A>
 class Clock {
 public:
@@ -64,8 +86,17 @@ public:
     const Text<A>* text() const { return m_text ? &*m_text : nullptr; }
     // The strings of the last frame, as handed to the font code.
     const std::vector<StringRun>& strings() const { return m_strings; }
+    const MenusState* menus() const { return m_menus ? &m_menusState : nullptr; }
+    const CubeState* cubes() const { return m_menus ? &m_cubeState : nullptr; }
+    const ConfigItems& items() const { return m_items; }
+    int32_t width() const { return m_width; }
+    int32_t height() const { return m_height; }
+    const MenuExternals& externals() const { return m_external; }
+    // The model's notes of the last frame (what it does not cover).
+    const std::vector<std::string>& notes() const { return m_notes; }
 
 private:
+    MenuWorld menuWorld();
     ClockState m_state;
     FrameHead<A> m_head;
     Rods<A> m_rods;
@@ -77,6 +108,15 @@ private:
     int32_t m_width, m_height;
     std::optional<Text<A>> m_text;
     std::vector<StringRun> m_strings;
+    std::optional<Menus> m_menus;
+    std::optional<Cubes<A>> m_cubes;
+    MenusState m_menusState;
+    CubeState m_cubeState;
+    ConfigItems m_items{};
+    MenuExternals m_external;
+    TextRamps m_textRamps;
+    std::vector<std::string> m_notes;
+    std::vector<uint32_t> m_unmodelled;
 };
 
 extern template class Clock<EeArithmetic>;

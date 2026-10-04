@@ -110,6 +110,7 @@ GsFrame fromScene(const scene::Frame& frame, const GsFrameLayout& layout) {
         p.scissor = {0, 0, static_cast<int32_t>(layout.width) - 1, static_cast<int32_t>(layout.height) - 1};
         if (m.blend != scene::BlendOp::Opaque) p.blend = blendOf(m.blend, m.blendConstant);
         p.antialias = pass.edgeSmoothing;
+        if (pass.edgeSmoothing && pass.primBlend && pass.topology != scene::PassTopology::Sprites) p.skip = "antialiasing with alpha blending";
         p.depth = {tests[static_cast<size_t>(m.depthTest)], m.depthWrite};
         if (m.source != scene::SourceKind::None) p.texture = textureOf(m, layout, frame.glyphs);
         const float shift = pass.halfLine && frame.field ? 0.5f : 0.0f;

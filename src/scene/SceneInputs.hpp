@@ -17,7 +17,7 @@ Vec4 hexVec4(const nlohmann::json& hex);
 Mat4 hexMat4(const nlohmann::json& hex);
 
 // A frame's `input` of scene.json (tools/scene/export_fixture.mjs) as the clock's state, and its external inputs.
-ClockInputs clockInputs(const nlohmann::json& input, const RodMesh& mesh);
+ClockInputs clockInputs(const nlohmann::json& input, const RodMesh& mesh, const RodMesh* cubeMesh = nullptr);
 FrameInputs frameInputs(const nlohmann::json& input);
 // The program's font state as instrument.mjs fontState writes it.
 FontState fontState(const nlohmann::json& state);

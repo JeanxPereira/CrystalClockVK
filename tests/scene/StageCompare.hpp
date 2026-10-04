@@ -5,6 +5,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include "scene/Clock.hpp"
 #include "scene/MenuTypes.hpp"
 
 // A stage of scene.json (tools/scene/instrument.mjs STAGE_PIECES) as owned values; keys absent from the stage keep
@@ -19,6 +20,8 @@ struct StagePieces {
     int32_t width = 640, height = 224;
     scene::MenuExternals externals;
     scene::MenuWorld world() { return {clock, head, spriteFade, menus, cubes, items, width, height}; }
+    // What a clock with menus holds after a frame, as a stage's pieces.
+    static StagePieces of(const scene::Clock<scene::EeArithmetic>& clock);
 };
 StagePieces stagePieces(const nlohmann::json& stage);
 // Every key of `expected` compared with `ours`, floats by their bits; one line per difference ("cubeList.position: 3000 vs 6000").

@@ -299,6 +299,21 @@ StagePieces stagePieces(const json& stage) {
     return p;
 }
 
+StagePieces StagePieces::of(const scene::Clock<scene::EeArithmetic>& clock) {
+    if (!clock.menus() || !clock.cubes()) throw std::runtime_error("the clock holds no menus");
+    StagePieces p;
+    p.clock = clock.state();
+    p.head = clock.head();
+    p.spriteFade = clock.orbs().spriteFade;
+    p.menus = *clock.menus();
+    p.cubes = *clock.cubes();
+    p.items = clock.items();
+    p.width = clock.width();
+    p.height = clock.height();
+    p.externals = clock.externals();
+    return p;
+}
+
 std::vector<std::string> stageDifferences(const StagePieces& ours, const json& expected) {
     std::vector<std::string> out;
     for (const auto& [key, value] : expected.items()) differences(ownerOf(key).write(ours), value, key, out);

@@ -66,6 +66,7 @@ ClockState clockState(const json& in) {
     s.cameraOffset = f(in.at("cameraOffset"));
     s.zmax = f(in.at("zmax"));
     s.cameraFactor = f(in.at("cameraFactor"));
+    if (in.contains("spin") && !in.at("spin").is_null()) s.spin = in.at("spin").get<uint16_t>();
     return s;
 }
 
@@ -120,6 +121,23 @@ RodRecord rodRecord(const json& j) {
     return r;
 }
 
+TextRamps textRamps(const json& r) {
+    TextRamps t;
+    t.config = ramp(r.at("config"));
+    t.mainMenu = ramp(r.at("mainMenu"));
+    t.version = ramp(r.at("version"));
+    t.dialogClosing = ramp(r.at("dialogClosing"));
+    t.firstRun = ramp(r.at("firstRun"));
+    t.dialog = ramp(r.at("dialog"));
+    t.lead = r.at("lead");
+    t.body = r.at("body");
+    t.panel7 = r.at("panel7");
+    t.panel8On = r.at("panel8On");
+    t.panel8 = r.at("panel8");
+    t.adjustRow = r.at("adjustRow");
+    return t;
+}
+
 // The text's inputs (tools/scene/instrument.mjs fontContext, fontState; export_fixture.mjs textRamps).
 TextInputs textInputs(const json& in) {
     TextInputs t;
@@ -139,19 +157,7 @@ TextInputs textInputs(const json& in) {
     t.cache.texture = font.at("texture");
     t.cache.table = font.at("table");
     t.font = fontState(font.at("state"));
-    const json& r = in.at("textRamps");
-    t.ramps.config = ramp(r.at("config"));
-    t.ramps.mainMenu = ramp(r.at("mainMenu"));
-    t.ramps.version = ramp(r.at("version"));
-    t.ramps.dialogClosing = ramp(r.at("dialogClosing"));
-    t.ramps.firstRun = ramp(r.at("firstRun"));
-    t.ramps.dialog = ramp(r.at("dialog"));
-    t.ramps.lead = r.at("lead");
-    t.ramps.body = r.at("body");
-    t.ramps.panel7 = r.at("panel7");
-    t.ramps.panel8On = r.at("panel8On");
-    t.ramps.panel8 = r.at("panel8");
-    t.ramps.adjustRow = r.at("adjustRow");
+    t.ramps = textRamps(in.at("textRamps"));
     const json& items = in.at("configItems");
     t.settings.timeFormat = items.at(0xd);
     t.settings.dateFormat = items.at(0xe);
@@ -245,7 +251,7 @@ Vec4 hexVec4(const json& hex) { return {hexFloat(hex.at(0)), hexFloat(hex.at(1))
 
 Mat4 hexMat4(const json& hex) { return {hexVec4(hex.at(0)), hexVec4(hex.at(1)), hexVec4(hex.at(2)), hexVec4(hex.at(3))}; }
 
-ClockInputs clockInputs(const json& in, const RodMesh& mesh) {
+ClockInputs clockInputs(const json& in, const RodMesh& mesh, const RodMesh* cubeMesh) {
     ClockInputs c;
     c.state = clockState(in);
     c.head = headState(in);
@@ -262,6 +268,7 @@ ClockInputs clockInputs(const json& in, const RodMesh& mesh) {
     c.width = in.at("screen").at("width");
     c.height = in.at("screen").at("height");
     if (in.contains("font")) c.text = textInputs(in);
+    if (cubeMesh && hasMenus(in)) c.menus = MenusInputs{menusState(in), cubeState(in), *cubeMesh, configItems(in), {}};
     return c;
 }
 
@@ -316,6 +323,19 @@ FrameInputs frameInputs(const json& in) {
     if (in.contains("configItems")) {
         const json& items = in.at("configItems");
         out.items = {items.at(6), items.at(7), items.at(8), items.at(9), items.at(10), items.at(11)};
+    }
+    if (hasMenus(in)) {
+        out.menu = menuExternals(in);
+        out.configItems = configItems(in);
+        if (in.contains("timeFilled")) out.timeFilled = in.at("timeFilled").get<int32_t>();
+        if (in.contains("textRamps")) {
+            out.textRamps = textRamps(in.at("textRamps"));
+        } else {
+            TextRamps idle;
+            const Ramp rest{10, 0, 0, 0};
+            idle.config = idle.mainMenu = idle.version = idle.dialogClosing = idle.firstRun = idle.dialog = rest;
+            out.textRamps = idle;
+        }
     }
     return out;
 }
