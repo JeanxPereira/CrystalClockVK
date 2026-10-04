@@ -132,6 +132,7 @@ GsFrame fromScene(const scene::Frame& frame, const GsFrameLayout& layout) {
         p.target = layout.targets[static_cast<size_t>(pass.target)];
         p.primitive = primitives[static_cast<size_t>(pass.topology)];
         p.scissor = {0, 0, static_cast<int32_t>(layout.width) - 1, static_cast<int32_t>(layout.height) - 1};
+        if (pass.scissor) p.scissor = {(*pass.scissor)[0], (*pass.scissor)[1], (*pass.scissor)[2], (*pass.scissor)[3]};
         if (m.blend != scene::BlendOp::Opaque) p.blend = blendOf(m.blend, m.blendConstant);
         p.antialias = pass.edgeSmoothing;
         p.perPixelAlpha = m.perPixelAlpha;

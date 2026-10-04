@@ -1,12 +1,14 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <map>
 
 #include "../../Check.hpp"
 #include "../SceneFixture.hpp"
 #include "OpeningFixture.hpp"
 #include "scene/Arithmetic.hpp"
+#include "parity/FromScene.hpp"
 #include "scene/opening/Flat.hpp"
 
 namespace {
@@ -37,6 +39,7 @@ int run(const std::string& path, const std::string& fullPath) {
     std::map<int, int> blurLevels;
     int64_t packets = 0;
     size_t logos = 0;
+    int32_t lastCopyCounter = 0;
     std::vector<int32_t> blurSequence, fadeSequence;
 
     for (size_t k = 0; k < fixture.frameCount(); ++k) {
@@ -49,15 +52,15 @@ int run(const std::string& path, const std::string& fullPath) {
             if (record.k == 0) {
                 FlatInputs in;
                 in.blurLevel = static_cast<int32_t>(record.a0);
-                in.displayIndex = record.a1 ? 0 : 1;
+                in.counter = lastCopyCounter;
                 in.field = static_cast<int32_t>(record.a2);
                 CHECK(in.blurLevel >= 1 && in.blurLevel <= 3);
                 ++blurLevels[in.blurLevel];
                 blurSequence.push_back(in.blurLevel);
                 Ee::blur(in, passes);
                 CHECK(passes.size() == static_cast<size_t>(in.blurLevel) * 2);
-                const int32_t here = record.a1 ? 0 : kBlocks;
-                CHECK(Ee::page(in) == here);
+                CHECK(Ee::blurWhich(in) == static_cast<int32_t>(record.a1));
+                CHECK(Ee::page(in) == (record.a1 ? 0 : kBlocks));
                 for (int32_t i = 0; i < in.blurLevel; ++i) {
                     const Pass& into = passes[static_cast<size_t>(i) * 2];
                     const Pass& back = passes[static_cast<size_t>(i) * 2 + 1];
@@ -72,21 +75,19 @@ int run(const std::string& path, const std::string& fullPath) {
                     CHECK(near(back.vertices[1].u, w) && near(back.vertices[1].v, h));
                     CHECK(!into.halfLine && !back.halfLine);
                 }
-                packets += 9 + 6 * in.blurLevel;
-                CHECK(9 + 6 * in.blurLevel == 15 + 6 * (in.blurLevel - 1));
+                packets += 9 + 3 * static_cast<int64_t>(passes.size());
             } else if (record.k == 1) {
                 const int32_t counter = word(record.mem[3], 0);
                 FlatInputs in;
                 in.counter = counter;
-                in.displayIndex = (counter & 1) ? 0 : 1;
+                lastCopyCounter = counter;
                 Ee::copyToStore(in, passes);
                 CHECK(passes.size() == 1);
-                CHECK(Ee::page(in) == ((counter & 1) ? 0 : kBlocks));
                 const Pass& p = passes[0];
                 CHECK(p.target == scene::TargetName::Store && p.material.sourceTarget == scene::TargetName::Display && !p.material.colourOnly);
                 CHECK(p.vertices.size() == 2 && near(p.vertices[1].x, 319.5f) && near(p.vertices[1].y, 223.5f) && near(p.vertices[1].u, 640.0f));
                 CHECK(p.vertices[0].r == word(record.mem[0], 0));
-                packets += 10;
+                packets += 10 * static_cast<int64_t>(passes.size());
             } else if (record.k == 2) {
                 CHECK(record.mem[0].at(0) == 0x42);
                 CHECK(word(record.mem[1], 0) == 0 && word(record.mem[1], 4) == 0);
@@ -99,7 +100,7 @@ int run(const std::string& path, const std::string& fullPath) {
                 CHECK(passes[0].vertices[0].a == capped && passes[0].vertices[1].a == capped);
                 CHECK(passes[0].material.blend == scene::BlendOp::AlphaOver);
                 CHECK(near(passes[0].vertices[1].x, 639.9375f) && near(passes[0].vertices[1].y, 223.9375f));
-                packets += 6;
+                packets += 6 * static_cast<int64_t>(passes.size());
             } else {
                 CHECK(record.k == 3);
                 const float ax = scene::asFloat(static_cast<uint32_t>(word(record.mem[2], 0))), ay = scene::asFloat(static_cast<uint32_t>(word(record.mem[2], 4)));
@@ -117,7 +118,7 @@ int run(const std::string& path, const std::string& fullPath) {
                 for (const Vertex& vertex : v)
                     CHECK(vertex.r == word(record.mem[0], 0) && vertex.g == word(record.mem[0], 4) && vertex.b == word(record.mem[0], 8) && vertex.a == word(record.mem[0], 12));
                 CHECK(passes[0].material.blend == scene::BlendOp::SubtractFixed && passes[0].material.blendConstant == 0x80);
-                packets += 8;
+                packets += 8 * static_cast<int64_t>(passes.size());
             }
         }
     }
@@ -144,6 +145,41 @@ int run(const std::string& path, const std::string& fullPath) {
         }
     }
     CHECK(fullBlur == blurSequence && fullFade == fadeSequence);
+
+    {
+        const std::filesystem::path passesPath = std::filesystem::path(fullPath).parent_path() / "passes.json";
+        std::ifstream in(passesPath, std::ios::binary);
+        CHECK(static_cast<bool>(in));
+        const nlohmann::json dump = nlohmann::json::parse(in);
+        size_t copies = 0;
+        for (size_t n = 0; n < dump.at("frames").size(); ++n) {
+            const nlohmann::json& frame = dump.at("frames").at(n);
+            if (frame.is_null() || n < 6) continue;
+            for (const nlohmann::json& p : frame.at("passes")) {
+                if (p.at("target") != "fb2300" || p.at("texture").is_null() || !p.at("texture").at("source").contains("target") || p.at("primitive") != "Sprites" || p.at("blend").is_object()) continue;
+                const std::string source = p.at("texture").at("source").at("target");
+                FlatInputs input;
+                input.counter = static_cast<int32_t>(n) - 5;
+                CHECK(Ee::page(input) == static_cast<int32_t>(std::stoul(source.substr(2), nullptr, 16)));
+                ++copies;
+                break;
+            }
+        }
+        CHECK(copies >= 240);
+        std::printf("flat: page checked against %zu dump copies\n", copies);
+    }
+
+    {
+        scene::Frame frame;
+        Ee::scissor(frame.passes);
+        Ee::ghost({}, frame.passes);
+        Ee::copyToStore({}, frame.passes);
+        const parity::GsFrame gs = parity::fromScene(frame, parity::openingLayout(0));
+        CHECK(gs.passes.size() == 3);
+        CHECK(gs.passes[0].scissor.x0 == 0 && gs.passes[0].scissor.x1 == 639 && gs.passes[0].scissor.y1 == 223);
+        CHECK(gs.passes[1].scissor.x0 == 1 && gs.passes[1].scissor.y0 == 1 && gs.passes[1].scissor.x1 == 638 && gs.passes[1].scissor.y1 == 222);
+        CHECK(gs.passes[2].scissor.x0 == 0 && gs.passes[2].scissor.x1 == 639);
+    }
 
     std::vector<Pass> passes;
     Ee::scissor(passes);

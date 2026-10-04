@@ -71,7 +71,7 @@ Pass sprites(const char* name, TargetName target, const Material& material, bool
 
 }
 
-// OpeningProcess: two sprites over the whole picture, black, depth cleared (the dump's first pass of every frame)
+// The black fill that opens every frame in the dump (measured, writer not read); OpeningProcess's own SCISSOR_1 write (vif1SetSCISSOR_1 with 1, 1, W - 2, H - 2) is the ghost's Pass::scissor
 template <class A>
 void Flat<A>::scissor(std::vector<Pass>& out) {
     Material m;
@@ -93,6 +93,7 @@ void Flat<A>::ghost(const FlatInputs&, std::vector<Pass>& out) {
     m.blendConstant = 0x50;
     m.depthTest = DepthTest::Always;
     Pass pass = sprites("ghost", TargetName::Display, m, true);
+    pass.scissor = std::array<int32_t, 4>{1, 1, kWidth - 2, kHeight - 2};
     const int32_t place[4] = {0, 0, kWidth, kHeight}, source[4] = {0, 0, kWidth >> 1, kHeight};
     texturedSprite(pass, place, source, kFarthest, 0x80, 0x80);
     out.push_back(std::move(pass));
@@ -177,7 +178,12 @@ void Flat<A>::bars(const FlatInputs&, std::vector<Pass>& out) {
 
 template <class A>
 int32_t Flat<A>::page(const FlatInputs& in) {
-    return in.displayIndex == 0 ? 0 : (kWidth * kHeight) >> 6;
+    return (in.counter & 1) ? 0 : (kWidth * kHeight) >> 6;
+}
+
+template <class A>
+int32_t Flat<A>::blurWhich(const FlatInputs& in) {
+    return in.counter & 1;
 }
 
 template <class A>

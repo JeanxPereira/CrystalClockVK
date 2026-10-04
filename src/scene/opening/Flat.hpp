@@ -7,8 +7,8 @@
 
 namespace scene::opening {
 
-// The arguments of one module frame's flat draws: `displayIndex` is the page being drawn (0 when the counter is odd,
-// as func_0021CF38 picks it), `field` the video field, `fadeAlpha` the argument func_0021D848 receives (it caps it at
+// The arguments of one module frame's flat draws: the page drawn follows the counter's parity (func_0021CF38: odd is page 0;
+// `displayIndex` is carried for the caller), `field` the video field, `fadeAlpha` the argument func_0021D848 receives (it caps it at
 // 0x80), `blurLevel` func_0021D3D0's trip count.
 struct FlatInputs {
     int32_t counter = 0, displayIndex = 0, field = 0;
@@ -36,6 +36,7 @@ struct Flat {
 
     // The helpers' own arguments, for tests: the page address in 64-word blocks (0 or 640 x 224 / 64), the picture's height, a bar's rows.
     static int32_t page(const FlatInputs&);
+    static int32_t blurWhich(const FlatInputs&);
     static int32_t pictureHeight();
     static int32_t barRows();
 };
