@@ -35,6 +35,13 @@
 //     head: { background[] (strips), blur[], copies[], tint, vignette[], fade, blurAfter[] (the
 //       trips after the rods), bars[], column }: each a draw { label, prim, vertices }
 //     after: the state the frame leaves, decoded as `input`
+//     text: { text[], hint[], pages[] } the strings of the date and time, the button hint and the menu pages
+//     stages: { cubes, menuStep, menus, endOfFrame }, each { before, after } (STAGE_PIECES of instrument.mjs;
+//       menus also notes), null for a stage the model did not call
+//     cubes[]: the packets cubes() sent that hold vertices { label, prim, fbp (FRAME_1's page), vertices }
+//     listFade: { first, second, secondIndex } at the list function's probe, when the frame draws the list
+//   } , between: null for frame 0, else { before, after, notes } around the clock thread's step (between())
+//   input also: the menus' pieces (pad, configPage, configEntries[9], mainMenu, cubeList, ...) and listFade
 //   } } ] }
 import fs from 'node:fs';
 import path from 'node:path';
@@ -42,7 +49,7 @@ import path from 'node:path';
 process.env.CLOCK_BUILD ??= 'hdd';
 if (process.env.CLOCK_BUILD !== 'hdd') throw new Error('the scene fixture is HDD OSD 1.10U only (CLOCK_BUILD=hdd)');
 
-const { install } = await import('./instrument.mjs');
+const { install, REFERENCES } = await import('./instrument.mjs');
 
 /**
  * What the alpha rules of the date, time and button hint read (verify_text2.mjs dateAlpha and panelsOf, HDD OSD
@@ -51,8 +58,8 @@ const { install } = await import('./instrument.mjs');
  * only reads them. Written into each frame's input as `textRamps`.
  */
 async function addTextRamps(traceFile, frames) {
-  const { readTraceFor } = await import('../../References/lib/trace.mjs');
-  const { PROBES } = await import('../../References/scripts/verify_text2.mjs');
+  const { readTraceFor } = await import(`${REFERENCES}lib/trace.mjs`);
+  const { PROBES } = await import(`${REFERENCES}scripts/verify_text2.mjs`);
   const trace = readTraceFor(traceFile, PROBES);
   const probes = trace.probes.filter((probe) => !probe.preroll);
   const before = (pc, at) => probes.filter((probe) => probe.pc === pc && probe.at <= at).at(-1);
@@ -78,10 +85,35 @@ async function addTextRamps(traceFile, frames) {
   }
 }
 
+/**
+ * The list entries' crossfade (D_0037029C first, D_003702A0 second, D_003702A4 second's index; writers func_002316B8
+ * and func_00230FD8, CrystalOSD/asm), read at the list function's probe (0x00231388, verify_text2 PROBES, gp words
+ * 0x00370130 + 0x1C0). expect.listFade: the frame's own words (after func_00230FD8). input.listFade: the frame
+ * before's; frame 0 starts at rest: func_00230FD8 saturates first to 128 and second to 0 within 16 frames, so a
+ * capture that starts at rest starts at (128, 0, index).
+ */
+async function addListFade(traceFile, frames) {
+  const { readTraceFor } = await import(`${REFERENCES}lib/trace.mjs`);
+  const { PROBES } = await import(`${REFERENCES}scripts/verify_text2.mjs`);
+  const probes = readTraceFor(traceFile, PROBES).probes.filter((p) => !p.preroll);
+  const word = (probe, address) => { for (const m of probe.mem) if (m.bytes && address >= m.address && address + 4 <= m.address + m.bytes.length) return m.bytes.readInt32LE(address - m.address); return null; };
+  let last = null;
+  frames.forEach((frame) => {
+    const pages = frame.expect.text?.pages ?? [];
+    const list = pages.length ? probes.filter((p) => p.pc === 0x00231388 && p.at <= pages.at(-1).at).at(-1) : null;
+    const fade = list ? { first: word(list, 0x0037029c), second: word(list, 0x003702a0), secondIndex: word(list, 0x003702a4) } : null;
+    if (frame.index === 0) {
+      if (fade && (fade.first !== 128 || fade.second !== 0)) throw new Error(`${traceFile}: the list fade moves at frame 0`);
+      frame.input.listFade = fade ?? { first: 128, second: 0, secondIndex: 0 };
+    } else if (last) frame.input.listFade = last;
+    if (fade) { frame.expect.listFade = fade; last = fade; }
+  });
+}
+
 /** The frames of `traceFile` as the fixture's JSON text. */
 export async function exportScene(traceFile) {
   const recording = await install();
-  const { verify } = await import('../../References/scripts/verify_frame.mjs');
+  const { verify } = await import(`${REFERENCES}scripts/verify_frame.mjs`);
   const result = verify(traceFile, 'carry');
   const unequal = Object.entries(result.kinds).filter(([, { packets }]) => packets[0] !== packets[1]).map(([key]) => key);
   const drift = Object.keys(result.state);
@@ -89,6 +121,7 @@ export async function exportScene(traceFile) {
     throw new Error(`the model does not reproduce ${traceFile}: ${[...unequal, ...drift, ...result.problems].join('; ')}`);
   if (recording.frames.length !== result.frames) throw new Error(`${recording.frames.length} frames recorded, ${result.frames} compared`);
   await addTextRamps(traceFile, recording.frames);
+  if (recording.frames.some((frame) => frame.expect.text)) await addListFade(traceFile, recording.frames);
   const capture = path.basename(traceFile).replace(/\.trace\.jsonl$/, '');
   return { capture, frames: recording.frames.length, text: `${JSON.stringify({ capture, build: 'hdd', frames: recording.frames })}\n` };
 }

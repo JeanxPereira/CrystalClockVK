@@ -6,12 +6,19 @@
 // (verify_frame.mjs included) and reports the count on exit; export_fixture.mjs writes the records.
 // Schema: export_fixture.mjs.
 import { registerHooks } from 'node:module';
-import { floatBits, matrix, ints, apply } from '../../References/model/clock_math.mjs';
+import { pathToFileURL } from 'node:url';
+export const REFERENCES = process.env.CLOCK_REFERENCES
+  ? pathToFileURL(`${process.env.CLOCK_REFERENCES.replace(/\\/g, '/').replace(/\/$/, '')}/`).href
+  : new URL('../../References/', import.meta.url).href;
+const { floatBits, matrix, ints, apply } = await import(`${REFERENCES}model/clock_math.mjs`);
 
 const PROBE = Symbol.for('crystalclock.sceneProbe');
 const WRAPPED = {
   'clock_frame.mjs': ['frame', 'scene', 'transform', 'refracted', 'textured', 'reflected'],
   'clock_camera.mjs': ['camera'],
+  'clock_menus.mjs': ['menus', 'between', 'endOfFrame'],
+  'clock_rest.mjs': ['menuStep'],
+  'clock_cubes.mjs': ['cubes'],
 };
 
 const wrap = (source, names, file) => names.reduce((text, name) => {
@@ -133,7 +140,45 @@ export const PIECES = {
   // (bits 4 to 8, config_get_osd_language) and summer time (bit 29, config_get_daylight_saving).
   configItems: (b) => ints(b, 0, 20),
   mechaconParam: (b) => [b.readUInt32LE(0), b.readUInt32LE(4)],
+  pad: (b) => ({ held: b.readUInt32LE(0), pressed: b.readUInt32LE(4), released: b.readUInt32LE(8), repeating: b.readUInt32LE(12) }),
+  disc: int,
+  screenCode: int,
+  configPage: (b) => ({ word0: b.readInt32LE(0), entries: b.readUInt32LE(4), count: b.readInt32LE(8), titleWidth: b.readInt32LE(0xc), selected: b.readInt32LE(0x10),
+    word14: b.readInt32LE(0x14), level: b.readInt32LE(0x18), ramp: ramp(b.subarray(0x1c, 0x2c)), word2c: b.readInt32LE(0x2c), word30: b.readInt32LE(0x30), glow: b.readInt32LE(0x34) }),
+  configRamp: ramp,
+  configEntries: (b) => Array.from({ length: 9 }, (_, n) => { const e = b.subarray(n * 0x38, n * 0x38 + 0x38); return {
+    id: e.readInt32LE(0), valueCount: e.readInt32LE(4), valueIndex: e.readInt32LE(8), item: e.readInt32LE(0xc), valueTable: e.readUInt32LE(0x10),
+    enter: e.readUInt32LE(0x14), stringCallback: e.readUInt32LE(0x18), frameCallback: e.readUInt32LE(0x1c), confirm: e.readUInt32LE(0x20), cancel: e.readUInt32LE(0x24),
+    focus: e.readUInt32LE(0x28), rest: ints(e, 0x2c, 3) }; }),
+  mainMenu: (b) => ({ word0: b.readInt32LE(0), items: b.readUInt32LE(4), count: b.readInt32LE(8), word0c: b.readInt32LE(0xc), selected: b.readInt32LE(0x10),
+    word14: b.readInt32LE(0x14), ramp: ramp(b.subarray(0x18, 0x28)) }),
+  versionRamp: ramp, dialogRamp: ramp, firstRunRamp: ramp,
+  pagePointers: (b) => ints(b, 0, 5),
+  entryActive: int,
+  menuLengths: (b) => ints(b, 0, 3),
+  listConstants: named(['rate', 'divisor', 'pulse', 'standing']),
+  adjustFields: (b) => Array.from({ length: 6 }, (_, n) => ({ item: b.readInt32LE(n * 12), lowest: b.readInt32LE(n * 12 + 4), highest: b.readInt32LE(n * 12 + 8) })),
+  configGate: int,
+  configDirty: (b) => ints(b, 0, 3),
+  rtcMirror: (b) => ints(b, 0, 6),
+  cubeList: (b) => ({ pulse: fl(b, 0), pulsed: b.readInt32LE(4), position: b.readInt32LE(8), left: b.readInt32LE(0xc), speed: b.readInt32LE(0x10), slowing: b.readInt32LE(0x14) }),
+  cubeColours: (b) => ({ selected: rgba(b, 0), plain: rgba(b, 0x10), live: rgba(b, 0x20) }),
+  cubeRecord: template,
+  spin: int,
+  cubeConstants: named(['standingFade', 'ringFade', 'twoPi', 'turn', 'quarter', 'minusPi']),
+  centreFactors: named(['cube', 'layer']),
+  cubeView: (b) => rows(matrix(b, 0)),
+  cubeScreen: (b) => rows(matrix(b, 0)),
+  layerClear: rgba,
+  addRecord: rectangle, halfRecord: rectangle, chainRecord: rectangle,
 };
+
+export const STAGE_PIECES = ['time', 'mode', 'overlayLevel', 'vignetteRamp', 'menuRamp', 'tail', 'body', 'appearance', 'state', 'scaleTarget',
+  'timeFilled', 'scene', 'greyRamp', 'fadeRecord', 'copyRecord', 'spriteFade', 'configPage', 'configRamp', 'configEntries', 'mainMenu',
+  'versionRamp', 'dialogRamp', 'firstRunRamp', 'pagePointers', 'entryActive', 'menuLengths', 'listConstants', 'screenCode', 'adjustFields',
+  'configGate', 'configDirty', 'cubeRamp', 'cubeList', 'cubeColours', 'cubeRecord', 'spin', 'cubeConstants', 'centreFactors', 'cubeView',
+  'cubeScreen', 'layerClear', 'addRecord', 'halfRecord', 'chainRecord', 'configItems', 'item0', 'screen', 'level', 'videoMode', 'mechaconParam',
+  'rtcMirror', 'disc', 'pad'];
 
 // ---- the text: the font library's context and the program's font state ----------------------
 
@@ -156,6 +201,7 @@ export const fontContext = (ctx) => {
 const textStrings = (strings) => strings.map((s) => ({ text: [...s.text], measuring: s.measuring, own: fontState(s.own), at: s.at }));
 
 export const decode = (m) => Object.fromEntries(Object.entries(PIECES).filter(([name]) => m.has(name)).map(([name, read]) => [name, read(m.at(name))]));
+const decodeSome = (m, names) => Object.fromEntries(names.filter((n) => n in PIECES && m.has(n)).map((n) => [n, PIECES[n](m.at(n))]));
 
 // ---- GS writes as named values ----------------------------------------------------------------
 
@@ -165,7 +211,7 @@ export const decode = (m) => Object.fromEntries(Object.entries(PIECES).filter(([
  * a draw's first vertex in a packet of no vertex is kept as the draw's `header`.
  */
 export function gsDecoder() {
-  const reg = { prim: 0, seen: new Set(), values: {} };
+  const reg = { prim: 0, fbp: 0, seen: new Set(), values: {} };
   const set = (name, fields) => { reg.seen.add(name); reg.values[name] = fields; };
   return (writes) => {
     const vertices = [];
@@ -175,12 +221,13 @@ export function gsDecoder() {
       else if (r === 0x01) set('rgbaq', { r: lo & 0xff, g: (lo >>> 8) & 0xff, b: (lo >>> 16) & 0xff, a: lo >>> 24, q: `0x${hi.toString(16).padStart(8, '0')}` });
       else if (r === 0x02) set('st', { s: `0x${lo.toString(16).padStart(8, '0')}`, t: `0x${hi.toString(16).padStart(8, '0')}` });
       else if (r === 0x03) set('uv', { u: lo & 0xffff, v: lo >>> 16 });
+      else if (r === 0x4c) reg.fbp = Number(value & 0x1ffn);
       else if (r === 0x04 || r === 0x05) {
         const position = r === 0x04 ? { x: lo & 0xffff, y: lo >>> 16, z: hi & 0xffffff, f: hi >>> 24 } : { x: lo & 0xffff, y: lo >>> 16, z: hi >>> 0 };
         vertices.push({ ...(reg.values.rgbaq ?? {}), ...(reg.values.st ?? {}), ...(reg.values.uv ?? {}), ...position });
       }
     }
-    return { prim: reg.prim, colour: reg.values.rgbaq ?? null, vertices };
+    return { prim: reg.prim, fbp: reg.fbp, colour: reg.values.rgbaq ?? null, vertices };
   };
 }
 
@@ -236,9 +283,12 @@ function orbSends(packets) {
   return [send(packets.slice(0, 6)), send(packets.slice(6))];
 }
 
-export function recorder(model) {
+const STAGES = ['cubes', 'menuStep', 'menus', 'endOfFrame'];
+
+export function recorder(model, { stagesOnly = false } = {}) {
   const frames = [];
   let current = null;
+  let pendingBetween = null;
   const tags = new WeakMap();
 
   const onTransform = (args, out) => {
@@ -272,6 +322,7 @@ export function recorder(model) {
   };
 
   const finish = (record, out, m) => {
+    if (stagesOnly) return { index: frames.length, between: record.between, input: record.stageInput, expect: { stages: record.stages, cubes: record.cubeDraws } };
     const { head, orbPackets } = rest(out.packets);
     const orbOrder = out.order.filter((name) => name.startsWith('orb ')).map((name) => Number(name.slice(4)));
     if (orbOrder.length !== record.orbCentres.length || orbPackets.length !== 12 * orbOrder.length) throw new Error('the orbs drawn do not match the orbs placed');
@@ -285,8 +336,9 @@ export function recorder(model) {
     const rods = [...record.rods.values()].map(({ whole, passes, ...rod }) => rod);
     return {
       index: frames.length,
+      between: record.between,
       input: record.text ? { ...record.input, font: record.text.font } : record.input,
-      expect: { drawOrder: out.order, camera: record.camera, rods, orbs, head, after: decode(m), ...(record.text ? { text: record.text.strings } : {}) },
+      expect: { drawOrder: out.order, camera: record.camera, rods, orbs, head, after: decode(m), ...(record.text ? { text: record.text.strings } : {}), stages: record.stages, cubes: record.cubeDraws },
     };
   };
 
@@ -300,15 +352,41 @@ export function recorder(model) {
       // The program's font state is the one at the frame's first string: what it carries in (the matrix, the escapes'
       // widths) under what the frame's Font_SetRatio, Font_SetColor and Font_SetLocate have just written.
       const first = [...held?.strings.text ?? [], ...held?.strings.hint ?? []][0];
-      const text = held ? { font: { ...fontContext(held.state.ctx), state: first ? fontState(first.own) : null }, strings: { text: textStrings(held.strings.text), hint: textStrings(held.strings.hint) } } : null;
-      const record = { input: decode(m), text, camera: null, rods: new Map(), orbCentres: [], ringsAfterScene: null, inScene: false };
+      const text = held ? { font: { ...fontContext(held.state.ctx), state: first ? fontState(first.own) : null },
+        strings: { text: textStrings(held.strings.text), hint: textStrings(held.strings.hint), pages: textStrings(held.strings.pages ?? []) } } : null;
+      const record = { input: stagesOnly ? null : decode(m), stageInput: stagesOnly ? decodeSome(m, STAGE_PIECES) : null, text, camera: null, rods: new Map(), orbCentres: [],
+        ringsAfterScene: null, inScene: false, stages: Object.fromEntries(STAGES.map((stage) => [stage, null])), cubeDraws: [], between: pendingBetween };
+      pendingBetween = null;
       current = record;
       let out;
       try { out = fn(...args); } finally { current = null; }
       frames.push(finish(record, out, m));
       return out;
     }
+    if (name === 'between') {
+      const m = args[0];
+      const before = decodeSome(m, STAGE_PIECES);
+      const out = fn(...args);
+      pendingBetween = { before, after: decodeSome(m, STAGE_PIECES), notes: [...args[1]] };
+      return out;
+    }
     if (!current) return fn(...args);
+    if (STAGES.includes(name)) {
+      const m = name === 'cubes' ? args[0].m : args[0];
+      const from = name === 'cubes' ? args[0].packets.length : 0;
+      const before = decodeSome(m, STAGE_PIECES);
+      const out = fn(...args);
+      current.stages[name] = { before, after: decodeSome(m, STAGE_PIECES), ...(name === 'menus' ? { notes: [...args[1]] } : {}) };
+      if (name === 'cubes') {
+        const decodeWrites = gsDecoder();
+        for (const packet of args[0].packets.slice(from)) {
+          if (!packet.writes) continue;
+          const draw = decodeWrites(packet.writes);
+          if (draw.vertices.length) current.cubeDraws.push({ label: packet.label, prim: draw.prim, fbp: draw.fbp, vertices: draw.vertices });
+        }
+      }
+      return out;
+    }
     if (name === 'camera') {
       const out = fn(...args);
       if (!current.camera) current.camera = { screen: rows(out.screen), view: rows(out.view), cameraOffset: hex(args[0].float('cameraOffset')) };
@@ -331,9 +409,9 @@ export function recorder(model) {
 }
 
 /** Installs a recorder; the model is loaded through the hooks above. */
-export async function install() {
-  const model = await import('../../References/model/clock_frame.mjs');
-  const made = recorder(model);
+export async function install(options) {
+  const model = await import(`${REFERENCES}model/clock_frame.mjs`);
+  const made = recorder(model, options);
   globalThis[PROBE] = made.probe;
   return made;
 }
