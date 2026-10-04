@@ -76,7 +76,32 @@ OrbFrame Orbs<A>::frame(OrbState& state, const OrbInputs& in, const Mat4& view, 
         orb.cz = centre[2];
 
         OrbRing& ring = state.rings[orb.k];
-        const auto write = [&] { ring.entries[ring.head] = {orb.cx, orb.cy, orb.cz, in.colour}; };
+        float px = orb.cx, py = orb.cy;
+        std::array<int32_t, 4> colour = in.colour;
+        if (in.mode == 2 || in.mode == 3) {
+            const int32_t weight = in.overlayLevel;
+            const int k = orb.k;
+            if ((in.mode == 2 && (in.wide == 1 || k == 0)) || (in.mode == 3 && k == 0)) {
+                const int32_t angle = s16(A::toInt(A::mul(static_cast<float>(weight << 14), 0.0078125f)));
+                const int32_t turn = s16(in.random[static_cast<size_t>(k)]);
+                const float rest = A::sub(1.0f, A::sin16(angle));
+                const float dx = A::mul(A::mul(static_cast<float>(halfW), A::cos16(turn)), rest);
+                const float dy = A::mul(A::mul(static_cast<float>(halfH), A::sin16(turn)), rest);
+                if (in.mode == 2) {
+                    px = A::add(px, dx);
+                    py = A::add(py, dy);
+                } else {
+                    const float w = A::mul(static_cast<float>(weight), 0.0078125f);
+                    py = A::add(A::mul(py, w), A::mul(dy, 1.5f));
+                    px = A::add(A::mul(px, w), A::mul(dx, 1.5f));
+                }
+            }
+            const bool own = in.mode == 2 || k == 0;
+            const int32_t mine = own ? 128 - weight : 0, other = own ? weight : 128;
+            const auto& base = in.colours[static_cast<size_t>(in.mode == 3 ? 0 : k)];
+            for (size_t i = 0; i < 4; ++i) colour[i] = (imul(base[i], mine) + imul(in.colour[i], other)) >> 7;
+        }
+        const auto write = [&] { ring.entries[ring.head] = {px, py, orb.cz, colour}; };
         write();
         ring.count += 1;
         if (ring.count == 3) {

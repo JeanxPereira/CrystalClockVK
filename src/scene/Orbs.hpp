@@ -46,6 +46,11 @@ struct OrbInputs {
     std::array<int32_t, 4> colour{};
     int32_t width = 640;
     int32_t height = 224;
+    int32_t mode = 0;
+    int32_t overlayLevel = 0;
+    int32_t wide = 0;
+    std::array<int32_t, kOrbCount> random{};
+    std::array<std::array<int32_t, 4>, kOrbCount> colours{};
 };
 
 // Native units: x, y in pixels from the screen's top-left corner (the GS value less the screen
