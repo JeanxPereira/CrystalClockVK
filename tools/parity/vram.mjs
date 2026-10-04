@@ -2,11 +2,9 @@
 // and a reader for the oracle's PNG files.
 import zlib from 'node:zlib';
 import { word32 } from '../../References/scripts/extract_buffers.mjs';
+import { word16, replayUploads as replay } from '../../References/scripts/extract_opening_textures.mjs';
 
-const BLOCK16 = [[0, 2, 8, 10], [1, 3, 9, 11], [4, 6, 12, 14], [5, 7, 13, 15], [16, 18, 24, 26], [17, 19, 25, 27], [20, 22, 28, 30], [21, 23, 29, 31]];
-/** Halfword address of a PSMCT16 pixel: pages of 64 x 64, blocks of 16 x 8, columns of 16 x 2. */
-export const word16 = (bp, bw, x, y) => (bp + ((x >> 6) + (y >> 6) * bw) * 32 + BLOCK16[(y >> 3) & 7][(x >> 4) & 3]) * 128
-  + ((y >> 1) & 3) * 32 + (y & 1) * 4 + (x & 1) * 2 + ((x >> 1) & 3) * 8 + ((x >> 3) & 1);
+export { word16 };
 
 /** A PSMCT16 texture as RGBA: each 5-bit channel shifted left by 3, alpha 0x80 when bit 15 is set (TEXA is the pass's, not the pixels'). */
 export function pixels16(memory, block, pages, width, height) {
@@ -79,51 +77,8 @@ export class GifPath {
   }
 }
 
-const BYTES = { 0: 4, 1: 3, 2: 2 };
-
 /** Writes the dump's host-to-local transfers up to dump frame `lastFrame` into `memory`; returns what was written. */
-export function replayUploads(memory, packets, lastFrame) {
-  const regs = { bitbltbuf: 0n, trxpos: 0n, trxreg: 0n };
-  const paths = [new GifPath(), new GifPath(), new GifPath(), new GifPath()];
-  const uploads = [];
-  let frame = 0, current = null;
-  const sink = {
-    write(reg, value) {
-      if (reg === 0x50) regs.bitbltbuf = value;
-      else if (reg === 0x51) regs.trxpos = value;
-      else if (reg === 0x52) regs.trxreg = value;
-      else if (reg === 0x53) {
-        current = null;
-        if ((value & 3n) !== 0n || frame > lastFrame) return;
-        const b = regs.bitbltbuf, p = regs.trxpos, r = regs.trxreg;
-        const psm = Number((b >> 56n) & 63n);
-        if (!(psm in BYTES)) throw new Error(`upload to unsupported PSM 0x${psm.toString(16)}`);
-        current = {
-          frame, dbp: Number((b >> 32n) & 0x3fffn), dbw: Number((b >> 48n) & 63n), psm,
-          width: Number(r & 0xffffn), height: Number((r >> 32n) & 0xffffn),
-          dsax: Number(p & 0x7ffn), dsay: Number((p >> 16n) & 0x7ffn), got: 0, bytes: BYTES[psm],
-        };
-        uploads.push(current);
-      }
-    },
-    image(data) {
-      const u = current;
-      if (!u) return;
-      const total = u.width * u.height * u.bytes;
-      for (let i = 0; i < data.length && u.got < total; i++, u.got++) {
-        const texel = Math.floor(u.got / u.bytes), within = u.got % u.bytes;
-        const x = u.dsax + (texel % u.width), y = u.dsay + Math.floor(texel / u.width);
-        const at = u.psm === 2 ? word16(u.dbp, u.dbw, x, y) * 2 + within : word32(u.dbp, u.dbw, x, y) * 4 + within;
-        memory[at] = data[i];
-      }
-    },
-  };
-  for (const packet of packets) {
-    if (packet.type === 'vsync') frame += 1;
-    else if (packet.type === 'transfer') paths[packet.path].feed(packet.data, sink);
-  }
-  return uploads.map(({ frame, dbp, dbw, psm, width, height }) => ({ frame, dbp, dbw, psm, width, height }));
-}
+export const replayUploads = (memory, packets, lastFrame) => replay(memory, packets, { maxFrame: lastFrame });
 
 /** An 8-bit grey, RGB or RGBA PNG as { width, height, channels, data }. */
 export function readPng(bytes) {
