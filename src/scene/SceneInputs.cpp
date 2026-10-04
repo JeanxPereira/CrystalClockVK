@@ -1,5 +1,6 @@
 #include "scene/SceneInputs.hpp"
 
+#include <array>
 #include <fstream>
 #include <iterator>
 #include <stdexcept>
@@ -177,6 +178,59 @@ OrbState orbState(const json& in) {
     return s;
 }
 
+template <size_t N>
+std::array<int32_t, N> ints(const json& j) {
+    if (j.size() != N) throw std::runtime_error("expected " + std::to_string(N) + " words: " + j.dump());
+    std::array<int32_t, N> out{};
+    for (size_t i = 0; i < N; ++i) out[i] = j.at(i);
+    return out;
+}
+
+ConfigEntry configEntry(const json& j) {
+    ConfigEntry e;
+    e.id = j.at("id");
+    e.valueCount = j.at("valueCount");
+    e.valueIndex = j.at("valueIndex");
+    e.item = j.at("item");
+    e.valueTable = j.at("valueTable");
+    e.enter = j.at("enter");
+    e.stringCallback = j.at("stringCallback");
+    e.frameCallback = j.at("frameCallback");
+    e.confirm = j.at("confirm");
+    e.cancel = j.at("cancel");
+    e.focus = j.at("focus");
+    e.rest = ints<3>(j.at("rest"));
+    return e;
+}
+
+ConfigPage configPage(const json& j) {
+    ConfigPage p;
+    p.word0 = j.at("word0");
+    p.entries = j.at("entries");
+    p.count = j.at("count");
+    p.titleWidth = j.at("titleWidth");
+    p.selected = j.at("selected");
+    p.word14 = j.at("word14");
+    p.level = j.at("level");
+    p.ramp = ramp(j.at("ramp"));
+    p.word2c = j.at("word2c");
+    p.word30 = j.at("word30");
+    p.glow = j.at("glow");
+    return p;
+}
+
+MainMenu mainMenu(const json& j) {
+    MainMenu m;
+    m.word0 = j.at("word0");
+    m.items = j.at("items");
+    m.count = j.at("count");
+    m.word0c = j.at("word0c");
+    m.selected = j.at("selected");
+    m.word14 = j.at("word14");
+    m.ramp = ramp(j.at("ramp"));
+    return m;
+}
+
 }
 
 uint32_t hexBits(const json& hex) {
@@ -265,5 +319,71 @@ FrameInputs frameInputs(const json& in) {
     }
     return out;
 }
+
+bool hasMenus(const json& input) { return input.contains("configPage"); }
+
+MenusState menusState(const json& in) {
+    MenusState s;
+    s.page = configPage(in.at("configPage"));
+    const json& entries = in.at("configEntries");
+    if (entries.size() != s.entries.size()) throw std::runtime_error("expected 9 configuration entries: " + std::to_string(entries.size()));
+    for (size_t i = 0; i < s.entries.size(); ++i) s.entries[i] = configEntry(entries.at(i));
+    s.mainMenu = mainMenu(in.at("mainMenu"));
+    s.versionRamp = ramp(in.at("versionRamp"));
+    s.dialogRamp = ramp(in.at("dialogRamp"));
+    s.firstRunRamp = ramp(in.at("firstRunRamp"));
+    s.pagePointers = ints<5>(in.at("pagePointers"));
+    s.entryActive = in.at("entryActive");
+    s.menuLengths = ints<3>(in.at("menuLengths"));
+    const json& k = in.at("listConstants");
+    s.listConstants = {f(k.at("rate")), f(k.at("divisor")), f(k.at("pulse")), f(k.at("standing"))};
+    s.screenCode = in.at("screenCode");
+    if (in.contains("adjustFields")) {
+        const json& fields = in.at("adjustFields");
+        if (fields.size() != s.adjustFields.size()) throw std::runtime_error("expected 6 adjustment fields: " + fields.dump());
+        for (size_t i = 0; i < s.adjustFields.size(); ++i) s.adjustFields[i] = {fields.at(i).at("item"), fields.at(i).at("lowest"), fields.at(i).at("highest")};
+    }
+    if (in.contains("configGate") && !in.at("configGate").is_null()) s.configGate = in.at("configGate").get<int32_t>();
+    if (in.contains("listFade")) s.listFade = listFade(in.at("listFade"));
+    s.body = in.at("body");
+    s.videoMode = in.at("videoMode");
+    return s;
+}
+
+CubeState cubeState(const json& in) {
+    CubeState s;
+    s.ramp = ramp(in.at("cubeRamp"));
+    const json& l = in.at("cubeList");
+    s.list = {f(l.at("pulse")), l.at("pulsed"), l.at("position"), l.at("left"), l.at("speed"), l.at("slowing")};
+    const json& c = in.at("cubeColours");
+    s.colours = {colour(c.at("selected")), colour(c.at("plain")), colour(c.at("live"))};
+    s.record = rodRecord(in.at("cubeRecord"));
+    const json& k = in.at("cubeConstants");
+    s.constants = {f(k.at("standingFade")), f(k.at("ringFade")), f(k.at("twoPi")), f(k.at("turn")), f(k.at("quarter")), f(k.at("minusPi"))};
+    s.centreFactors = {f(in.at("centreFactors").at("cube")), f(in.at("centreFactors").at("layer"))};
+    s.view = hexMat4(in.at("cubeView"));
+    s.screen = hexMat4(in.at("cubeScreen"));
+    s.layerClear = colour(in.at("layerClear"));
+    s.added = rect(in.at("addRecord"));
+    s.half = rect(in.at("halfRecord"));
+    s.chain = rect(in.at("chainRecord"));
+    return s;
+}
+
+MenuExternals menuExternals(const json& in) {
+    MenuExternals e;
+    e.pad = padWords(in.at("pad"));
+    e.disc = in.at("disc");
+    if (in.contains("configDirty")) e.configDirty = ints<3>(in.at("configDirty"));
+    if (in.contains("rtcMirror")) e.rtcMirror = ints<6>(in.at("rtcMirror"));
+    if (in.contains("mechaconParam")) e.mechaconParam = std::array<uint32_t, 2>{in.at("mechaconParam").at(0).get<uint32_t>(), in.at("mechaconParam").at(1).get<uint32_t>()};
+    return e;
+}
+
+ConfigItems configItems(const json& in) { return ints<20>(in.at("configItems")); }
+
+PadWords padWords(const json& pad) { return {pad.at("held"), pad.at("pressed"), pad.at("released"), pad.at("repeating")}; }
+
+ListFade listFade(const json& fade) { return {fade.at("first"), fade.at("second"), fade.at("secondIndex")}; }
 
 }

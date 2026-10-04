@@ -6,6 +6,7 @@
 
 #include "scene/Clock.hpp"
 #include "scene/Matrix.hpp"
+#include "scene/MenuTypes.hpp"
 
 namespace scene {
 
@@ -23,5 +24,14 @@ FontState fontState(const nlohmann::json& state);
 // The input a clock starts from: frames[0].input of a scene.json, parsed alone (the whole file is tens of
 // megabytes), or a start file that holds one input (resources/clock/start.json).
 nlohmann::json firstInput(const std::string& path);
+
+// The menus' and cubes' pieces of a frame's `input` (tools/scene/instrument.mjs PIECES).
+bool hasMenus(const nlohmann::json& input);
+MenusState menusState(const nlohmann::json& input);
+CubeState cubeState(const nlohmann::json& input);
+MenuExternals menuExternals(const nlohmann::json& input);
+ConfigItems configItems(const nlohmann::json& input);
+PadWords padWords(const nlohmann::json& pad);
+ListFade listFade(const nlohmann::json& fade);
 
 }
