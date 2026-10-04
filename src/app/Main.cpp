@@ -350,6 +350,7 @@ int main(int argc, char** argv) {
                 if (visited.empty() || visited.back() != app::screenName(screen)) visited.push_back(app::screenName(screen));
                 if (clockPtr->state().mode == 3 || clockPtr->state().scene.leaving != 0 || menus->screenCode == 9999) soakFailed = true;
             }
+            if (options.boot) inputs.timeFilled = 1;
             inputs.threadStep = true;
             app::nextFrame(inputs);
             return produced;
