@@ -117,6 +117,27 @@ int texturesEqualPngs(const assets::AssetSet& set, const fs::path& pngs, const s
     return 0;
 }
 
+int openingEqualPngs(const assets::AssetSet& set, const fs::path& pngs, const std::string& what) {
+    int differing = 0;
+    for (const auto& info : assets::kOpeningTextures) {
+        const assets::Asset* a = set.find(info.name);
+        CHECK(a != nullptr);
+        CHECK(a->kind == assets::AssetKind::TextureRgba32 && a->width == info.width && a->height == info.height);
+        char file[64];
+        std::snprintf(file, sizeof file, "tex%d-%ux%u.png", info.index, info.width, info.height);
+        int w = 0, h = 0, channels = 0;
+        stbi_uc* pixels = stbi_load((pngs / "opening" / file).string().c_str(), &w, &h, &channels, 4);
+        CHECK(pixels != nullptr);
+        const bool same = uint32_t(w) == info.width && uint32_t(h) == info.height && equalBytes(a->data, View(pixels, size_t(w) * h * 4), std::string(info.name));
+        stbi_image_free(pixels);
+        std::printf("opening index %d %s: %s\n", info.index, std::string(info.name).c_str(), same ? "equal" : "DIFFERS");
+        differing += same ? 0 : 1;
+    }
+    CHECK(differing == 0);
+    std::printf("opening textures from %s: the nine equal the GS-memory PNGs, byte for byte\n", what.c_str());
+    return 0;
+}
+
 // (b) The extractor writes the BIOS's members unchanged; decoding them, and the HDD OSD folder, gives the ten
 // textures of References/textures.
 int textures(const fs::path& model, const fs::path& folder, const fs::path& biosPath, const fs::path& pngs, const fs::path& meshPath, const fs::path& scratch) {
@@ -141,9 +162,11 @@ int textures(const fs::path& model, const fs::path& folder, const fs::path& bios
     CHECK(rom.find("FNTOSD") == nullptr && rom.find("RODMESH") == nullptr);
     CHECK(rom.sourceOf(*rom.find("TEXCFLOW")).name == "TEXIMAGE");
     CHECK(texturesEqualPngs(rom, pngs, "the ROM 2.30 BIOS's TEXIMAGE") == 0);
+    if (fs::exists(pngs / "opening" / "tex0-256x64.png")) CHECK(openingEqualPngs(rom, pngs, "the ROM 2.30 BIOS's TEXIMAGE") == 0);
 
     const assets::AssetSet hdd = assets::decodeFolder(folder);
     CHECK(texturesEqualPngs(hdd, pngs, "HDD OSD 1.10U's encrypted TEXIMAGE") == 0);
+    if (fs::exists(pngs / "opening" / "tex0-256x64.png")) CHECK(openingEqualPngs(hdd, pngs, "HDD OSD 1.10U's encrypted TEXIMAGE") == 0);
     CHECK(equalBytes(hdd.find("FNTOSD")->data, assets::readFile(folder / "FNTOSD"), "FNTOSD"));
     CHECK(equalBytes(hdd.find("PROGRAM")->data, assets::readFile(folder / assets::kProgramName), "hddosd.elf"));
     CHECK(hdd.sourceOf(*hdd.find("PROGRAM")).name == assets::kProgramName);
@@ -285,6 +308,11 @@ std::vector<std::pair<std::string, Bytes>> clockMembers(std::string_view wrongSi
         if (info.name == wrongSize) raw.push_back(0);
         members.push_back({std::string(info.name), literalStream(raw, uint32_t(raw.size()))});
     }
+    for (const auto& info : assets::kOpeningTextures) {
+        Bytes raw(assets::rawTextureSize(info.form, info.width, info.height));
+        for (size_t i = 0; i < raw.size(); ++i) raw[i] = uint8_t(i * 5 + info.height);
+        members.push_back({std::string(info.name), literalStream(raw, uint32_t(raw.size()))});
+    }
     return members;
 }
 
@@ -385,7 +413,7 @@ int robustDecode(const fs::path& scratch) {
     const Bytes texImage = romdirImage(clockMembers());
     assets::writeFile(folder / "TEXIMAGE", texImage);
     const assets::AssetSet synthetic = assets::decodeFolder(folder);
-    CHECK(synthetic.assets.size() == 10 && synthetic.find("TEXCKABE")->data.size() == 128 * 128 * 4);
+    CHECK(synthetic.assets.size() == 19 && synthetic.find("TEXOREF")->data.size() == 128 * 128 * 4 && synthetic.find("TEXCKABE")->data.size() == 128 * 128 * 4);
     assets::writeFile(scratch / "wrong" / "TEXIMAGE", romdirImage(clockMembers("TEXCNAVI")));
     CHECK(throwsRuntime([&] { (void)assets::decodeFolder(scratch / "wrong"); }));
     // A program that is not HDD OSD 1.10U beside a plain TEXIMAGE: the textures alone.

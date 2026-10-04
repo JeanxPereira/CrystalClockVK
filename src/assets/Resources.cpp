@@ -47,7 +47,7 @@ std::vector<ReadFile> readSources(const fs::path& folder) {
 }  // namespace
 
 // The decoder's version and every constant it reads by: a change to any of them makes the caches of before stale.
-constexpr uint32_t kDecoderVersion = 1;
+constexpr uint32_t kDecoderVersion = 2;
 
 uint64_t decoderFingerprint() {
     uint64_t hash = 0xcbf29ce484222325ull;
@@ -58,6 +58,10 @@ uint64_t decoderFingerprint() {
     for (const ClockTextureInfo& info : kClockTextures) {
         for (const char c : info.name) mix(uint8_t(c));
         mix(info.width), mix(info.height), mix(uint32_t(info.form)), mix(info.tbp);
+    }
+    for (const OpeningTextureInfo& info : kOpeningTextures) {
+        for (const char c : info.name) mix(uint8_t(c));
+        mix(uint32_t(info.index)), mix(info.width), mix(info.height), mix(uint32_t(info.form)), mix(info.tbp);
     }
     mix(kFaces), mix(kPositions), mix(kNormals), mix(kCoordinates);
     return hash;
@@ -113,6 +117,12 @@ AssetSet decodeFolder(const fs::path& folder) {
     }
     const auto entries = romdirEntries(container, size_t(romdirStart(container)));
     for (const ClockTextureInfo& info : kClockTextures) {
+        const size_t need = rawTextureSize(info.form, info.width, info.height);
+        const Expanded raw = expand(romdirMember(container, entries, std::string(info.name)), 0, need);
+        if (raw.size != need) throw std::runtime_error(std::string(info.name) + ": " + std::to_string(raw.size) + " bytes, its form needs " + std::to_string(need));
+        set.assets.push_back({std::string(info.name), AssetKind::TextureRgba32, info.width, info.height, *texImage, convertTexture(raw.out, info.width, info.height, info.form)});
+    }
+    for (const OpeningTextureInfo& info : kOpeningTextures) {
         const size_t need = rawTextureSize(info.form, info.width, info.height);
         const Expanded raw = expand(romdirMember(container, entries, std::string(info.name)), 0, need);
         if (raw.size != need) throw std::runtime_error(std::string(info.name) + ": " + std::to_string(raw.size) + " bytes, its form needs " + std::to_string(need));
