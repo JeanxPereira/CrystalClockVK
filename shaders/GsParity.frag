@@ -245,7 +245,7 @@ void main() {
     if (state.flags.x == 1) colour.a = inEdge > 0 ? inEdge - 1 : 0x80;
 
     const bool z24 = (state.addressU.w & 1) != 0, pabe = (state.addressU.w & 2) != 0, fba = (state.addressU.w & 4) != 0, zclamp = (state.addressU.w & 8) != 0;
-    // Z24: the source depth is clamped (not wrapped) to 24 bits when the draw asks for it, the buffer's depth is its low 24 bits, and a write keeps the upper byte.
+    // Z24, the oracle's rule (PCSX2's software renderer, not measured on hardware; its zoverflow case is not modelled): the source depth is clamped (not wrapped) to 24 bits when the draw asks for it, the buffer's depth is its low 24 bits, and a write keeps the upper byte.
     if (zclamp) depth = min(depth, 0xffffffu);
 
     beginInvocationInterlockARB();

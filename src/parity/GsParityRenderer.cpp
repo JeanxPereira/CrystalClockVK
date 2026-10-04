@@ -2,6 +2,8 @@
 #include <algorithm>
 #include <bit>
 #include <cmath>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <stdexcept>
@@ -427,8 +429,15 @@ void pushRow(const GpuVertex& g, int32_t left, int32_t top, int32_t pixels, std:
 }
 
 // An edge pixel is a row of one pixel whose steps are zero: the scanline takes the edge's values as they are.
+std::FILE* edgeTrace() {
+    static std::FILE* file = [] { const char* path = std::getenv("CLOCK_EDGE_TRACE"); return path ? std::fopen(path, "w") : nullptr; }();
+    return file;
+}
+const char* g_passName = "";
+
 void pushEdges(const std::vector<EdgePixel>& pixels, std::vector<GpuVertex>& out) {
     for (const EdgePixel& pixel : pixels) {
+        if (std::FILE* trace = edgeTrace()) std::fprintf(trace, "%s %d %d %.1f %.1f %d\n", g_passName, pixel.x, pixel.y, pixel.scan.t[0], pixel.scan.t[1], pixel.coverage);
         GpuVertex g{};
         g.left = float(pixel.x);
         g.top = float(pixel.y);
@@ -772,6 +781,7 @@ std::vector<uint32_t> GsParityRenderer::readDepth() {
 }
 
 void GsParityRenderer::draw(const parity::GsPass& given) {
+    g_passName = given.name.c_str();
     const parity::GsPass rounded = roundsCoordinates(given) ? withRoundedCoordinates(given) : parity::GsPass{};
     const parity::GsPass& pass = roundsCoordinates(given) ? rounded : given;
     if (!pass.skip.empty()) throw std::logic_error(pass.name + " cannot be drawn: " + pass.skip);
@@ -818,6 +828,7 @@ void GsParityRenderer::draw(const parity::GsPass& given) {
     }
     state.misc[2] = int(pass.depth.test);
     state.misc[3] = pass.depth.write ? 1 : 0;
+    // The oracle's Z24 rule (PCSX2 software renderer; hardware behaviour unmeasured): sprites always clamp, other primitives when the draw's largest Z exceeds 24 bits.
     bool zClamp = pass.depth.z24 && sprites;
     if (pass.depth.z24 && !sprites) for (const parity::GsVertex& v : pass.vertices) zClamp = zClamp || v.depth > 0xffffffu;
     state.addressU[3] = (pass.depth.z24 ? 1 : 0) | (pass.perPixelAlpha ? 2 : 0) | (pass.alphaCorrection ? 4 : 0) | (zClamp ? 8 : 0);

@@ -398,16 +398,16 @@ int main(int argc, char** argv) {
             CHECK(renderer.readTarget("t")[0] == value);
             CHECK(renderer.readDepth()[0] == stored);
         }
-        // A triangle whose largest vertex Z is above 24 bits clamps its pixels the same way; one wholly below does not.
-        for (const uint32_t top : {0x01000000u, 0x00FFFFFFu}) {
+        // A triangle whose largest vertex Z is above 24 bits clamps its pixels the same way: all three at 0x01000005 store 0xFFFFFF, where a
+        // wrap would store 0x5; one wholly below 24 bits keeps its own Z.
+        for (const auto& [z, stored] : {std::pair{0x01000005u, 0x00FFFFFFu}, std::pair{0x00ABCDEFu, 0x00ABCDEFu}}) {
             renderer.setTarget("t", W, H, black);
             renderer.setDepth(W, H, std::vector<uint32_t>(W * H, 0));
-            parity::GsPass p = pass(parity::GsPrimitive::Triangles, {at(0, 0, 0x00FFFF00u, 5, 0, 0, 128), at(30, 0, 0x00FFFF00u, 5, 0, 0, 128), at(0, 30, top, 5, 0, 0, 128)});
+            parity::GsPass p = pass(parity::GsPrimitive::Triangles, {at(0, 0, z, 5, 0, 0, 128), at(30, 0, z, 5, 0, 0, 128), at(0, 30, z, 5, 0, 0, 128)});
             p.depth = {parity::GsDepthTest::GreaterEqual, true, true};
             renderer.draw(p);
             CHECK(renderer.readTarget("t")[(1 * W + 1) * 4] == 5);
-            const uint32_t z = renderer.readDepth()[1 * W + 1];
-            CHECK(z >= 0x00FFFF00u && z <= 0x00FFFFFFu);
+            CHECK(renderer.readDepth()[1 * W + 1] == stored);
         }
         // A test only (ZMSK): the buffer is not written.
         renderer.setTarget("t", W, H, black);
@@ -459,7 +459,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    // PABE: with blending on, a pixel blends only when the source alpha's bit 7 is set. Red 200 over a destination of 100 with
+    // PABE (rule read from GSDrawScanline.cpp; no capture has PABE with blending, so the oracle has never confirmed it and fixtures refuse that state): with blending on, a pixel blends only when the source alpha's bit 7 is set. Red 200 over a destination of 100 with
     // (Cs - Cd) * As + Cd: alpha 0x7F gives 199 blended and 200 replacing; alpha 0xC0 blends either way: 250.
     {
         for (const bool pabe : {true, false}) for (const uint8_t alpha : {uint8_t(0x7F), uint8_t(0xC0)}) {
