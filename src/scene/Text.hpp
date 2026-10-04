@@ -2,6 +2,7 @@
 #include <array>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -128,6 +129,8 @@ class Text {
 public:
     Text(std::shared_ptr<const Font> font, std::shared_ptr<const ProgramImage> program, const TextInputs& inputs);
     TextFrame frame(const TextFrameInputs& in);
+    // One string through Font_PutsPackets at the font state as it stands, as a frame of its own (for tests).
+    TextFrame drawString(const std::string& text, int32_t width = 640, int32_t height = 224);
 
     const FontCache& cache() const { return m_cache; }
     const FontState& font() const { return m_font; }
@@ -135,8 +138,10 @@ public:
 private:
     struct Character;
     float putString(const std::string& text, bool measuring, TextFrame& out);
-    float putCharacter(const Character& c, bool measuring, TextFrame& out);
+    // The pen after the character, or nothing when the library gives the character up (no glyph).
+    std::optional<float> putCharacter(const Character& c, bool measuring, TextFrame& out);
     int32_t widthOf(const std::string& text, TextFrame& out);
+    void finish(TextFrame& out) const;
     void setRatio(float ratio);
     void setColour(int32_t r, int32_t g, int32_t b, int32_t a);
     void setLocate(int32_t x, int32_t y);

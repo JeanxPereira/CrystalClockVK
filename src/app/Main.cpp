@@ -125,9 +125,15 @@ int main(int argc, char** argv) {
         // capture's scene.json through --start), then real time.
         const nlohmann::json input = scene::firstInput(options.start.string());
         scene::ClockInputs clockInputs = scene::clockInputs(input, scene::loadRodMesh(options.mesh));
-        const auto font = std::make_shared<const scene::Font>(scene::Font::load(options.font));
-        clockInputs.font = font;
-        clockInputs.program = std::make_shared<const scene::ProgramImage>(scene::ProgramImage::load(options.program));
+        // The text needs the font library's context of the start state; a start without it runs without text.
+        std::shared_ptr<const scene::Font> font;
+        if (input.contains("font")) {
+            font = std::make_shared<const scene::Font>(scene::Font::load(options.font));
+            clockInputs.font = font;
+            clockInputs.program = std::make_shared<const scene::ProgramImage>(scene::ProgramImage::load(options.program));
+        } else {
+            std::printf("%s has no font context: the clock runs without text\n", options.start.string().c_str());
+        }
         Clock clock(clockInputs);
         scene::FrameInputs inputs = scene::frameInputs(input);
         app::firstFrame(inputs);
@@ -300,7 +306,7 @@ int main(int argc, char** argv) {
             app::drawPanel(panel, info);
             ImGui::Render();
 
-            renderer.setGlyphCache(*font, frame.glyphs);
+            if (font) renderer.setGlyphCache(*font, frame.glyphs);
             auto context = device.beginFrame();
             if (!context) {
                 SDL_Delay(10);
