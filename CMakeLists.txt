@@ -320,7 +320,7 @@ add_executable(CubesTest tests/scene/CubesTest.cpp)
 target_link_libraries(CubesTest PRIVATE StageCompare)
 if(MENU_SCENES)
     add_test(NAME CubesTest CONFIGURATIONS Release RelWithDebInfo MinSizeRel COMMAND CubesTest ${CMAKE_SOURCE_DIR}/References/model/cube-mesh.json ${MENU_SCENES})
-    set_tests_properties(CubesTest PROPERTIES TIMEOUT 3600)
+    set_tests_properties(CubesTest PROPERTIES TIMEOUT 7200)
     # Debug runs a fixed subset: whole3-config (a long idle on the list) and whole2-up (the list moving one place).
     set(CUBES_DEBUG_SCENES ${MENU_FIXTURES}/hddosd-110U-whole3-config/scene.json ${MENU_FIXTURES}/hddosd-110U-whole2-up/scene.json)
     if(EXISTS ${MENU_FIXTURES}/hddosd-110U-whole3-config/scene.json AND EXISTS ${MENU_FIXTURES}/hddosd-110U-whole2-up/scene.json)

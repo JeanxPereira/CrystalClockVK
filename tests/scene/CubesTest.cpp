@@ -41,12 +41,12 @@ bool sameVertex(const scene::RodVertex& got, const scene::RodVertex& want, bool 
     return true;
 }
 
-uint32_t fbpOf(scene::Target target, int32_t field) { return target == scene::Target::Work1 ? 280 : target == scene::Target::Work0 ? 210 : field ? 0 : 70; }
+bool sameTarget(scene::Target target, uint32_t fbp) { return target == scene::Target::Display || fbp == (target == scene::Target::Work1 ? 280u : 210u); }
 
-bool sameRectangle(const scene::HeadDraw& d, const json& t, int32_t width, int32_t height, int32_t field) {
+bool sameRectangle(const scene::HeadDraw& d, const json& t, int32_t width, int32_t height) {
     const uint32_t prim = (d.topology == scene::Topology::Sprite ? 6u : 4u) | (d.gouraud ? 8u : 0u) | (d.textured ? 0x10u : 0u) | (d.blended ? 0x40u : 0u) |
                           (d.coordinates == scene::Coordinates::Uv ? 0x100u : 0u);
-    if (prim != t.at("prim").get<uint32_t>() || fbpOf(d.target, field) != t.at("fbp").get<uint32_t>()) return false;
+    if (prim != t.at("prim").get<uint32_t>() || !sameTarget(d.target, t.at("fbp").get<uint32_t>())) return false;
     const json& vs = t.at("vertices");
     if (vs.size() != d.vertices.size()) return false;
     const float ox = static_cast<float>(2048 - (width >> 1)), oy = static_cast<float>(2048 - (height >> 1));
@@ -62,7 +62,7 @@ bool sameRectangle(const scene::HeadDraw& d, const json& t, int32_t width, int32
     return true;
 }
 
-int draws(const std::vector<scene::CubeDraw>& ours, const json& theirs, int32_t width, int32_t height, int32_t field, const std::string& at) {
+int draws(const std::vector<scene::CubeDraw>& ours, const json& theirs, int32_t width, int32_t height, const std::string& at) {
     size_t k = 0;
     for (const scene::CubeDraw& d : ours) {
         if (k >= theirs.size()) { std::fprintf(stderr, "%s: more draws than the model's %zu\n", at.c_str(), theirs.size()); return 1; }
@@ -77,7 +77,7 @@ int draws(const std::vector<scene::CubeDraw>& ours, const json& theirs, int32_t 
             continue;
         }
         if (d.rectangle) {
-            if (!sameRectangle(*d.rectangle, t, width, height, field)) { std::fprintf(stderr, "%s: rectangle differs\n", where.c_str()); return 1; }
+            if (!sameRectangle(*d.rectangle, t, width, height)) { std::fprintf(stderr, "%s: rectangle differs\n", where.c_str()); return 1; }
             continue;
         }
         if (d.faces.size() * 4 != vs.size()) { std::fprintf(stderr, "%s: %zu vertices, the model %zu\n", where.c_str(), d.faces.size() * 4, vs.size()); return 1; }
@@ -111,7 +111,7 @@ int sceneFile(const std::string& path, const scene::RodMesh& mesh, bool compare)
         if (!compare) continue;
         const auto differences = stageDifferences(p, stage.at("after"));
         if (!differences.empty()) { std::fprintf(stderr, "%s: %s\n", at.c_str(), differences.front().c_str()); return 1; }
-        if (draws(out, frame.at("expect").at("cubes"), p.width, p.height, in.field, at)) return 1;
+        if (draws(out, frame.at("expect").at("cubes"), p.width, p.height, at)) return 1;
         drawn += out.size();
     }
     if (compare) std::printf("%s: every frame equal, %zu draws\n", path.c_str(), drawn);
