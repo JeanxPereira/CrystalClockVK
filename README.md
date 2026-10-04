@@ -253,7 +253,8 @@ never a tolerance.
 | Clock screen: scene, native renderer, live window, text | Done |
 | Menus: System Configuration and its glass cubes, Clock Adjustment, the transitions between them | In progress |
 | Sound | In progress |
-| The opening, PAL, languages | Planned |
+| The opening (boot intro, hand-off to the clock; `CrystalClock --boot`) | Done |
+| PAL, languages | Planned |
 | Improvements beyond resolution and MSAA, each a switch over the faithful base | Planned |
 | macOS | Planned |
 

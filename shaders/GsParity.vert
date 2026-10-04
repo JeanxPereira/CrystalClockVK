@@ -17,7 +17,7 @@ layout(push_constant) uniform DrawState {
     ivec4 scissor; ivec4 blend; ivec4 misc; ivec4 tex; ivec4 texSize; ivec4 addressU; ivec4 addressV; ivec4 flags;
 } state;
 
-layout(location = 0) noperspective out vec2 outDepth;
+layout(location = 0) flat out vec2 outDepth;
 layout(location = 1) noperspective out vec4 outColour;
 layout(location = 2) noperspective out vec3 outTexture;
 layout(location = 3) flat out vec4 outStepped;

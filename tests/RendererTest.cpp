@@ -2,6 +2,7 @@
 #include "core/HeadlessContext.hpp"
 #include "parity/GsParityRenderer.hpp"
 #include <bit>
+#include <stdexcept>
 #include <tuple>
 
 namespace {
@@ -368,6 +369,165 @@ int main(int argc, char** argv) {
             if (px(image, 10, 10)[0] != expected) std::fprintf(stderr, "stq rounding (C z %u): red %d\n", cz, px(image, 10, 10)[0]);
             CHECK(px(image, 10, 10)[0] == expected);
         }
+    }
+
+    // Z24 (ZBUF.PSM 1), as PCSX2's software renderer does it (GSRendererSW.cpp ConvertVertexBuffer, GSDrawScanline.cpp zclamp): a sprite's Z
+    // is clamped to 0xFFFFFF, a triangle's too when the draw's largest vertex Z is above it; the buffer's depth is its low 24 bits and a
+    // write keeps the upper byte. The buffer holds 0xAB00FFF0 (upper byte 0xAB): z 0x01FFFFFF clamps to 0xFFFFFF, passes and stores
+    // 0xABFFFFFF; as Z32 it would fail against 0xAB00FFF0.
+    {
+        for (const bool z24 : {true, false}) {
+            renderer.setTarget("t", W, H, black);
+            renderer.setDepth(W, H, std::vector<uint32_t>(W * H, 0xAB00FFF0u));
+            parity::GsPass p = pass(parity::GsPrimitive::Sprites, {at(0, 0, 0x01FFFFFFu, 0, 0, 0, 0), at(4, 4, 0x01FFFFFFu, 9, 9, 9, 9)});
+            p.depth = {parity::GsDepthTest::GreaterEqual, true, z24};
+            renderer.draw(p);
+            const bool drawn = renderer.readTarget("t")[0] == 9;
+            const uint32_t stored = renderer.readDepth()[0];
+            if (z24) CHECK(drawn && stored == 0xABFFFFFFu);
+            else CHECK(!drawn && stored == 0xAB00FFF0u);
+        }
+        // From a buffer of zeros under Z >=: 0x00FFFFF0 passes and stores 0xFFFFF0; 0x01000010 clamps to 0xFFFFFF (it does not wrap to 0x10)
+        // and passes too.
+        renderer.setTarget("t", W, H, black);
+        renderer.setDepth(W, H, std::vector<uint32_t>(W * H, 0));
+        for (const auto& [z, value, stored] : {std::tuple{0x00FFFFF0u, 1, 0x00FFFFF0u}, std::tuple{0x01000010u, 2, 0x00FFFFFFu}}) {
+            parity::GsPass p = pass(parity::GsPrimitive::Sprites, {at(0, 0, z, 0, 0, 0, 0), at(4, 4, z, float(value), 0, 0, 128)});
+            p.depth = {parity::GsDepthTest::GreaterEqual, true, true};
+            renderer.draw(p);
+            CHECK(renderer.readTarget("t")[0] == value);
+            CHECK(renderer.readDepth()[0] == stored);
+        }
+        // A triangle whose largest vertex Z is above 24 bits clamps its pixels the same way: all three at 0x01000005 store 0xFFFFFF, where a
+        // wrap would store 0x5; one wholly below 24 bits keeps its own Z.
+        for (const auto& [z, stored] : {std::pair{0x01000005u, 0x00FFFFFFu}, std::pair{0x00ABCDEFu, 0x00ABCDEFu}}) {
+            renderer.setTarget("t", W, H, black);
+            renderer.setDepth(W, H, std::vector<uint32_t>(W * H, 0));
+            parity::GsPass p = pass(parity::GsPrimitive::Triangles, {at(0, 0, z, 5, 0, 0, 128), at(30, 0, z, 5, 0, 0, 128), at(0, 30, z, 5, 0, 0, 128)});
+            p.depth = {parity::GsDepthTest::GreaterEqual, true, true};
+            renderer.draw(p);
+            CHECK(renderer.readTarget("t")[(1 * W + 1) * 4] == 5);
+            CHECK(renderer.readDepth()[1 * W + 1] == stored);
+        }
+        // A test only (ZMSK): the buffer is not written.
+        renderer.setTarget("t", W, H, black);
+        renderer.setDepth(W, H, std::vector<uint32_t>(W * H, 0x00FFFFF0u));
+        parity::GsPass masked = pass(parity::GsPrimitive::Sprites, {at(0, 0, 0x00FFFFFFu, 0, 0, 0, 0), at(4, 4, 0x00FFFFFFu, 7, 0, 0, 128)});
+        masked.depth = {parity::GsDepthTest::Greater, false, true};
+        renderer.draw(masked);
+        CHECK(renderer.readTarget("t")[0] == 7 && renderer.readDepth()[0] == 0x00FFFFF0u);
+
+        // An antialiased triangle's edge pixels extrapolate past the vertices and take the edge's Z clamped to the buffer's range
+        // (ClampVertex): the top vertex has the largest Z, 0xFFFFFF, so the edge pixels above it are beyond 24 bits. Under Z > against a
+        // buffer of 0xFFFFFF, nothing passes when Z24 clamps them to 0xFFFFFF, while as Z32 the extrapolated ones do.
+        for (const bool z24 : {true, false}) {
+            renderer.setTarget("t", W, H, black);
+            renderer.setDepth(W, H, std::vector<uint32_t>(W * H, 0x00FFFFFFu));
+            parity::GsPass edge = pass(parity::GsPrimitive::Triangles, {at(20.5f, 4.25f, 0x00FFFFFFu, 200, 0, 0, 64), at(8.5f, 28.25f, 0x00FFFF00u, 200, 0, 0, 64), at(32.5f, 28.25f, 0x00FFFF00u, 200, 0, 0, 64)});
+            edge.antialias = true;
+            edge.blend = Add;
+            edge.depth = {parity::GsDepthTest::Greater, false, z24};
+            renderer.draw(edge);
+            const std::vector<uint8_t> edgeImage = renderer.readTarget("t");
+            uint32_t lit = 0;
+            for (uint32_t i = 0; i < W * H; i++) lit += edgeImage[i * 4] != 0;
+            if (z24 != (lit == 0)) std::fprintf(stderr, "z24 %d edge: %u pixels lit\n", z24, lit);
+            CHECK(z24 == (lit == 0));
+        }
+        renderer.setDepth(W, H, depth100);
+    }
+
+    // PSMCT16 textures: the fixture holds each texel as (c5 << 3 per channel, alpha 0x80 when bit 15 is set); the pass carries TEXA.
+    // 0xFFFF is (248,248,248,TA1), 0x7FFF (248,248,248,TA0), 0x8000 black with TA1, 0x0000 black with TA0; AEM zeroes black's alpha.
+    {
+        const std::vector<uint8_t> sixteen{248, 248, 248, 0x80, 248, 248, 248, 0, 0, 0, 0, 0x80, 0, 0, 0, 0};
+        renderer.setTexture("sixteen", 4, 1, sixteen);
+        for (const bool aem : {true, false}) {
+            renderer.setTarget("t", W, H, black);
+            parity::GsPass p = pass(parity::GsPrimitive::Sprites, {{0, 0, 0, 128, 128, 128, 128, 0, 0, 1}, {4, 1, 0, 128, 128, 128, 128, 4, 1, 1}});
+            p.texture = parity::GsTexture{"sixteen", false, 4, 1, parity::GsCoordinates::Texel, {parity::GsAddressMode::Clamp, 0, 0}, {parity::GsAddressMode::Clamp, 0, 0},
+                                          parity::GsFilter::Nearest, {false, 127, aem, true, 129}};
+            renderer.draw(p);
+            image = renderer.readTarget("t");
+            const uint8_t expected[4][4] = {{248, 248, 248, 129}, {248, 248, 248, 127}, {0, 0, 0, uint8_t(aem ? 0 : 129)}, {0, 0, 0, uint8_t(aem ? 0 : 127)}};
+            for (uint32_t x = 0; x < 4; x++) {
+                const uint8_t* q = px(image, x, 0);
+                if (q[0] != expected[x][0] || q[1] != expected[x][1] || q[2] != expected[x][2] || q[3] != expected[x][3])
+                    std::fprintf(stderr, "ct16 aem %d texel %u: %d %d %d %d\n", aem, x, q[0], q[1], q[2], q[3]);
+                CHECK(q[0] == expected[x][0] && q[1] == expected[x][1] && q[2] == expected[x][2] && q[3] == expected[x][3]);
+            }
+        }
+    }
+
+    // PABE (rule read from GSDrawScanline.cpp; no capture has PABE with blending, so the oracle has never confirmed it and fixtures refuse that state): with blending on, a pixel blends only when the source alpha's bit 7 is set. Red 200 over a destination of 100 with
+    // (Cs - Cd) * As + Cd: alpha 0x7F gives 199 blended and 200 replacing; alpha 0xC0 blends either way: 250.
+    {
+        for (const bool pabe : {true, false}) for (const uint8_t alpha : {uint8_t(0x7F), uint8_t(0xC0)}) {
+            renderer.setTarget("t", W, H, std::vector<uint8_t>(W * H * 4, 100));
+            parity::GsPass p = pass(parity::GsPrimitive::Sprites, {at(0, 0, 0, 0, 0, 0, 0), at(4, 4, 0, 200, 0, 0, alpha)});
+            p.blend = parity::GsBlend{parity::GsBlendTerm::Source, parity::GsBlendTerm::Destination, parity::GsBlendFactor::SourceAlpha, parity::GsBlendTerm::Destination, 0};
+            p.perPixelAlpha = pabe;
+            renderer.draw(p);
+            const std::vector<uint8_t> written = renderer.readTarget("t");
+            const uint8_t red = written[0], writtenAlpha = written[3];
+            const uint8_t expected = alpha == 0xC0 ? 250 : pabe ? 200 : 199;
+            // A blending pixel under PABE also writes the blended alpha, (As - Ad) * As >> 7 + Ad = (192 - 100) * 192 >> 7 + 100 = 238; every other pixel
+            // writes its source alpha.
+            const uint8_t expectedAlpha = pabe && alpha == 0xC0 ? 238 : alpha;
+            if (red != expected || writtenAlpha != expectedAlpha) std::fprintf(stderr, "pabe %d alpha 0x%x: red %d (expected %d) alpha %d (expected %d)\n", pabe, alpha, red, expected, writtenAlpha, expectedAlpha);
+            CHECK(red == expected && writtenAlpha == expectedAlpha);
+        }
+    }
+
+    // FBA: the written alpha has bit 7 forced on.
+    {
+        for (const bool fba : {true, false}) {
+            renderer.setTarget("t", W, H, black);
+            parity::GsPass p = pass(parity::GsPrimitive::Sprites, {at(0, 0, 0, 0, 0, 0, 0), at(4, 4, 0, 10, 20, 30, 0x10)});
+            p.alphaCorrection = fba;
+            renderer.draw(p);
+            const std::vector<uint8_t> written = renderer.readTarget("t");
+            const uint8_t* q = written.data();
+            CHECK(q[0] == 10 && q[1] == 20 && q[2] == 30 && q[3] == (fba ? 0x90 : 0x10));
+        }
+    }
+
+    // A mip level (the towers sample level 2): the texture given is the level's image and the vertices keep the base level's coordinates,
+    // which the rule scales by the base size (level width << level) and shifts back by the level, as the GS does when LOD is constant.
+    // Base 4 x 4, level 1 is 2 x 2 with red 10 20 / 30 40. Across a triangle (0,0) (30,0) (0,30), pixel (5,5) reads texel (0,0), (20,5) texel
+    // (1,0), (5,20) texel (0,1), as projective S T with Q 1 and as texel coordinates U V up to 4; level 0 over the same 2 x 2 image would
+    // read the base coordinates 1.33 and 2.67 of its own two texels, wrapping.
+    {
+        const std::vector<uint8_t> level1{10, 0, 0, 128, 20, 0, 0, 128, 30, 0, 0, 128, 40, 0, 0, 128};
+        renderer.setTexture("level1", 2, 2, level1);
+        for (const bool texelCoordinates : {false, true}) {
+            renderer.setTarget("t", W, H, black);
+            renderer.setDepth(W, H, depth100);
+            const float edge = texelCoordinates ? 4.0f : 1.0f;
+            parity::GsPass p = pass(parity::GsPrimitive::Triangles, {{0, 0, 0, 128, 128, 128, 128, 0, 0, 1}, {30, 0, 0, 128, 128, 128, 128, edge, 0, 1}, {0, 30, 0, 128, 128, 128, 128, 0, edge, 1}});
+            p.texture = parity::GsTexture{"level1", false, 2, 2, texelCoordinates ? parity::GsCoordinates::Texel : parity::GsCoordinates::Projective,
+                                          {parity::GsAddressMode::Clamp, 0, 0}, {parity::GsAddressMode::Clamp, 0, 0}, parity::GsFilter::Nearest, {}, 1};
+            renderer.draw(p);
+            image = renderer.readTarget("t");
+            if (px(image, 5, 5)[0] != 10 || px(image, 20, 5)[0] != 20 || px(image, 5, 20)[0] != 30)
+                std::fprintf(stderr, "mip level 1 (%s): %d %d %d\n", texelCoordinates ? "texel" : "projective", px(image, 5, 5)[0], px(image, 20, 5)[0], px(image, 5, 20)[0]);
+            CHECK(px(image, 5, 5)[0] == 10 && px(image, 20, 5)[0] == 20 && px(image, 5, 20)[0] == 30);
+        }
+        // Bilinear takes its half texel off after the shift, in the level's own texels: at (20,5), S 0.667 is 1.33 level texels, less
+        // 0.5 is 0.83, texel 0 with weight 13 of 16 (0.83 * 16 = 13.3): red 10 + (20 - 10) * 13 / 16 = 18; the same pixel at level 0 of
+        // a texture twice the size would not give this.
+        renderer.setTarget("t", W, H, black);
+        parity::GsPass bilinear = pass(parity::GsPrimitive::Triangles, {{0, 0, 0, 128, 128, 128, 128, 0, 0, 1}, {30, 0, 0, 128, 128, 128, 128, 1, 0, 1}, {0, 30, 0, 128, 128, 128, 128, 0, 1, 1}});
+        bilinear.texture = parity::GsTexture{"level1", false, 2, 2, parity::GsCoordinates::Projective, {parity::GsAddressMode::Clamp, 0, 0}, {parity::GsAddressMode::Clamp, 0, 0}, parity::GsFilter::Bilinear, {}, 1};
+        renderer.draw(bilinear);
+        image = renderer.readTarget("t");
+        if (px(image, 20, 1)[0] < 17 || px(image, 20, 1)[0] > 19) std::fprintf(stderr, "mip level 1 bilinear: %d\n", px(image, 20, 1)[0]);
+        CHECK(px(image, 20, 1)[0] >= 17 && px(image, 20, 1)[0] <= 19);
+        bool threw = false;
+        parity::GsPass sprite = pass(parity::GsPrimitive::Sprites, {{0, 0, 0, 128, 128, 128, 128, 0, 0, 1}, {4, 4, 0, 128, 128, 128, 128, 4, 4, 1}});
+        sprite.texture = bilinear.texture;
+        try { renderer.draw(sprite); } catch (const std::logic_error&) { threw = true; }
+        CHECK(threw);
     }
 
     CHECK(context.validationErrors() == 0);

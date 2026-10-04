@@ -265,6 +265,12 @@ ClockInputs clockInputs(const json& in, const RodMesh& mesh, const RodMesh* cube
     c.minuteFactor = f(in.at("orbConstants").at("minuteFactor"));
     c.fractionEasing = f(in.at("orbConstants").at("fractionEasing"));
     c.orbColour = colour(in.at("orbColour"));
+    c.hasEntryData = in.contains("wide") && in.contains("orbRandom") && in.contains("orbColours");
+    if (in.contains("wide")) c.wide = in.at("wide");
+    if (in.contains("orbRandom"))
+        for (size_t k = 0; k < kOrbCount; ++k) c.orbRandom[k] = in.at("orbRandom").at(k);
+    if (in.contains("orbColours"))
+        for (size_t k = 0; k < kOrbCount; ++k) c.orbColours[k] = colour(in.at("orbColours").at(k));
     c.width = in.at("screen").at("width");
     c.height = in.at("screen").at("height");
     if (in.contains("font")) c.text = textInputs(in);
@@ -320,6 +326,7 @@ json firstInput(const std::string& path) {
 FrameInputs frameInputs(const json& in) {
     const json& t = in.at("time");
     FrameInputs out{{f(t.at("ms")), t.at("seconds"), t.at("minutes"), t.at("hours")}, in.at("scene").at("field"), in.at("index"), in.at("item0"), {}};
+    if (in.contains("timeFilled")) out.timeFilled = in.at("timeFilled");
     if (in.contains("configItems")) {
         const json& items = in.at("configItems");
         out.items = {items.at(6), items.at(7), items.at(8), items.at(9), items.at(10), items.at(11)};

@@ -16,7 +16,9 @@ const KEYS = [
   'cameraFactor', 'greyRamp', 'greys', 'ringRecord', 'tint', 'blurRecord', 'copyRecord', 'fadeRecord', 'bars',
   'column', 'template', 'rings', 'spriteFade', 'clearColour', 'display', 'tubeConstants', 'orbConstants',
   'orbColour', 'screen', 'index', 'item0', 'font', 'textRamps', 'configItems', 'mechaconParam', 'videoMode',
+  'wide', 'orbRandom', 'orbColours',
 ];
+const OPTIONAL = new Set(['font', 'textRamps', 'mechaconParam', 'videoMode', 'wide', 'orbRandom', 'orbColours']);
 
 const MENU_KEYS = [
   'pad', 'disc', 'screenCode', 'configPage', 'configRamp', 'configEntries', 'mainMenu', 'versionRamp', 'dialogRamp',
@@ -36,7 +38,10 @@ const first = frameWanted === 'clock' ? scene.frames.find((f) => f.input.menuRam
 if (!first) throw new Error('no such frame');
 const start = { capture: scene.capture, build: scene.build, frame: first.index };
 for (const key of KEYS) {
-  if (!(key in first.input)) throw new Error(`frames[0].input has no ${key}`);
+  if (!(key in first.input)) {
+    if (OPTIONAL.has(key)) continue;
+    throw new Error(`frames[0].input has no ${key}`);
+  }
   start[key] = first.input[key];
 }
 for (const key of MENU_KEYS) if (key in first.input) start[key] = first.input[key];

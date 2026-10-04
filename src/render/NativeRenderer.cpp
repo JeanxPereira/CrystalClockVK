@@ -29,6 +29,7 @@ struct PushState {
     float region[4];
     int32_t mode[4];
     int32_t shade[4];
+    float extent[4];
 };
 
 void check(VkResult result, const char* what) {
@@ -92,6 +93,15 @@ VkPipelineColorBlendAttachmentState blendState(scene::BlendOp op) {
         s.srcColorBlendFactor = VK_BLEND_FACTOR_CONSTANT_ALPHA;
         s.dstColorBlendFactor = VK_BLEND_FACTOR_ONE;
         break;
+    case scene::BlendOp::AddDestinationAlpha:
+        s.srcColorBlendFactor = VK_BLEND_FACTOR_DST_ALPHA;
+        s.dstColorBlendFactor = VK_BLEND_FACTOR_ONE;
+        break;
+    case scene::BlendOp::SubtractFixed:
+        s.srcColorBlendFactor = VK_BLEND_FACTOR_CONSTANT_ALPHA;
+        s.dstColorBlendFactor = VK_BLEND_FACTOR_ONE;
+        s.colorBlendOp = VK_BLEND_OP_REVERSE_SUBTRACT;
+        break;
     case scene::BlendOp::Opaque: break;
     }
     return s;
@@ -115,9 +125,10 @@ VkCompareOp compareOf(scene::DepthTest test) {
 // a column for a y-major one), so consecutive segments of a strip meet edge to edge. Wide lines (square across
 // the line) overlapped at the joints and covered two GS pixels across steep segments at the window's scale, and
 // the trail's additive blend showed both as bright patches.
-void appendVertices(std::vector<GpuVertex>& out, const scene::Pass& pass) {
+void appendVertices(std::vector<GpuVertex>& out, const scene::Pass& pass, int32_t depthBits) {
+    const uint32_t depthMask = depthBits == 24 ? 0xffffffu : 0xffffffffu;
     const auto put = [&](const scene::Vertex& v, float x, float y, float u, float t, uint32_t z, float q) {
-        out.push_back({x, y, static_cast<float>(z) / 16777216.0f, u, t, q, v.r, v.g, v.b, v.a});
+        out.push_back({x, y, static_cast<float>(z & depthMask) / 16777216.0f, u, t, q, v.r, v.g, v.b, v.a});
     };
     if (pass.topology == scene::PassTopology::Lines) {
         for (size_t i = 0; i + 1 < pass.vertices.size(); i += 2) {
@@ -152,6 +163,9 @@ void appendVertices(std::vector<GpuVertex>& out, const scene::Pass& pass) {
 
 // The clock's textures at their 640 x 224 addresses (clock_frame.mjs stateWriters; parity/FromScene clockLayout):
 // TEXCFLOW, TEXCKABE, TEXCBUMP, TEXCBINV, TEXCSMOK, TEXCREFA, TEXCNAVI, TEXCBLUR, TEXCSTSL, TEXCMARU.
+constexpr float kTargetTextureWidth = 1024.0f, kTargetTextureHeight = 256.0f;
+constexpr int32_t kClockSet = static_cast<int32_t>(scene::TextureSet::Clock);
+
 constexpr const char* kClockTextures[10] = {
     "tbp-2bc0-64x64.png", "tbp-2c00-128x128.png", "tbp-2d00-64x64.png", "tbp-2d40-64x64.png", "tbp-2d80-64x64.png",
     "tbp-2dc0-64x64.png", "tbp-2e00-64x64.png", "tbp-2e40-64x64.png", "tbp-2e80-64x64.png", "tbp-2ec0-64x64.png",
@@ -221,7 +235,7 @@ NativeRenderer::~NativeRenderer() {
     vkDeviceWaitIdle(d);
     destroyTargets();
     for (Buffer& b : m_vertices) destroyBuffer(b);
-    for (auto& [n, t] : m_textures) destroyImage(t.image);
+    for (auto& [key, t] : m_textures) destroyImage(t.image);
     destroyImage(m_blank);
     for (auto& [key, p] : m_pipelines) vkDestroyPipeline(d, p, nullptr);
     for (VkSampler s : m_samplers) vkDestroySampler(d, s, nullptr);
@@ -319,9 +333,14 @@ void NativeRenderer::transition(VkCommandBuffer cmd, Image& image, VkImageLayout
 }
 
 void NativeRenderer::setTexture(int32_t number, uint32_t width, uint32_t height, std::span<const uint8_t> rgba) {
+    setTexture(scene::TextureSet::Clock, number, width, height, rgba);
+}
+
+void NativeRenderer::setTexture(scene::TextureSet set, int32_t number, uint32_t width, uint32_t height, std::span<const uint8_t> rgba) {
+    const TextureKey key{static_cast<int32_t>(set), number};
     if (rgba.size() != size_t(width) * height * 4) throw std::runtime_error("texture " + std::to_string(number) + ": wrong size");
     vkDeviceWaitIdle(m_device.device());
-    if (auto found = m_textures.find(number); found != m_textures.end()) {
+    if (auto found = m_textures.find(key); found != m_textures.end()) {
         destroyImage(found->second.image);
         m_textures.erase(found);
     }
@@ -340,13 +359,13 @@ void NativeRenderer::setTexture(int32_t number, uint32_t width, uint32_t height,
         transition(cmd, texture.image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
     });
     destroyBuffer(staging);
-    m_textures.emplace(number, texture);
+    m_textures.emplace(key, texture);
 }
 
 // facts/text.md sections 1 and 2: 4-bit pictures through the block's colour table. The GS looks a texel's colour up
 // before it filters, so the table is applied here, once, and the pass samples the colours.
 void NativeRenderer::setGlyphCache(const scene::Font& font, const scene::GlyphCache& cache) {
-    if (cache == m_glyphs && m_textures.contains(scene::kGlyphTexture)) return;
+    if (cache == m_glyphs && m_textures.contains({kClockSet, scene::kGlyphTexture})) return;
     const std::vector<uint8_t> image = scene::glyphCacheImage(font, cache);
     setTexture(scene::kGlyphTexture, 1u << cache.logWidth, 1u << cache.logHeight, image);
     m_glyphs = cache;
@@ -368,6 +387,28 @@ void NativeRenderer::loadClockTextures(const std::filesystem::path& directory) {
     }
 }
 
+void NativeRenderer::loadOpeningTextures(const std::filesystem::path& directory) {
+    size_t loaded = 0;
+    for (const auto& entry : std::filesystem::directory_iterator(directory)) {
+        const std::string name = entry.path().filename().string();
+        int number = 0, width = 0, height = 0;
+        if (std::sscanf(name.c_str(), "tex%d-%dx%d.png", &number, &width, &height) != 3 || entry.path().extension() != ".png") continue;
+        int w = 0, h = 0, channels = 0;
+        stbi_uc* pixels = stbi_load(entry.path().string().c_str(), &w, &h, &channels, 4);
+        if (!pixels) throw std::runtime_error("cannot read the opening texture " + entry.path().string());
+        try {
+            if (w != width || h != height) throw std::runtime_error("the opening texture " + name + " is " + std::to_string(w) + "x" + std::to_string(h));
+            setTexture(scene::TextureSet::Opening, number, uint32_t(w), uint32_t(h), std::span<const uint8_t>(pixels, size_t(w) * h * 4));
+        } catch (...) {
+            stbi_image_free(pixels);
+            throw;
+        }
+        stbi_image_free(pixels);
+        ++loaded;
+    }
+    if (loaded == 0) throw std::runtime_error("no opening textures in " + directory.string());
+}
+
 void NativeRenderer::configure(const NativeOutput& output) {
     if (output == m_output) return;
     if (output.width == 0 || output.height == 0) throw std::runtime_error("an empty output");
@@ -377,13 +418,7 @@ void NativeRenderer::configure(const NativeOutput& output) {
     m_output = output;
     m_alphaBound = {};
     const auto samples = static_cast<VkSampleCountFlagBits>(output.samples);
-    for (Target& t : m_targets) {
-        t.resolved = createImage(output.width, output.height, kColourFormat,
-                                 VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
-                                 VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_ASPECT_COLOR_BIT);
-        if (output.samples > 1)
-            t.multisampled = createImage(output.width, output.height, kColourFormat, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, samples, VK_IMAGE_ASPECT_COLOR_BIT);
-    }
+    for (size_t i = 0; i <= static_cast<size_t>(scene::TargetName::Work); ++i) createTarget(m_targets[i]);
     m_depth = createImage(output.width, output.height, kDepthFormat, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, samples, VK_IMAGE_ASPECT_DEPTH_BIT);
     submit([&](VkCommandBuffer cmd) {
         const VkClearColorValue black{};
@@ -401,11 +436,41 @@ void NativeRenderer::configure(const NativeOutput& output) {
     });
 }
 
-VkPipeline NativeRenderer::pipeline(const scene::Pass& pass) {
+void NativeRenderer::createTarget(Target& t) {
+    t.resolved = createImage(m_output.width, m_output.height, kColourFormat,
+                             VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+                             VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_ASPECT_COLOR_BIT);
+    if (m_output.samples > 1)
+        t.multisampled = createImage(m_output.width, m_output.height, kColourFormat, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+                                     static_cast<VkSampleCountFlagBits>(m_output.samples), VK_IMAGE_ASPECT_COLOR_BIT);
+}
+
+// The opening's Store and Extra targets exist only for frames that use them; the clock keeps its three.
+void NativeRenderer::ensureTargets(VkCommandBuffer cmd, const scene::Frame& frame) {
+    const VkClearColorValue black{};
+    const VkImageSubresourceRange colour{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    const auto ensure = [&](scene::TargetName name) {
+        Target& t = target(name);
+        if (t.resolved.image) return;
+        createTarget(t);
+        for (Image* image : {&t.resolved, &t.multisampled}) {
+            if (!image->image) continue;
+            transition(cmd, *image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT);
+            vkCmdClearColorImage(cmd, image->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &black, 1, &colour);
+        }
+    };
+    for (const scene::Pass& pass : frame.passes) {
+        if (pass.vertices.empty()) continue;
+        ensure(pass.target);
+        if (pass.material.source == scene::SourceKind::Target) ensure(pass.material.sourceTarget);
+    }
+}
+
+VkPipeline NativeRenderer::pipeline(const scene::Pass& pass, scene::BlendOp blendOp) {
     const scene::Material& m = pass.material;
     // AA1 writes no depth on an edge pixel, and every pixel of an AA1 line is an edge pixel (shaders/GsParity.frag).
     const bool depthWrite = m.depthWrite && !(pass.topology == scene::PassTopology::Lines && pass.edgeSmoothing);
-    const PipelineKey key{static_cast<int>(m.blend), static_cast<int>(m.depthTest), depthWrite, m_output.samples};
+    const PipelineKey key{static_cast<int>(blendOp), static_cast<int>(m.depthTest), depthWrite, m_output.samples};
     if (auto found = m_pipelines.find(key); found != m_pipelines.end()) return found->second;
 
     VkPipelineShaderStageCreateInfo stages[2]{};
@@ -438,7 +503,7 @@ VkPipeline NativeRenderer::pipeline(const scene::Pass& pass) {
     depth.depthTestEnable = VK_TRUE;
     depth.depthWriteEnable = depthWrite ? VK_TRUE : VK_FALSE;
     depth.depthCompareOp = compareOf(m.depthTest);
-    const VkPipelineColorBlendAttachmentState attachment = blendState(m.blend);
+    const VkPipelineColorBlendAttachmentState attachment = blendState(blendOp);
     VkPipelineColorBlendStateCreateInfo blend{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
     blend.attachmentCount = 1;
     blend.pAttachments = &attachment;
@@ -505,27 +570,29 @@ void NativeRenderer::beginRendering(VkCommandBuffer cmd, Target& t) {
     vkCmdSetScissor(cmd, 0, 1, &scissor);
 }
 
-uint32_t NativeRenderer::writtenAlpha(const scene::Pass& pass, const std::array<uint32_t, 3>& bounds) const {
+uint32_t NativeRenderer::writtenAlphaWith(const scene::Pass& pass, scene::TextureSet set, const std::array<uint32_t, kTargets>& bounds) const {
     if (pass.edgeSmoothing) return 0x80;
     const scene::Material& m = pass.material;
     uint32_t vertex = 0;
     for (const scene::Vertex& v : pass.vertices) vertex = std::max<uint32_t>(vertex, v.a);
     if (m.source == scene::SourceKind::Texture) {
-        const auto found = m_textures.find(m.texture);
+        const auto found = m_textures.find({static_cast<int32_t>(set), m.texture});
         return found == m_textures.end() ? vertex : vertex * found->second.largestAlpha / 128;
     }
     if (m.source == scene::SourceKind::Target) return vertex * (m.colourOnly ? 0x7fu : bounds[static_cast<size_t>(m.sourceTarget)]) / 128;
     return vertex;
 }
 
-uint32_t NativeRenderer::writtenAlpha(const scene::Pass& pass) const { return writtenAlpha(pass, m_alphaBound); }
+uint32_t NativeRenderer::writtenAlpha(const scene::Pass& pass, scene::TextureSet set) const { return writtenAlphaWith(pass, set, m_alphaBound); }
 
-uint32_t NativeRenderer::blendAlpha(const scene::Pass& pass) const {
+uint32_t NativeRenderer::blendAlpha(const scene::Pass& pass, scene::TextureSet set) const {
     switch (pass.material.blend) {
     case scene::BlendOp::Opaque: return 0;
     case scene::BlendOp::FixedOver:
-    case scene::BlendOp::FixedAdd: return pass.material.blendConstant;
-    default: return writtenAlpha(pass);
+    case scene::BlendOp::FixedAdd:
+    case scene::BlendOp::SubtractFixed: return pass.material.blendConstant;
+    case scene::BlendOp::AddDestinationAlpha: return m_alphaBound[static_cast<size_t>(pass.target)];
+    default: return writtenAlpha(pass, set);
     }
 }
 
@@ -533,14 +600,17 @@ uint32_t NativeRenderer::blendAlpha(const scene::Pass& pass) const {
 // each target's bound grows with what is written to it, and in Debug a frame that would write or multiply by more
 // than 0x80 is refused before anything is recorded.
 void NativeRenderer::checkAlpha(const scene::Frame& frame) {
-    std::array<uint32_t, 3> bounds = m_alphaBound;
+    std::array<uint32_t, kTargets> bounds = m_alphaBound;
     for (const scene::Pass& pass : frame.passes) {
         if (pass.vertices.empty()) continue;
-        const uint32_t written = writtenAlpha(pass, bounds);
+        if (pass.material.perPixelAlpha && pass.material.blend != scene::BlendOp::Opaque)
+            throw std::logic_error("pass " + pass.name + ": per-pixel alpha with blending is not drawn (every opening pass that sets it has blending off)");
+        const uint32_t written = writtenAlphaWith(pass, frame.textureSet, bounds);
         const scene::BlendOp blend = pass.material.blend;
-        const uint32_t factor = blend == scene::BlendOp::Opaque ? 0
-                                : blend == scene::BlendOp::FixedOver || blend == scene::BlendOp::FixedAdd ? pass.material.blendConstant
-                                                                                                           : written;
+        uint32_t factor = written;
+        if (blend == scene::BlendOp::Opaque) factor = 0;
+        else if (blend == scene::BlendOp::FixedOver || blend == scene::BlendOp::FixedAdd || blend == scene::BlendOp::SubtractFixed) factor = pass.material.blendConstant;
+        else if (blend == scene::BlendOp::AddDestinationAlpha) factor = bounds[static_cast<size_t>(pass.target)];
 #ifndef NDEBUG
         if (written > 0x80 || factor > 0x80) {
             char text[96];
@@ -557,11 +627,12 @@ void NativeRenderer::checkAlpha(const scene::Frame& frame) {
 void NativeRenderer::record(VkCommandBuffer cmd, const scene::Frame& frame) {
     if (m_output.width == 0) throw std::runtime_error("the renderer has no output");
     checkAlpha(frame);
+    ensureTargets(cmd, frame);
     std::vector<GpuVertex> vertices;
     std::vector<std::pair<uint32_t, uint32_t>> ranges;
     for (const scene::Pass& pass : frame.passes) {
         const size_t first = vertices.size();
-        appendVertices(vertices, pass);
+        appendVertices(vertices, pass, frame.depthBits);
         ranges.emplace_back(static_cast<uint32_t>(first), static_cast<uint32_t>(vertices.size() - first));
     }
     if (vertices.empty()) return;
@@ -598,12 +669,6 @@ void NativeRenderer::record(VkCommandBuffer cmd, const scene::Frame& frame) {
             open = &drawn;
             bound = VK_NULL_HANDLE;
         }
-        const VkPipeline p = pipeline(pass);
-        if (p != bound) {
-            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, p);
-            bound = p;
-        }
-
         PushState push{};
         push.scene[0] = float(frame.width);
         push.scene[1] = float(frame.height);
@@ -611,9 +676,9 @@ void NativeRenderer::record(VkCommandBuffer cmd, const scene::Frame& frame) {
         push.scene[3] = float(m_output.height);
         VkImageView view = m_blank.view;
         if (m.source == scene::SourceKind::Texture) {
-            const auto found = m_textures.find(m.texture);
+            const auto found = m_textures.find({static_cast<int32_t>(frame.textureSet), m.texture});
             if (found == m_textures.end()) throw std::runtime_error("pass " + pass.name + ": no texture " + std::to_string(m.texture));
-            if (m.texture == scene::kGlyphTexture && !(frame.glyphs == m_glyphs)) throw std::runtime_error("pass " + pass.name + ": the glyph cache set is not the frame's");
+            if (frame.textureSet == scene::TextureSet::Clock && m.texture == scene::kGlyphTexture && !(frame.glyphs == m_glyphs)) throw std::runtime_error("pass " + pass.name + ": the glyph cache set is not the frame's");
             const Image& image = found->second.image;
             view = image.view;
             push.source[0] = push.source[2] = float(image.width);
@@ -628,14 +693,16 @@ void NativeRenderer::record(VkCommandBuffer cmd, const scene::Frame& frame) {
             push.source[3] = float(m_output.height);
             push.mode[0] = 2;
             push.shade[2] = 128;
+            if (frame.textureSet == scene::TextureSet::Opening) {
+                push.extent[0] = kTargetTextureWidth;
+                push.extent[1] = kTargetTextureHeight;
+            }
         }
         for (int k = 0; k < 4; ++k) push.region[k] = float(m.region[k]);
         push.mode[1] = m.coordinates == scene::CoordinateKind::Projective;
         push.mode[2] = m.sampling == scene::Sampling::ClampToRegion;
         push.mode[3] = m.colourOnly;
         push.shade[0] = pass.edgeSmoothing;
-        push.shade[1] = premultiplied(m.blend);
-        vkCmdPushConstants(cmd, m_layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof push, &push);
 
         VkDescriptorImageInfo image{m_samplers[(m.bilinear ? 1 : 0) | (m.sampling == scene::Sampling::Repeat ? 0 : 2)], view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
         VkWriteDescriptorSet write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
@@ -648,6 +715,13 @@ void NativeRenderer::record(VkCommandBuffer cmd, const scene::Frame& frame) {
         const float constant = float(m.blendConstant) / 128.0f;
         const float constants[4] = {constant, constant, constant, constant};
         vkCmdSetBlendConstants(cmd, constants);
+        const VkPipeline p = pipeline(pass, m.blend);
+        if (p != bound) {
+            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, p);
+            bound = p;
+        }
+        push.shade[1] = premultiplied(m.blend);
+        vkCmdPushConstants(cmd, m_layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof push, &push);
         vkCmdDraw(cmd, ranges[i].second, 1, ranges[i].first, 0);
     }
     if (open) vkCmdEndRendering(cmd);
@@ -660,8 +734,9 @@ void NativeRenderer::draw(const scene::Frame& frame) {
 std::vector<uint8_t> NativeRenderer::readTarget(scene::TargetName name) {
     if (m_output.width == 0) throw std::runtime_error("the renderer has no output");
     const size_t bytes = size_t(m_output.width) * m_output.height * 4;
-    Buffer readback = createBuffer(bytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT);
     Image& image = target(name).resolved;
+    if (!image.image) return std::vector<uint8_t>(bytes, 0);
+    Buffer readback = createBuffer(bytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT);
     submit([&](VkCommandBuffer cmd) {
         transition(cmd, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_READ_BIT);
         VkBufferImageCopy copy{};
@@ -679,6 +754,7 @@ std::vector<uint8_t> NativeRenderer::readTarget(scene::TargetName name) {
 
 void NativeRenderer::present(VkCommandBuffer cmd, VkImage image, VkExtent2D extent, scene::TargetName shown, float aspect) {
     Image& source = target(shown).resolved;
+    if (!source.image) throw std::runtime_error("the shown target has not been drawn");
     transition(cmd, source, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_PIPELINE_STAGE_2_BLIT_BIT, VK_ACCESS_2_TRANSFER_READ_BIT);
     barrier(cmd, image, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
             VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_2_CLEAR_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT);

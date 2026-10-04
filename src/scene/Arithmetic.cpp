@@ -215,6 +215,20 @@ float EeArithmetic::sinf(float x) {
     }
 }
 
+float EeArithmetic::addExact(float a, float b) { return add(a, b); }
+
+float EeArithmetic::subExact(float a, float b) { return sub(a, b); }
+
+// opening-lib quotient: a division by zero gives the largest single, not infinity.
+float EeArithmetic::quotientExact(float a, float b) {
+    if (b == 0.0f) return (a < 0.0f || (a == 0.0f && std::signbit(a))) != std::signbit(b) ? -kMaxFloat : kMaxFloat;
+    float q = cut(static_cast<double>(a) / static_cast<double>(b));
+    if (std::fabs(static_cast<double>(q) * b) > std::fabs(static_cast<double>(a))) q = down(q);
+    return q;
+}
+
+float EeArithmetic::rootExact(float a) { return vu0Root(a); }
+
 std::pair<float, float> EeArithmetic::sineCosine(float radians) {
     const bool negative = radians < 0.0f;
     const float t = negative ? add(kHalfPi, radians) : sub(kHalfPi, radians);

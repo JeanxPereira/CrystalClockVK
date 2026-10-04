@@ -12,17 +12,22 @@
 #include <exception>
 #include <filesystem>
 #include <functional>
+#include <map>
+#include <memory>
 #include <optional>
 #include <set>
-#include <map>
 #include <string>
 #include <vector>
 
 #include "scene/SceneInputs.hpp"
 #include "app/ClockAssets.hpp"
 #include "app/DebugPanel.hpp"
+#include "app/BootChain.hpp"
+#include "app/ClockScreen.hpp"
 #include "app/NativeFrames.hpp"
+#include "app/BootChain.hpp"
 #include "app/Input.hpp"
+#include "app/OpeningScreen.hpp"
 #include "app/Png.hpp"
 #include "assets/AssetPack.hpp"
 #include "assets/Program.hpp"
@@ -34,12 +39,30 @@
 namespace {
 
 using Clock = scene::Clock<scene::NativeArithmetic>;
+
+class FunctionScreen : public app::FrameSource {
+public:
+    explicit FunctionScreen(std::function<scene::Frame()> step) : m_step(std::move(step)) {}
+    void step() override { m_frame = m_step(); }
+    scene::Frame frame() override { return m_frame; }
+    bool done() const override { return false; }
+
+private:
+    std::function<scene::Frame()> m_step;
+    scene::Frame m_frame;
+};
 using std::chrono::system_clock;
 
 struct Options {
     bool validation = true;
     bool smoke = false;
     double soak = 0;
+    bool boot = false;
+    bool towersDemo = false;
+    uint32_t lightsPhase = 0xD80;
+    std::filesystem::path openingTextures;
+    std::filesystem::path bootStart = CLOCK_START_BOOT;
+    std::string capture;
     std::filesystem::path shaders = CLOCK_SHADERS;
     std::filesystem::path textures = CLOCK_TEXTURES;
     std::filesystem::path start = CLOCK_MENUS_START;
@@ -123,6 +146,11 @@ int main(int argc, char** argv) {
         const bool more = i + 1 < argc;
         explicitFlags.insert(arg);
         if (arg == "--smoke") options.smoke = true;
+        else if (arg == "--boot") options.boot = true;
+        else if (arg == "--towers" && more) options.towersDemo = std::string(argv[++i]) == "demo";
+        else if (arg == "--lights-phase" && more) options.lightsPhase = static_cast<uint32_t>(std::strtoul(argv[++i], nullptr, 0));
+        else if (arg == "--opening-textures" && more) options.openingTextures = argv[++i];
+        else if (arg == "--capture" && more) options.capture = argv[++i];
         else if (arg == "--no-validation") options.validation = false;
         else if (arg == "--soak" && more) options.soak = std::atof(argv[++i]);
         else if (arg == "--shaders" && more) options.shaders = argv[++i];
@@ -138,7 +166,7 @@ int main(int argc, char** argv) {
         else if (arg == "--bios" && more) options.bios = argv[++i];
         else if (arg == "--assets" && more) options.pack = argv[++i];
         else {
-            std::fprintf(stderr, "usage: CrystalClock [--resources dir] [--bios rom.bin] [--assets assets.bin] [--smoke] [--soak seconds] [--clock] [--no-validation] [--shaders dir]\n"
+            std::fprintf(stderr, "usage: CrystalClock [--resources dir] [--bios rom.bin] [--assets assets.bin] [--smoke] [--soak seconds] [--clock] [--boot [--towers none|demo] [--lights-phase N] [--opening-textures dir] [--capture all|n,n,...]] [--no-validation] [--shaders dir]\n"
                                  "                    [--start scene.json] [--screenshots dir] [--textures dir] [--mesh rod-mesh.json] [--cube-mesh cube-mesh.json] [--font FNTOSD] [--program hddosd.elf]\n");
             return 1;
         }
@@ -214,27 +242,46 @@ int main(int argc, char** argv) {
         render::NativeRenderer renderer(device, options.shaders);
         if (useTextureFiles) renderer.loadClockTextures(options.textures);
         else app::uploadClockTextures(renderer, *decoded);
+        if (options.boot) renderer.loadOpeningTextures(options.openingTextures.empty() ? options.textures / "opening" : options.openingTextures);
 
         // The clock as the whole3-clock capture holds it at its first frame (resources/clock/start.json, or a
         // capture's scene.json through --start), then real time.
         const scene::RodMesh cubeMesh = scene::loadRodMesh(options.cubeMesh);
-        const nlohmann::json input = scene::firstInput(options.start.string());
+        nlohmann::json input = scene::firstInput(options.start.string());
+        if (options.boot) {
+            input = scene::firstInput(options.bootStart.string());
+            for (const auto& [key, value] : scene::firstInput(CLOCK_MENUS_START).items())
+                if (!input.contains(key)) input[key] = value;
+        }
         scene::ClockInputs clockInputs = scene::hasMenus(input) ? scene::clockInputs(input, (meshAsset ? app::rodMeshOf(*meshAsset) : scene::loadRodMesh(options.mesh)), &cubeMesh)
                                                                                       : scene::clockInputs(input, (meshAsset ? app::rodMeshOf(*meshAsset) : scene::loadRodMesh(options.mesh)));
         if (clockInputs.menus) clockInputs.menus->options.browserEnters = false;
         // The text needs the font library's context of the start state; a start without it runs without text.
         std::shared_ptr<const scene::Font> font;
+        std::shared_ptr<const scene::ProgramImage> program;
         if (!input.contains("font")) {
             std::printf("%s has no font context: the clock runs without text\n", options.start.string().c_str());
         } else if (!fontFile.empty() && !programFile.empty()) {
             font = std::make_shared<const scene::Font>(std::move(fontFile));
             clockInputs.font = font;
-            clockInputs.program = std::make_shared<const scene::ProgramImage>(std::move(programFile));
+            program = std::make_shared<const scene::ProgramImage>(std::move(programFile));
+            clockInputs.program = program;
         }
-        Clock clock(clockInputs);
+        const scene::ClockInputs clockInputs0 = clockInputs;
+        auto clockPtr = std::make_unique<Clock>(clockInputs0);
         scene::FrameInputs inputs = scene::frameInputs(input);
         app::firstFrame(inputs);
         inputs.threadStep = false;
+
+        const bool captureAll = options.capture == "all";
+        std::set<uint64_t> captureAt;
+        for (size_t at = 0; at < options.capture.size() && !captureAll;) {
+            captureAt.insert(std::strtoull(options.capture.c_str() + at, nullptr, 10));
+            const size_t comma = options.capture.find(',', at);
+            if (comma == std::string::npos) break;
+            at = comma + 1;
+        }
+        const bool capturing = options.boot && !options.capture.empty();
 
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
@@ -271,11 +318,10 @@ int main(int argc, char** argv) {
         scene::Frame frame;
         bool fresh = false;
         uint64_t logicFrames = 0;
-        const auto produce = [&] {
+        const auto stepClock = [&] {
             const system_clock::time_point now = system_clock::now() + offset;
-            inputs.time = clockTime(now);
-            inputs.items = clockItems(now);
-            if (const scene::MenusState* menus = clock.menus()) {
+            scene::Frame produced;
+            if (const scene::MenusState* menus = clockPtr->menus()) {
                 const int32_t level = menus->page.level;
                 if (previousLevel == 1 && level == 0 && menus->page.selected >= 0 && menus->page.selected < 9 &&
                     menus->entries[menus->page.selected].confirm == 0x00227b90u) {
@@ -297,15 +343,54 @@ int main(int argc, char** argv) {
                                                                int32_t(hms.hours().count()), int32_t(hms.minutes().count()), int32_t(hms.seconds().count())};
                 inputs.configItems = items;
             }
-            frame = clock.frame(inputs);
-            if (const scene::MenusState* menus = clock.menus()) {
-                items = clock.items();
-                const app::Screen screen = app::screenOf(*menus, clock.state().menuRamp);
+            produced = clockPtr->frame(inputs);
+            if (const scene::MenusState* menus = clockPtr->menus()) {
+                items = clockPtr->items();
+                const app::Screen screen = app::screenOf(*menus, clockPtr->state().menuRamp);
                 if (visited.empty() || visited.back() != app::screenName(screen)) visited.push_back(app::screenName(screen));
-                if (clock.state().mode == 3 || clock.state().scene.leaving != 0 || menus->screenCode == 9999) soakFailed = true;
+                if (clockPtr->state().mode == 3 || clockPtr->state().scene.leaving != 0 || menus->screenCode == 9999) soakFailed = true;
             }
             inputs.threadStep = true;
             app::nextFrame(inputs);
+            return produced;
+        };
+        std::unique_ptr<app::BootChain> chain;
+        app::OpeningScreen* bootOpening = nullptr;
+        const scene::FrameInputs inputs0 = inputs;
+        const auto buildBoot = [&] {
+            if (!program) throw std::runtime_error("--boot needs hddosd.elf (HDD OSD 1.10U) and FNTOSD");
+            clockPtr = std::make_unique<Clock>(clockInputs0);
+            inputs = inputs0;
+            items = clockInputs0.menus ? clockInputs0.menus->items : scene::ConfigItems{};
+            previousLevel = 0;
+            scene::opening::BootOptions boot;
+            boot.lightsPhase = options.lightsPhase;
+            if (options.towersDemo) {
+                scene::opening::History history{};
+                const char* names[] = {"DEMO A", "DEMO B", "DEMO C", "DEMO D", "DEMO E"};
+                for (size_t i = 0; i < 5; ++i) {
+                    for (size_t c = 0; names[i][c]; ++c) history[i].name[c] = names[i][c];
+                    history[i].count = static_cast<uint8_t>(3 + 4 * i);
+                    history[i].mask = static_cast<uint8_t>(0x0F << i);
+                    history[i].mainCell = static_cast<uint8_t>(i);
+                }
+                boot.history = history;
+            }
+            auto opening = std::make_unique<app::OpeningScreen>(boot, program);
+            bootOpening = opening.get();
+            chain = std::make_unique<app::BootChain>(std::move(opening), std::make_unique<FunctionScreen>([&] { return stepClock(); }), scene::opening::kFramesToClock);
+        };
+        if (options.boot) buildBoot();
+        const auto produce = [&] {
+            const system_clock::time_point now = system_clock::now() + offset;
+            inputs.time = clockTime(now);
+            inputs.items = clockItems(now);
+            if (chain) {
+                chain->step();
+                frame = chain->frame();
+            } else {
+                frame = stepClock();
+            }
             ++logicFrames;
             fresh = true;
         };
@@ -330,6 +415,19 @@ int main(int argc, char** argv) {
             script = {{1.0, resize(800, 600)}, {2.0, resize(1024, 700)}, {2.5, [&] { SDL_MinimizeWindow(window); }}, {3.5, [&] { SDL_RestoreWindow(window); }},
                       {4.5, resize(1280, 896)}};
             options.soak = 5.5;
+        } else if (options.soak > 0 && options.boot) {
+            const auto press = [&](double at, app::PadButton button) {
+                const uint32_t bit = app::bitOf(button);
+                script.push_back({at, [&reader, bit] { reader.down(0, bit); }});
+                script.push_back({at + 0.1, [&reader, bit] { reader.up(0, bit); }});
+            };
+            script.push_back({2.0, shot("boot-opening")});
+            script.push_back({9.0, shot("boot-clock")});
+            press(10.0, app::PadButton::Square);
+            script.push_back({12.5, shot("boot-after-square")});
+            press(13.0, app::PadButton::Down);
+            press(14.0, app::PadButton::Cross);
+            script.push_back({17.0, shot("boot-menu-next")});
         } else if (options.soak > 0 && clockInputs.menus && !options.clockStart) {
             const auto press = [&](double at, app::PadButton button) {
                 const uint32_t bit = app::bitOf(button);
@@ -460,6 +558,8 @@ int main(int argc, char** argv) {
             if (panel.paused) {
                 owed = 0;
                 if (panel.step) produce();
+            } else if (capturing) {
+                if (!fresh) produce();
             } else {
                 owed += std::min(delta, 0.25);
                 for (int n = 0; owed >= step; ++n) {
@@ -469,7 +569,7 @@ int main(int argc, char** argv) {
             }
             panel.step = false;
             const double sincePresent = double(now - lastPresent) * 1e-9;
-            if (panel.paused ? sincePresent < step : !fresh) {
+            if (!capturing && (panel.paused ? sincePresent < step : !fresh)) {
                 const double wait = panel.paused ? step - sincePresent : step - owed;
                 SDL_DelayPrecise(static_cast<Uint64>(std::max(0.0, wait) * 1e9));
                 continue;
@@ -479,8 +579,16 @@ int main(int argc, char** argv) {
             char text[64];
             std::snprintf(text, sizeof text, "%02d:%02d:%02d", shownTime.hours, shownTime.minutes, shownTime.seconds);
             info.clock = text;
+            if (chain && chain->phase() != app::BootPhase::Clock) {
+                info.screen = chain->name();
+                info.counter = bootOpening->counter();
+                info.stage = bootOpening->stage();
+                info.cameraZ = bootOpening->cameraZ();
+                if (const scene::opening::HandOff* h = bootOpening->handOff()) info.handOff = "module " + std::to_string(h->module) + ", execute type " + std::to_string(h->executeAppType);
+                info.sounds = bootOpening->sounds().size();
+            }
             info.logicFrames = logicFrames;
-            info.screen = visited.empty() ? "" : visited.back();
+            if (!chain || chain->phase() == app::BootPhase::Clock) info.screen = visited.empty() ? "" : visited.back();
             info.pad = inputs.menu.pad;
             info.framesPerSecond = fps;
             info.validationErrors = device.validationErrors();
@@ -490,7 +598,7 @@ int main(int argc, char** argv) {
             app::drawPanel(panel, info);
             ImGui::Render();
 
-            if (font) renderer.setGlyphCache(*font, frame.glyphs);
+            if (font && frame.textureSet == scene::TextureSet::Clock) renderer.setGlyphCache(*font, frame.glyphs);
             auto context = device.beginFrame();
             if (!context) {
                 SDL_Delay(10);
@@ -534,6 +642,21 @@ int main(int argc, char** argv) {
             }
             lastPresent = shown;
 
+            if (capturing) {
+                if (captureAll || captureAt.count(logicFrames)) {
+                    char name[32];
+                    std::snprintf(name, sizeof name, "boot-%03llu", static_cast<unsigned long long>(logicFrames));
+                    shoot(name);
+                }
+                if (logicFrames >= 246 + (captureAll ? 40 : 0)) running = false;
+            }
+            if (panel.restartOpening && chain) {
+                panel.restartOpening = false;
+                visited.clear();
+                buildBoot();
+                logicFrames = 0;
+                produce();
+            }
             if (panel.screenshot || !screenshotName.empty()) {
                 shoot(screenshotName.empty() ? "clock" : screenshotName);
                 panel.screenshot = false;
@@ -551,7 +674,7 @@ int main(int argc, char** argv) {
             std::printf("display %.2f Hz; %llu present intervals, mean %.3f ms (step %.3f ms), %llu off by more than 2 ms, worst off by %.3f ms\n", refreshRate(),
                         static_cast<unsigned long long>(intervals), intervals ? intervalSum / double(intervals) * 1e3 : 0.0, step * 1e3,
                         static_cast<unsigned long long>(uneven), intervalWorst * 1e3);
-        if (options.soak > 0 && clock.menus()) {
+        if (options.soak > 0 && clockPtr->menus()) {
             std::string list;
             for (const std::string& name : visited) list += (list.empty() ? "" : ", ") + name;
             std::printf("screens visited: %s\n", list.c_str());

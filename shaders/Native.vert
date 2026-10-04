@@ -10,6 +10,7 @@ layout(push_constant) uniform PassState {
     vec4 region;
     ivec4 mode;
     ivec4 shade;
+    vec4 extent;
 } state;
 
 layout(location = 0) in vec3 inPosition;

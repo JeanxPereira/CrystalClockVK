@@ -29,6 +29,8 @@ GsBlend blendOf(scene::BlendOp op, uint8_t constant) {
     case scene::BlendOp::Subtract: return {T::Zero, T::Source, GsBlendFactor::SourceAlpha, T::Destination, constant};
     case scene::BlendOp::FixedOver: return {T::Source, T::Destination, GsBlendFactor::Fixed, T::Destination, constant};
     case scene::BlendOp::FixedAdd: return {T::Source, T::Zero, GsBlendFactor::Fixed, T::Destination, constant};
+    case scene::BlendOp::AddDestinationAlpha: return {T::Source, T::Zero, GsBlendFactor::DestinationAlpha, T::Destination, constant};
+    case scene::BlendOp::SubtractFixed: return {T::Zero, T::Source, GsBlendFactor::Fixed, T::Destination, constant};
     case scene::BlendOp::Opaque: break;
     }
     throw std::runtime_error("an opaque pass has no blend");
@@ -49,8 +51,8 @@ GsTexture textureOf(const scene::Material& m, const GsFrameLayout& layout, const
         t.source = layout.targets[static_cast<size_t>(m.sourceTarget)];
         t.sourceIsTarget = true;
         t.width = layout.targetTextureWidth;
-        t.height = layout.targetTextureHeight;
-    } else if (m.texture == scene::kGlyphTexture) {
+        t.height = m.sourceHeight ? static_cast<uint32_t>(m.sourceHeight) : layout.targetTextureHeight;
+    } else if (m.texture == scene::kGlyphTexture && !layout.textures.contains(m.texture)) {
         t.source = glyphTextureId(glyphs);
         t.width = 1u << glyphs.logWidth;
         t.height = 1u << glyphs.logHeight;
@@ -80,6 +82,7 @@ GsFrameLayout clockLayout(int32_t width, int32_t height, int32_t displayIndex) {
     const uint32_t display = displayIndex == 0 ? static_cast<uint32_t>((width * height) >> 6) : 0;
     const uint32_t refraction = static_cast<uint32_t>((3 * width * height) >> 11) * 32, work = static_cast<uint32_t>((width * height) >> 9) * 32;
     layout.targets = {blockName("fb", display), blockName("fb", refraction), blockName("fb", work)};
+    layout.targetSizes.assign(3, {layout.width, layout.height});
     layout.targetTextureWidth = 1u << 10;
     layout.targetTextureHeight = 1u << 8;
     int64_t words = int64_t(width) * height * 5;
@@ -93,10 +96,31 @@ GsFrameLayout clockLayout(int32_t width, int32_t height, int32_t displayIndex) {
     return layout;
 }
 
+GsFrameLayout openingLayout(int32_t displayIndex) {
+    GsFrameLayout layout;
+    layout.width = 640;
+    layout.height = 224;
+    const uint32_t display = displayIndex == 0 ? 0x08c0 : 0, other = displayIndex == 0 ? 0 : 0x08c0;
+    layout.targets = {blockName("fb", display), blockName("fb", other), "", blockName("fb", 0x2300), blockName("fb", 0x1a40)};
+    layout.targetSizes = {{640, 224}, {640, 224}, {0, 0}, {320, 224}, {640, 224}};
+    layout.targetTextureWidth = 1u << 10;
+    layout.targetTextureHeight = 1u << 8;
+    layout.textures = {
+        {0, {"t2bc0-4-0-8x6", 256, 64}}, {2, {"t2cc0-1-2-6x6", 64, 64}}, {3, {"t2ce0-1-2-6x6", 64, 64}}, {5, {"t2d20-1-2-6x6", 64, 64}},
+        {6, {"t2d40-4-2-8x8", 256, 256}}, {8, {"t3020-1-0-6x6", 64, 64}}, {10, {"t3060-2-2-7x7", 128, 128}},
+        {11, {"t30e0-1-0-6x6", 64, 64}}, {12, {"t3120-1-0-6x6", 64, 64}}};
+    return layout;
+}
+
 GsFrame fromScene(const scene::Frame& frame, const GsFrameLayout& layout) {
     GsFrame out;
     out.field = static_cast<uint32_t>(frame.field);
-    for (const std::string& id : layout.targets) out.targets.push_back({id, layout.width, layout.height});
+    out.depthFormat = frame.depthBits == 24 ? 1 : 0;
+    for (size_t i = 0; i < layout.targets.size(); ++i) {
+        if (layout.targets[i].empty()) continue;
+        const std::array<uint32_t, 2> size = i < layout.targetSizes.size() ? layout.targetSizes[i] : std::array<uint32_t, 2>{layout.width, layout.height};
+        out.targets.push_back({layout.targets[i], size[0], size[1]});
+    }
     static const GsPrimitive primitives[] = {GsPrimitive::Triangles, GsPrimitive::Lines, GsPrimitive::Sprites};
     static const GsDepthTest tests[] = {GsDepthTest::Always, GsDepthTest::GreaterEqual, GsDepthTest::Greater};
     for (size_t i = 0; i < frame.passes.size(); ++i) {
@@ -108,9 +132,12 @@ GsFrame fromScene(const scene::Frame& frame, const GsFrameLayout& layout) {
         p.target = layout.targets[static_cast<size_t>(pass.target)];
         p.primitive = primitives[static_cast<size_t>(pass.topology)];
         p.scissor = {0, 0, static_cast<int32_t>(layout.width) - 1, static_cast<int32_t>(layout.height) - 1};
+        if (pass.scissor) p.scissor = {(*pass.scissor)[0], (*pass.scissor)[1], (*pass.scissor)[2], (*pass.scissor)[3]};
         if (m.blend != scene::BlendOp::Opaque) p.blend = blendOf(m.blend, m.blendConstant);
         p.antialias = pass.edgeSmoothing;
         if (pass.edgeSmoothing && pass.primBlend && pass.topology != scene::PassTopology::Sprites) p.skip = "antialiasing with alpha blending";
+        p.perPixelAlpha = m.perPixelAlpha;
+        p.alphaCorrection = m.alphaCorrection;
         p.depth = {tests[static_cast<size_t>(m.depthTest)], m.depthWrite};
         if (m.source != scene::SourceKind::None) p.texture = textureOf(m, layout, frame.glyphs);
         const float shift = pass.halfLine && frame.field ? 0.5f : 0.0f;

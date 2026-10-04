@@ -1,19 +1,23 @@
 #pragma once
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
 namespace scene {
 
 // facts/clock-frame.md: one clock frame as passes, in the OSD's order; facts/clock-gs-state.md: the state of each.
-// RefractionSource is the OSD's work buffer 0, Work its work buffer 1.
-enum class TargetName { Display, RefractionSource, Work };
+// RefractionSource is the OSD's work buffer 0, Work its work buffer 1. The opening adds Store (the half-width copy the
+// ghost reads, GS 0x2300) and Extra (the buffer the cubes refract through, GS 0x1A40); there Work is unused.
+enum class TargetName { Display, RefractionSource, Work, Store, Extra };
 enum class PassTopology { Triangles, Lines, Sprites };
 
 // The ALPHA values the clock sends: Add Cs*As + Cd; AlphaOver (Cs - Cd)*As + Cd; Subtract Cd - Cs*As;
-// FixedOver (Cs - Cd)*constant + Cd; FixedAdd Cs*constant + Cd. As and the constant are over 128.
-enum class BlendOp { Opaque, Add, AlphaOver, Subtract, FixedOver, FixedAdd };
+// FixedOver (Cs - Cd)*constant + Cd; FixedAdd Cs*constant + Cd. As and the constant are over 128. The opening adds
+// AddDestinationAlpha Cs*Ad + Cd and SubtractFixed Cd - Cs*constant (facts/opening.md section 4; the list the audit closed).
+enum class BlendOp { Opaque, Add, AlphaOver, Subtract, FixedOver, FixedAdd, AddDestinationAlpha, SubtractFixed };
+enum class TextureSet { Clock, Opening };
 enum class DepthTest { Always, GreaterEqual, Greater };
 enum class SourceKind { None, Texture, Target };
 enum class CoordinateKind { Texel, Projective };
@@ -44,17 +48,21 @@ struct Material {
     Sampling sampling = Sampling::Repeat;
     std::array<int32_t, 4> region{};
     bool bilinear = false;
+    int32_t sourceHeight = 0;
     BlendOp blend = BlendOp::Opaque;
     uint8_t blendConstant = 0;
     DepthTest depthTest = DepthTest::Always;
     bool depthWrite = true;
     bool gouraud = false;
+    bool perPixelAlpha = false;
+    bool alphaCorrection = false;
     bool operator==(const Material&) const = default;
 };
 
 // Vertices as lists: 3 per triangle, 2 per line, 2 per sprite (opposite corners). `edgeSmoothing` is the
 // OSD's AA1 (the edges' coverage becomes the alpha); `halfLine`: the OSD draws it with the field's half-line offset;
 // `primBlend`: the primitive's own blend enable (PRIM ABE) on top of AA1 (the parity oracle cannot reproduce the pair on triangles).
+// `scissor`: x0, y0, x1, y1 inclusive when the pass is drawn under a scissor other than the whole picture.
 struct Pass {
     std::string name;
     TargetName target = TargetName::Display;
@@ -64,6 +72,7 @@ struct Pass {
     bool halfLine = false;
     bool primBlend = false;
     std::vector<Vertex> vertices;
+    std::optional<std::array<int32_t, 4>> scissor;
 };
 
 // facts/text.md section 2: the font library's glyph cache, sampled as texture kGlyphTexture. Cells of cellWidth x
@@ -86,6 +95,8 @@ struct Frame {
     std::vector<Pass> passes;
     size_t textAt = 0;
     GlyphCache glyphs;
+    TextureSet textureSet = TextureSet::Clock;
+    int32_t depthBits = 32;
 };
 
 }

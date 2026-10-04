@@ -45,6 +45,10 @@ struct ClockInputs {
     float minuteFactor = 0;
     float fractionEasing = 0;
     Colour orbColour{};
+    bool hasEntryData = false;
+    int32_t wide = 0;
+    std::array<int32_t, kOrbCount> orbRandom{};
+    std::array<Colour, kOrbCount> orbColours{};
     int32_t width = 640, height = 224;
     // The text (facts/text.md): the font file FNTOSD and the program's ELF, and the font state carried. Without the
     // two files the frame has no text.
@@ -105,6 +109,10 @@ private:
     TubeConstants m_tube;
     float m_minuteFactor, m_fractionEasing;
     Colour m_orbColour;
+    bool m_hasEntryData;
+    int32_t m_wide;
+    std::array<int32_t, kOrbCount> m_orbRandom;
+    std::array<Colour, kOrbCount> m_orbColours;
     int32_t m_width, m_height;
     std::optional<Text<A>> m_text;
     std::vector<StringRun> m_strings;
