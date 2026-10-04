@@ -56,12 +56,12 @@ rule, and drawn by the native renderer. `CrystalClock --boot` plays it and then 
 
 | Gap | Effect on this design | Plan task |
 |---|---|---|
-| The GS rule does not yet draw most of the opening: of 15 722 passes in `hddosd-110U-opening-full` only 249 are free of a skip reason; 14 000+ are skipped for the 24-bit depth buffer (PSM 0x31), 16-bit textures (PSM 0x02), per-pixel alpha blending (PABE) and alpha correction (FBA) | The rule is extended (Z24, CT16, PABE, FBA), each extension proven on the opening's own frames before the opening is gated through it | M1 audit, P1 |
-| Towers: the intro captures have no towers (empty history); the whole intro with towers has a dump but no probes (`hddosd-110U-opening2-whole`) | The towers' dump gate needs the history and the lights phase of the same run | M2 |
-| The mip-mapping state of the towers' texture (`facts/opening.md` says 256 x 256 mip-mapped; a rule that skips when the minification filter differs from magnification would hide it) | Native sampling of texture 6 is decided only after the audit | M1, P2 (conditional) |
-| Opening textures are not extracted (only the clock's ten are) | Sony data: extracted from GS memory to `References/textures/opening/`, never committed | M3 |
-| The clock's entry after the opening (`whole-boot-opening`) has never been run by the native clock (it starts from a mid-run steady frame) | The hand-off needs the clock's T0 state and the orbs flying in | M4, H1 |
-| What the 29 empty frames before the clock's first frame wait for (module resource loading) | Natively a constant of 34 frames from the last drawn scene frame to the clock's first, flagged as measured, not as a rule | M5 (`re-scout`, the controller's to dispatch) |
+| The GS rule does not yet draw most of the opening: of 15 722 passes in `hddosd-110U-opening-full` only 249 are free of a skip reason; 14 000+ are skipped for the 24-bit depth buffer (PSM 0x31), 16-bit textures (PSM 0x02), per-pixel alpha blending (PABE) and alpha correction (FBA) | The rule is extended (Z24, CT16, PABE, FBA), each extension proven on the opening's own frames before the opening is gated through it | Task 1 (audit), Task 12 |
+| Towers: the intro captures have no towers (empty history); the whole intro with towers has a dump but no probes (`hddosd-110U-opening2-whole`) | The towers' dump gate needs the history and the lights phase of the same run | Task 2 |
+| The mip-mapping state of the towers' texture (`facts/opening.md` says 256 x 256 mip-mapped; a rule that skips when the minification filter differs from magnification would hide it) | Native sampling of texture 6 is decided only after the audit | Task 1, Task 12 step 6 (conditional) |
+| Opening textures are not extracted (only the clock's ten are) | Sony data: extracted from GS memory to `References/textures/opening/`, never committed | Task 3 |
+| The clock's entry after the opening (`whole-boot-opening`) has never been run by the native clock (it starts from a mid-run steady frame) | The hand-off needs the clock's T0 state and the orbs flying in | Task 2 step 4, Task 14 |
+| What the 29 empty frames before the clock's first frame wait for (module resource loading) | Natively a constant of 34 frames from the last drawn scene frame to the clock's first, flagged as measured, not as a rule | the plan's gap table (`re-scout`, the controller's to dispatch) |
 | `rand()`'s seed at power-on | The lights' phase is an app option (default random in 0xD80..0x16A8) | none (not a fact the picture depends on) |
 | Disc states other than 0x64 (the stage-1 hold set 0x65..0x69, 0x71; the hard-disk words; exec 0 wait) | Ported as the verified table with the two stage-1 classes; only 0x64 is gated end to end, the hold set is gated on its stage captures | — (listed in `facts/README.md`) |
 | The sound command ids' meaning | Events carry ids and arguments only | — |
@@ -114,7 +114,7 @@ two fields the rule needs to name a format.
 - `TargetName` gains `Store` (the half-width copy the ghost reads) and `Extra` (the 1024 x 256 buffer the cubes refract through);
   `Display` is the page drawn this frame (`displayIndex`).
 - `BlendOp` gains `AddDestinationAlpha` (`Cs x Ad + Cd`, cube passes 2, 4, 7, 9) and `SubtractFixed` (`Cd - Cs x fixed`, the fade's
-  black mode as the dump shows it); the list is closed by the audit M1 against the dump's blend histogram.
+  black mode as the dump shows it); the list is closed by the audit (plan Task 1) against the dump's blend histogram.
 - `Material` gains `perPixelAlpha` (PABE) and `alphaCorrection` (FBA) if the audit finds draws that carry them; `Frame` gains
   `textureSet` (`Clock` or `Opening`) and `depthBits` (32 or 24) for the layout.
 - Strips and fans are expanded to triangle lists in scene code; a vertex the VU1 writes without the kick leaves out the triangles that
@@ -161,7 +161,7 @@ Captures (Watson `Runtime/captures`, fixtures under the main checkout's git-igno
 | `hddosd-110U-opening2-flat` | the flat draws, whole intro | `Flat` |
 | `hddosd-110U-opening2-handoff-probes`, `opening3-illegal`, `opening3-*` stage set | hand-off branches | `Handoff` |
 | `hddosd-110U-whole-boot-opening` | the clock's first 49 frames after the opening | clock entry |
-| **`hddosd-110U-opening4-towers-whole`** (new, M2) | the whole intro with 126 towers, with history and phase probes | towers in the carried run and the dump gate |
+| **`hddosd-110U-opening4-towers-whole`** (new, plan Task 2) | the whole intro with 126 towers, with history and phase probes | towers in the carried run and the dump gate |
 
 ## Slices
 
