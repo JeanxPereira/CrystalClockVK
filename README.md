@@ -158,18 +158,21 @@ Support lives in `tools/`: `ParityTool` (isolated and chained comparison against
 
 ## Build
 
-Requires Windows, Visual Studio 2026, CMake 3.30+ (the presets need 4.2) and the Vulkan SDK 1.4 with `glslc`.
+Requires Windows, Visual Studio 2026, CMake 4.2+ and the Vulkan SDK 1.4 with `glslc`.
 SDL3, VulkanMemoryAllocator, vk-bootstrap, GLM and nlohmann/json are fetched on the first configure; Dear ImGui
 is a submodule.
 
 ```powershell
 git clone --recursive https://github.com/JeanxPereira/CrystalClockVK.git
 cd CrystalClockVK
-cmake --preset windows
-cmake --build --preset release
+toolsuild.ps1 configure app
+toolsuild.ps1 build app-release
 ```
 
-Executables land in `bin/`. CI builds them on every push to `main`.
+`toolsuild.ps1` enters the Visual Studio developer shell and uses the Ninja that ships with it. The executables
+land in `bin/`. The tests are a separate tree (`toolsuild.ps1 configure tests`, `build tests-debug`,
+`test tests-debug`), so editing the app does not rebuild them. `windows-vs` is the Visual Studio generator preset
+for the IDE. CI builds the app on every push to `main`.
 
 ### Your own data
 

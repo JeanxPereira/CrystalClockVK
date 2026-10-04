@@ -1,32 +1,70 @@
 {
     "version": 6,
-    "cmakeMinimumRequired": {
-        "major": 4,
-        "minor": 2,
-        "patch": 0
-    },
+    "cmakeMinimumRequired": { "major": 4, "minor": 2, "patch": 0 },
     "configurePresets": [
         {
-            "name": "windows",
-            "displayName": "Windows (Visual Studio 18 2026)",
+            "name": "base",
+            "hidden": true,
+            "generator": "Ninja Multi-Config",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "cacheVariables": {
+                "CMAKE_CONFIGURATION_TYPES": "Debug;Release",
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+                "CLOCK_DEPS_DIR": "${sourceDir}/build/_deps"
+            }
+        },
+        {
+            "name": "app",
+            "displayName": "App only (Ninja Multi-Config)",
+            "inherits": "base",
+            "cacheVariables": { "CLOCK_BUILD_TESTS": "OFF" }
+        },
+        {
+            "name": "tests",
+            "displayName": "Tests, ParityTool and parity gates (Ninja Multi-Config)",
+            "inherits": "base",
+            "cacheVariables": { "CLOCK_BUILD_TESTS": "ON" }
+        },
+        {
+            "name": "windows-vs",
+            "displayName": "Visual Studio 18 2026 (IDE), app only",
             "generator": "Visual Studio 18 2026",
             "architecture": "x64",
-            "binaryDir": "${sourceDir}/build",
+            "binaryDir": "${sourceDir}/build/windows-vs",
             "cacheVariables": {
-                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+                "CLOCK_DEPS_DIR": "${sourceDir}/build/_deps",
+                "CLOCK_BUILD_TESTS": "OFF"
             }
+        },
+        {
+            "name": "windows-vs-tests",
+            "displayName": "Visual Studio 18 2026 (IDE), tests",
+            "inherits": "windows-vs",
+            "binaryDir": "${sourceDir}/build/windows-vs-tests",
+            "cacheVariables": { "CLOCK_BUILD_TESTS": "ON" }
         }
     ],
     "buildPresets": [
+        { "name": "app-debug", "configurePreset": "app", "configuration": "Debug" },
+        { "name": "app-release", "configurePreset": "app", "configuration": "Release" },
+        { "name": "tests-debug", "configurePreset": "tests", "configuration": "Debug" },
+        { "name": "tests-release", "configurePreset": "tests", "configuration": "Release" },
+        { "name": "windows-vs-debug", "configurePreset": "windows-vs", "configuration": "Debug" },
+        { "name": "windows-vs-release", "configurePreset": "windows-vs", "configuration": "Release" }
+    ],
+    "testPresets": [
         {
-            "name": "debug",
-            "configurePreset": "windows",
-            "configuration": "Debug"
+            "name": "tests-debug",
+            "configurePreset": "tests",
+            "configuration": "Debug",
+            "output": { "outputOnFailure": true }
         },
         {
-            "name": "release",
-            "configurePreset": "windows",
-            "configuration": "Release"
+            "name": "tests-release",
+            "configurePreset": "tests",
+            "configuration": "Release",
+            "output": { "outputOnFailure": true }
         }
     ]
 }
