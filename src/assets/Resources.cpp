@@ -26,6 +26,9 @@ constexpr std::array<std::string_view, 3> kDecoded{"TEXIMAGE", "FNTOSD", kProgra
 // The rod mesh in HDD OSD 1.10U's data (facts/data/rod-mesh.json): 64 positions, 16 normals, 64 texture coordinates.
 constexpr uint32_t kFaces = 16, kPositions = 0x002b4b90, kNormals = 0x002b5390, kCoordinates = 0x002b4f90;
 
+// The menus' cube mesh in the same data: 6 faces.
+constexpr uint32_t kCubeFaces = 6, kCubePositions = 0x002b5790, kCubeNormals = 0x002b5910, kCubeCoordinates = 0x002b5970;
+
 struct ReadFile {
     SourceFile source;
     Bytes data;
@@ -47,7 +50,7 @@ std::vector<ReadFile> readSources(const fs::path& folder) {
 }  // namespace
 
 // The decoder's version and every constant it reads by: a change to any of them makes the caches of before stale.
-constexpr uint32_t kDecoderVersion = 2;
+constexpr uint32_t kDecoderVersion = 3;
 
 uint64_t decoderFingerprint() {
     uint64_t hash = 0xcbf29ce484222325ull;
@@ -64,6 +67,7 @@ uint64_t decoderFingerprint() {
         mix(uint32_t(info.index)), mix(info.width), mix(info.height), mix(uint32_t(info.form)), mix(info.tbp);
     }
     mix(kFaces), mix(kPositions), mix(kNormals), mix(kCoordinates);
+    mix(kCubeFaces), mix(kCubePositions), mix(kCubeNormals), mix(kCubeCoordinates);
     return hash;
 }
 
@@ -131,12 +135,16 @@ AssetSet decodeFolder(const fs::path& folder) {
     if (const auto font = index("FNTOSD")) set.assets.push_back({"FNTOSD", AssetKind::Font, 0, 0, *font, files[*font].data});
     if (program) {
         set.assets.push_back({"PROGRAM", AssetKind::Program, 0, 0, *program, files[*program].data});
-        Bytes mesh;
-        for (const auto& [address, count] : {std::pair{kPositions, kFaces * 4}, std::pair{kNormals, kFaces}, std::pair{kCoordinates, kFaces * 4}}) {
-            const View v = elf->bytes(address, count * 16);
-            mesh.insert(mesh.end(), v.begin(), v.end());
-        }
-        set.assets.push_back({"RODMESH", AssetKind::Mesh, kFaces, 0, *program, std::move(mesh)});
+        const auto meshOf = [&](uint32_t faces, uint32_t positions, uint32_t normals, uint32_t coordinates) {
+            Bytes mesh;
+            for (const auto& [address, count] : {std::pair{positions, faces * 4}, std::pair{normals, faces}, std::pair{coordinates, faces * 4}}) {
+                const View v = elf->bytes(address, count * 16);
+                mesh.insert(mesh.end(), v.begin(), v.end());
+            }
+            return mesh;
+        };
+        set.assets.push_back({"RODMESH", AssetKind::Mesh, kFaces, 0, *program, meshOf(kFaces, kPositions, kNormals, kCoordinates)});
+        set.assets.push_back({"CUBEMESH", AssetKind::Mesh, kCubeFaces, 0, *program, meshOf(kCubeFaces, kCubePositions, kCubeNormals, kCubeCoordinates)});
     }
     return set;
 }

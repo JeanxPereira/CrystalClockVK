@@ -65,28 +65,25 @@ struct Options {
     std::filesystem::path bootStart = CLOCK_START_BOOT;
     std::string capture;
     std::filesystem::path shaders = CLOCK_SHADERS;
-    std::filesystem::path textures = CLOCK_TEXTURES;
+    std::filesystem::path textures;
     std::filesystem::path start = CLOCK_MENUS_START;
     bool startGiven = false;
     bool clockStart = false;
-    std::filesystem::path cubeMesh = CLOCK_CUBE_MESH;
-    std::filesystem::path mesh = CLOCK_MESH;
+    std::filesystem::path cubeMesh;
+    std::filesystem::path mesh;
     std::filesystem::path screenshots = CLOCK_SCREENSHOTS;
-    std::filesystem::path font = CLOCK_FONT;
-    std::filesystem::path program = CLOCK_PROGRAM;
+    std::filesystem::path font;
+    std::filesystem::path program;
     std::filesystem::path resources;
     std::filesystem::path bios;
     std::filesystem::path pack;
 };
 
 // The folder of raw OSD resource files: --resources, else the user's own (where --bios extracts to) when it holds a
-// TEXIMAGE or a BIOS is given, else the configured one (CLOCK_RESOURCES).
+// TEXIMAGE or a BIOS is given.
 std::filesystem::path resourceFolder(const Options& options) {
     if (!options.resources.empty()) return options.resources;
-    const std::filesystem::path own = assets::userDataDirectory() / "resources";
-    std::error_code error;
-    if (!options.bios.empty() || std::filesystem::exists(own / "TEXIMAGE", error)) return own;
-    return CLOCK_RESOURCES;
+    return assets::userDataDirectory() / "resources";
 }
 
 std::vector<uint8_t> fileOrEmpty(const std::filesystem::path& path) {
@@ -174,8 +171,7 @@ int main(int argc, char** argv) {
     }
     if (!options.startGiven) options.start = options.clockStart ? CLOCK_CLOCK_START : CLOCK_MENUS_START;
     if (options.pack.empty()) options.pack = assets::userDataDirectory() / "assets.bin";
-    // The clock's assets: the console's raw resource files decoded (or their cache), else the loose files.
-    // A failure falls through: extraction or decode, then the cache, then the loose files, each with a warning.
+    // The clock's assets: the console's raw resource files decoded (or their cache); loose files only from explicit flags.
     std::optional<assets::LoadedAssets> loaded;
     const std::filesystem::path folder = resourceFolder(options);
     if (!options.bios.empty()) {
@@ -196,21 +192,21 @@ int main(int argc, char** argv) {
         std::printf("assets: %zu in %.1f ms, %s %s\n", loaded->set.assets.size(), loaded->milliseconds, loaded->fromPack ? "from the cache" : "decoded and cached in",
                     options.pack.string().c_str());
     } else {
-        std::printf("assets: no resource files in %s and no cache: the loose files are used\n", folder.string().c_str());
+        std::printf("assets: no resource files in %s and no cache\n", folder.string().c_str());
     }
     const assets::AssetSet* decoded = loaded ? &loaded->set : nullptr;
     const auto sourceOf = [&](const assets::Asset& a) { return "decoded from " + decoded->sourceOf(a).path; };
 
-    // Each group from one place: the decoded set, or a loose file named on the command line; the loose defaults only
-    // when nothing was decoded. The mesh falls back to the committed facts/data/rod-mesh.json.
-    const bool useTextureFiles = !decoded || explicitFlags.contains("--textures");
-    const std::string textureSource = useTextureFiles ? "PNG files in " + options.textures.string() : sourceOf(*decoded->find("TEXCFLOW"));
+    // Each group from one place: the decoded set, or a loose file named on the command line.
+    const bool useTextureFiles = explicitFlags.contains("--textures");
+    const std::string textureSource = useTextureFiles ? "PNG files in " + options.textures.string() : decoded && decoded->find("TEXCFLOW") ? sourceOf(*decoded->find("TEXCFLOW")) : std::string("none");
     const assets::Asset* meshAsset = decoded && !explicitFlags.contains("--mesh") ? decoded->find("RODMESH") : nullptr;
+    const assets::Asset* cubeAsset = decoded && !explicitFlags.contains("--cube-mesh") ? decoded->find("CUBEMESH") : nullptr;
     const std::string meshSource = meshAsset ? sourceOf(*meshAsset) : options.mesh.string();
     const assets::Asset* fontAsset = decoded ? decoded->find("FNTOSD") : nullptr;
     const assets::Asset* programAsset = decoded ? decoded->find("PROGRAM") : nullptr;
-    const bool fontLoose = explicitFlags.contains("--font") || !decoded;
-    const bool programLoose = explicitFlags.contains("--program") || !decoded;
+    const bool fontLoose = explicitFlags.contains("--font");
+    const bool programLoose = explicitFlags.contains("--program");
     std::vector<uint8_t> fontFile = fontLoose ? fileOrEmpty(options.font) : fontAsset ? fontAsset->data : std::vector<uint8_t>{};
     std::vector<uint8_t> programFile = programLoose ? fileOrEmpty(options.program) : programAsset ? programAsset->data : std::vector<uint8_t>{};
     if (programLoose && !programFile.empty()) {
@@ -228,6 +224,18 @@ int main(int argc, char** argv) {
                                        ? std::string("none (no FNTOSD or no HDD OSD 1.10U hddosd.elf)")
                                        : (fontLoose ? options.font.string() : sourceOf(*fontAsset)) + " and " + (programLoose ? options.program.string() : sourceOf(*programAsset));
     std::printf("textures: %s\nmesh: %s\ntext: %s\n", textureSource.c_str(), meshSource.c_str(), textSource.c_str());
+    std::vector<std::string> missing;
+    if (!useTextureFiles && !(decoded && decoded->find("TEXCFLOW"))) missing.push_back("the clock textures");
+    if (!meshAsset && options.mesh.empty()) missing.push_back("the rod mesh");
+    if (!cubeAsset && options.cubeMesh.empty()) missing.push_back("the cube mesh");
+    if (options.boot && options.openingTextures.empty() && !(decoded && decoded->find(assets::kOpeningTextures[0].name))) missing.push_back("the opening textures");
+    if (!missing.empty()) {
+        std::string list;
+        for (const std::string& what : missing) list += (list.empty() ? "" : ", ") + what;
+        std::fprintf(stderr, "missing: %s.\nGive the console's files: --bios rom.bin (a PS2 BIOS image) or --resources dir (a folder with TEXIMAGE, FNTOSD and hddosd.elf).\n"
+                             "Decoded data is cached in %s.\n", list.c_str(), options.pack.string().c_str());
+        return 1;
+    }
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD)) {
         std::fprintf(stderr, "SDL: %s\n", SDL_GetError());
         return 1;
@@ -244,8 +252,8 @@ int main(int argc, char** argv) {
         if (useTextureFiles) renderer.loadClockTextures(options.textures);
         else app::uploadClockTextures(renderer, *decoded);
         if (options.boot) {
-            const bool openingFiles = !decoded || !options.openingTextures.empty();
-            const std::filesystem::path openingDirectory = options.openingTextures.empty() ? options.textures / "opening" : options.openingTextures;
+            const bool openingFiles = !options.openingTextures.empty();
+            const std::filesystem::path openingDirectory = options.openingTextures;
             if (openingFiles) renderer.loadOpeningTextures(openingDirectory);
             else app::uploadOpeningTextures(renderer, *decoded);
             std::printf("opening textures: %s\n", openingFiles ? ("PNG files in " + openingDirectory.string()).c_str() : sourceOf(*decoded->find(assets::kOpeningTextures[0].name)).c_str());
@@ -253,7 +261,7 @@ int main(int argc, char** argv) {
 
         // The clock as the whole3-clock capture holds it at its first frame (resources/clock/start.json, or a
         // capture's scene.json through --start), then real time.
-        const scene::RodMesh cubeMesh = scene::loadRodMesh(options.cubeMesh);
+        const scene::RodMesh cubeMesh = cubeAsset ? app::rodMeshOf(*cubeAsset) : scene::loadRodMesh(options.cubeMesh);
         nlohmann::json input = scene::firstInput(options.start.string());
         if (options.boot) {
             input = scene::firstInput(options.bootStart.string());

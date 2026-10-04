@@ -9,7 +9,7 @@
 namespace app {
 
 scene::RodMesh rodMeshOf(const assets::Asset& mesh) {
-    if (mesh.kind != assets::AssetKind::Mesh || mesh.width != 16 || mesh.data.size() != size_t(mesh.width) * 9 * 16) throw std::runtime_error("rod mesh: not 16 faces");
+    if (mesh.kind != assets::AssetKind::Mesh || (mesh.width != 16 && mesh.width != 6) || mesh.data.size() != size_t(mesh.width) * 9 * 16) throw std::runtime_error("mesh: not 16 or 6 faces");
     scene::RodMesh out;
     size_t at = 0;
     const auto take = [&](std::vector<scene::Vec4>& list, size_t count) {
