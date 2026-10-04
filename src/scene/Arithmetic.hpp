@@ -30,7 +30,12 @@ struct EeArithmetic {
     static uint32_t toUnsigned(float x);              // clock_math toUnsigned
     static float sin16(int32_t angle);                // clock_math sin: the 16385 table
     static float cos16(int32_t angle);                // clock_math cos
-    static float cosf(float x);                       // ee_libm cosf
+    static float cosf(float x);                       // ee_libm cosf; opening-libm cosf is equal over the opening's range (checked)
+    static float sinf(float x);                       // opening-libm sinf: __kernel_sinf, __ieee754_rem_pio2f up to 2^7 pi/2
+    static float addExact(float a, float b);          // opening-lib add (facts/opening.md 4.6)
+    static float subExact(float a, float b);          // opening-lib sub
+    static float quotientExact(float a, float b);     // opening-lib quotient: x/0 is the largest single of the sign
+    static float rootExact(float a);                  // opening-lib root
     static std::pair<float, float> sineCosine(float radians);  // clock_camera sineCosine: {sine, cosine}
 };
 
@@ -59,6 +64,14 @@ struct NativeArithmetic {
     }
     static float cos16(int32_t angle) { return sin16(s16(angle) + 0x4000); }
     static float cosf(float x) { return std::cos(x); }
+    static float sinf(float x) { return std::sin(x); }
+    static float addExact(float a, float b) { return a + b; }
+    static float subExact(float a, float b) { return a - b; }
+    static float quotientExact(float a, float b) {
+        if (b == 0.0f) return (a < 0.0f || (a == 0.0f && std::signbit(a))) != std::signbit(b) ? -kMaxFloat : kMaxFloat;
+        return a / b;
+    }
+    static float rootExact(float a) { return std::sqrt(std::fabs(a)); }
     static std::pair<float, float> sineCosine(float radians) { return {std::sin(radians), std::cos(radians)}; }
 };
 

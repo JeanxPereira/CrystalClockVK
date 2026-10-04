@@ -202,6 +202,33 @@ float EeArithmetic::cosf(float x) {
     }
 }
 
+float EeArithmetic::sinf(float x) {
+    const uint32_t ix = floatBits(x) & 0x7fffffffu;
+    if (ix <= 0x3f490fd8u) return sinKernel(x, 0.0f, false);
+    if (ix > 0x7f7fffffu) return std::numeric_limits<float>::quiet_NaN();
+    const Reduced r = remPio2(x);
+    switch (r.n & 3) {
+        case 0: return sinKernel(r.y0, r.y1, true);
+        case 1: return cosKernel(r.y0, r.y1);
+        case 2: return -sinKernel(r.y0, r.y1, true);
+        default: return -cosKernel(r.y0, r.y1);
+    }
+}
+
+float EeArithmetic::addExact(float a, float b) { return add(a, b); }
+
+float EeArithmetic::subExact(float a, float b) { return sub(a, b); }
+
+// opening-lib quotient: a division by zero gives the largest single, not infinity.
+float EeArithmetic::quotientExact(float a, float b) {
+    if (b == 0.0f) return (a < 0.0f || (a == 0.0f && std::signbit(a))) != std::signbit(b) ? -kMaxFloat : kMaxFloat;
+    float q = cut(static_cast<double>(a) / static_cast<double>(b));
+    if (std::fabs(static_cast<double>(q) * b) > std::fabs(static_cast<double>(a))) q = down(q);
+    return q;
+}
+
+float EeArithmetic::rootExact(float a) { return vu0Root(a); }
+
 std::pair<float, float> EeArithmetic::sineCosine(float radians) {
     const bool negative = radians < 0.0f;
     const float t = negative ? add(kHalfPi, radians) : sub(kHalfPi, radians);

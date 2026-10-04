@@ -36,9 +36,12 @@ public:
     NativeRenderer& operator=(const NativeRenderer&) = delete;
 
     void setTexture(int32_t number, uint32_t width, uint32_t height, std::span<const uint8_t> rgba);
-    // The ten clock textures as PNG files (References/textures, written by References/scripts/extract_textures.mjs),
-    // texture n at its 640 x 224 address: the fallback when no resource file is found (app/ClockAssets uploads the
-    // decoded ones through setTexture).
+    void setTexture(scene::TextureSet set, int32_t number, uint32_t width, uint32_t height, std::span<const uint8_t> rgba);
+    // The opening's textures (References/textures/opening, written by References/scripts/extract_opening_textures.mjs):
+    // tex<number>-<width>x<height>.png, RGBA8 with TEXA's alpha, drawn by frames of scene::TextureSet::Opening.
+    void loadOpeningTextures(const std::filesystem::path& directory);
+    // The ten clock textures (References/textures, written by References/scripts/extract_textures.mjs and
+    // checked against the ROM by extract_rom_textures.mjs), texture n at its 640 x 224 address.
     void loadClockTextures(const std::filesystem::path& directory);
     // The glyph cache (scene::kGlyphTexture) a frame's text samples; made again only when its cells change.
     void setGlyphCache(const scene::Font& font, const scene::GlyphCache& cache);
@@ -56,9 +59,10 @@ public:
     // The largest alpha byte a pass writes (its As): 0x80 with edge smoothing, else the vertex alpha times, when
     // textured, the texture's largest alpha / 128 or the source target's bound / 128 (0x7f when colour only).
     // Each target's bound is the largest alpha drawn into it since configure().
-    uint32_t writtenAlpha(const scene::Pass& pass) const;
-    // The largest blend factor of a pass, in bytes: 0 when opaque, the constant for the fixed modes, else As.
-    uint32_t blendAlpha(const scene::Pass& pass) const;
+    uint32_t writtenAlpha(const scene::Pass& pass, scene::TextureSet set = scene::TextureSet::Clock) const;
+    // The largest blend factor of a pass, in bytes: 0 when opaque, the constant for the fixed modes, the target's
+    // bound for AddDestinationAlpha, else As.
+    uint32_t blendAlpha(const scene::Pass& pass, scene::TextureSet set = scene::TextureSet::Clock) const;
 
 private:
     struct Image {
@@ -87,6 +91,8 @@ private:
         uint8_t largestAlpha{0};
     };
     using PipelineKey = std::tuple<int, int, bool, uint32_t>;
+    using TextureKey = std::pair<int32_t, int32_t>;
+    static constexpr size_t kTargets = 5;
 
     Image createImage(uint32_t width, uint32_t height, VkFormat format, VkImageUsageFlags usage, VkSampleCountFlagBits samples, VkImageAspectFlags aspect);
     void destroyImage(Image& image);
@@ -95,10 +101,12 @@ private:
     void destroyTargets();
     void submit(const std::function<void(VkCommandBuffer)>& record);
     void transition(VkCommandBuffer cmd, Image& image, VkImageLayout layout, VkPipelineStageFlags2 stage, VkAccessFlags2 access);
-    VkPipeline pipeline(const scene::Pass& pass);
+    VkPipeline pipeline(const scene::Pass& pass, scene::BlendOp blend);
+    void createTarget(Target& target);
+    void ensureTargets(VkCommandBuffer cmd, const scene::Frame& frame);
     Target& target(scene::TargetName name) { return m_targets[static_cast<size_t>(name)]; }
     void beginRendering(VkCommandBuffer cmd, Target& target);
-    uint32_t writtenAlpha(const scene::Pass& pass, const std::array<uint32_t, 3>& bounds) const;
+    uint32_t writtenAlphaWith(const scene::Pass& pass, scene::TextureSet set, const std::array<uint32_t, kTargets>& bounds) const;
     void checkAlpha(const scene::Frame& frame);
 
     Device& m_device;
@@ -109,10 +117,10 @@ private:
     std::map<PipelineKey, VkPipeline> m_pipelines;
     VkCommandPool m_pool{VK_NULL_HANDLE};
     VkCommandBuffer m_commands{VK_NULL_HANDLE};
-    std::map<int32_t, Texture> m_textures;
+    std::map<TextureKey, Texture> m_textures;
     Image m_blank;
-    std::array<Target, 3> m_targets{};
-    std::array<uint32_t, 3> m_alphaBound{};
+    std::array<Target, kTargets> m_targets{};
+    std::array<uint32_t, kTargets> m_alphaBound{};
     Image m_depth;
     NativeOutput m_output{0, 0, 0};
     std::array<Buffer, 3> m_vertices{};

@@ -2,6 +2,8 @@
 #include <algorithm>
 #include <bit>
 #include <cmath>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <stdexcept>
@@ -139,14 +141,14 @@ TextureSteps textureSteps(const parity::GsPass& pass) {
     if (!pass.texture) return {true, false};
     bool equalQ = true;
     for (const parity::GsVertex& v : pass.vertices) equalQ = equalQ && v.q == pass.vertices.front().q;
-    const bool integer = pass.texture->coordinates == parity::GsCoordinates::Texel || equalQ;
-    return {integer, integer && pass.texture->filter == parity::GsFilter::Bilinear};
+    const bool integer = pass.texture->coordinates == parity::GsCoordinates::Texel || (equalQ && pass.texture->level == 0);
+    return {integer, integer && pass.texture->level == 0 && pass.texture->filter == parity::GsFilter::Bilinear};
 }
 
 SwVertex swVertex(const parity::GsVertex& v, const parity::GsPass& pass, TextureSteps steps) {
     SwVertex out{v.x, v.y, double(v.depth), {0, 0, 0}, {v.r * 128.0f, v.g * 128.0f, v.b * 128.0f, v.a * 128.0f}};
     if (!pass.texture) return out;
-    const float width = float(pass.texture->width << 16), height = float(pass.texture->height << 16);
+    const float width = float((pass.texture->width << pass.texture->level) << 16), height = float((pass.texture->height << pass.texture->level) << 16);
     if (pass.texture->coordinates == parity::GsCoordinates::Texel) {
         out.t[0] = v.s * 65536.0f; out.t[1] = v.t * 65536.0f;
     } else if (steps.integer) {
@@ -226,9 +228,9 @@ bool walkTriangle(const SwVertex* vertex, const parity::GsScissor& scissor, std:
 // One antialiased pixel: where, the edge's values at its major coordinate (clamped as ClampVertex does), and the 16-bit coverage.
 struct EdgePixel { int32_t x, y; SwVertex scan; int32_t coverage; };
 
-SwVertex clampedEdge(SwVertex v) {
+SwVertex clampedEdge(SwVertex v, double zMax) {
     for (float& c : v.c) c = std::min(std::max(c, 0.0f), 255.0f * 128.0f);
-    v.z = std::clamp(v.z, 0.0, 4294967295.0);
+    v.z = std::clamp(v.z, 0.0, zMax);
     return v;
 }
 
@@ -290,7 +292,7 @@ EdgeWalk edgeWalk(const SwVertex& dv) {
 // GSRasterizer.cpp DrawEdgeTriangle: one pixel per major step from one pixel before a to one past b, the first pixel outside the
 // edge on the minor axis, kept if inside the two other edges, the scissor and the edge's box (x not widened, y widened by 1).
 // Coverage is 0xffff times 1 - (that pixel's distance to the edge), in doubles.
-void walkTriangleEdge(const SwVertex& a, const SwVertex& b, const EdgeFunction& f1, const EdgeFunction& f2, bool tl, const parity::GsScissor& scissor, std::vector<EdgePixel>& out) {
+void walkTriangleEdge(const SwVertex& a, const SwVertex& b, const EdgeFunction& f1, const EdgeFunction& f2, bool tl, const parity::GsScissor& scissor, double zMax, std::vector<EdgePixel>& out) {
     const SwVertex dv = b - a;
     if (dv.x == 0.0f && dv.y == 0.0f) return;
     EdgeWalk walk = edgeWalk(dv);
@@ -320,7 +322,7 @@ void walkTriangleEdge(const SwVertex& a, const SwVertex& b, const EdgeFunction& 
         }
         const int32_t x = walk.xi + (walk.stepX ? 0 : offset), y = walk.yi + (walk.stepX ? offset : 0);
         if (f1.at(x, y) > 0 && f2.at(x, y) > 0 && bx0 <= x && x <= bx1 && by0 <= y && y <= by1)
-            out.push_back({x, y, clampedEdge(walk.edge), std::clamp(coverage, 0, 0xffff)});
+            out.push_back({x, y, clampedEdge(walk.edge, zMax), std::clamp(coverage, 0, 0xffff)});
         if (walk.stepX ? walk.xi == rxi1 : walk.yi == ryi1) break;
         walk.stepMajor();
     }
@@ -328,7 +330,7 @@ void walkTriangleEdge(const SwVertex& a, const SwVertex& b, const EdgeFunction& 
 
 // GSRasterizer.cpp DrawTriangle (edges): the y-sorted vertices' integer edge functions, negated when clockwise, +1 on top-left
 // edges, then the edges v0v1, v0v2, v1v2 in that order.
-void walkTriangleEdges(const SwVertex* vertex, const parity::GsScissor& scissor, std::vector<EdgePixel>& out) {
+void walkTriangleEdges(const SwVertex* vertex, const parity::GsScissor& scissor, double zMax, std::vector<EdgePixel>& out) {
     static const int order[8][3] = {{0, 1, 2}, {1, 0, 2}, {0, 0, 0}, {1, 2, 0}, {0, 2, 1}, {0, 0, 0}, {2, 0, 1}, {2, 1, 0}};
     const int m1 = (vertex[0].y > vertex[1].y ? 1 : 0) | (vertex[0].y > vertex[2].y ? 2 : 0) | (vertex[1].y > vertex[2].y ? 4 : 0);
     const SwVertex v[3] = {vertex[order[m1][0]], vertex[order[m1][1]], vertex[order[m1][2]]};
@@ -347,15 +349,15 @@ void walkTriangleEdges(const SwVertex* vertex, const parity::GsScissor& scissor,
         return f;
     };
     const EdgeFunction f0 = function(0, 1, tl0), f1 = function(2, 0, tl1), f2 = function(1, 2, tl2);
-    walkTriangleEdge(v[0], v[1], f1, f2, tl0, scissor, out);
-    walkTriangleEdge(v[0], v[2], f2, f0, tl1, scissor, out);
-    walkTriangleEdge(v[1], v[2], f0, f1, tl2, scissor, out);
+    walkTriangleEdge(v[0], v[1], f1, f2, tl0, scissor, zMax, out);
+    walkTriangleEdge(v[0], v[2], f2, f0, tl1, scissor, zMax, out);
+    walkTriangleEdge(v[1], v[2], f0, f1, tl2, scissor, zMax, out);
 }
 
 // GSRasterizer.cpp DrawEdgeLine with AA1: endpoints round to the nearest pixel and the diamond rule decides the first and last;
 // per major step the pixel on the line takes 0xffff - cov and its minor neighbour toward the line cov, cov = 0xffff * |D / scaleD|
 // in floats.
-void walkLine(const SwVertex& a, const SwVertex& b, const parity::GsScissor& scissor, std::vector<EdgePixel>& out) {
+void walkLine(const SwVertex& a, const SwVertex& b, const parity::GsScissor& scissor, double zMax, std::vector<EdgePixel>& out) {
     const SwVertex dv = b - a;
     EdgeWalk walk = edgeWalk(dv);
     float rx0 = std::floor(a.x + 0.5f), ry0 = std::floor(a.y + 0.5f), rx1 = std::floor(b.x + 0.5f), ry1 = std::floor(b.y + 0.5f);
@@ -373,7 +375,7 @@ void walkLine(const SwVertex& a, const SwVertex& b, const parity::GsScissor& sci
     walk.start(a, dv, rx0, ry0);
     const float scaleD = float(walk.scaleD);
     auto add = [&](int32_t x, int32_t y, int32_t coverage) {
-        if (scissor.x0 <= x && x <= scissor.x1 && scissor.y0 <= y && y <= scissor.y1) out.push_back({x, y, clampedEdge(walk.edge), coverage});
+        if (scissor.x0 <= x && x <= scissor.x1 && scissor.y0 <= y && y <= scissor.y1) out.push_back({x, y, clampedEdge(walk.edge, zMax), coverage});
     };
     while (true) {
         const float cov = 0xffff * std::abs(float(walk.D) / scaleD);
@@ -427,8 +429,15 @@ void pushRow(const GpuVertex& g, int32_t left, int32_t top, int32_t pixels, std:
 }
 
 // An edge pixel is a row of one pixel whose steps are zero: the scanline takes the edge's values as they are.
+std::FILE* edgeTrace() {
+    static std::FILE* file = [] { const char* path = std::getenv("CLOCK_EDGE_TRACE"); return path ? std::fopen(path, "w") : nullptr; }();
+    return file;
+}
+const char* g_passName = "";
+
 void pushEdges(const std::vector<EdgePixel>& pixels, std::vector<GpuVertex>& out) {
     for (const EdgePixel& pixel : pixels) {
+        if (std::FILE* trace = edgeTrace()) std::fprintf(trace, "%s %d %d %.1f %.1f %d\n", g_passName, pixel.x, pixel.y, pixel.scan.t[0], pixel.scan.t[1], pixel.coverage);
         GpuVertex g{};
         g.left = float(pixel.x);
         g.top = float(pixel.y);
@@ -463,14 +472,14 @@ void expandTriangle(const parity::GsVertex* corners, const parity::GsPass& pass,
     }
     if (!pass.antialias) return;
     std::vector<EdgePixel> edges;
-    walkTriangleEdges(vertex, pass.scissor, edges);
+    walkTriangleEdges(vertex, pass.scissor, pass.depth.z24 ? 16777215.0 : 4294967295.0, edges);
     pushEdges(edges, out);
 }
 
 // An AA1 line is all edge pixels, segment by segment.
 void expandLine(const parity::GsVertex& a, const parity::GsVertex& b, const parity::GsPass& pass, TextureSteps steps, std::vector<GpuVertex>& out) {
     std::vector<EdgePixel> pixels;
-    walkLine(swVertex(a, pass, steps), swVertex(b, pass, steps), pass.scissor, pixels);
+    walkLine(swVertex(a, pass, steps), swVertex(b, pass, steps), pass.scissor, pass.depth.z24 ? 16777215.0 : 4294967295.0, pixels);
     pushEdges(pixels, out);
 }
 
@@ -772,6 +781,7 @@ std::vector<uint32_t> GsParityRenderer::readDepth() {
 }
 
 void GsParityRenderer::draw(const parity::GsPass& given) {
+    g_passName = given.name.c_str();
     const parity::GsPass rounded = roundsCoordinates(given) ? withRoundedCoordinates(given) : parity::GsPass{};
     const parity::GsPass& pass = roundsCoordinates(given) ? rounded : given;
     if (!pass.skip.empty()) throw std::logic_error(pass.name + " cannot be drawn: " + pass.skip);
@@ -818,15 +828,20 @@ void GsParityRenderer::draw(const parity::GsPass& given) {
     }
     state.misc[2] = int(pass.depth.test);
     state.misc[3] = pass.depth.write ? 1 : 0;
+    // The oracle's Z24 rule (PCSX2 software renderer; hardware behaviour unmeasured): sprites always clamp, other primitives when the draw's largest Z exceeds 24 bits.
+    bool zClamp = pass.depth.z24 && sprites;
+    if (pass.depth.z24 && !sprites) for (const parity::GsVertex& v : pass.vertices) zClamp = zClamp || v.depth > 0xffffffu;
+    state.addressU[3] = (pass.depth.z24 ? 1 : 0) | (pass.perPixelAlpha ? 2 : 0) | (pass.alphaCorrection ? 4 : 0) | (zClamp ? 8 : 0);
     if (pass.texture) {
         const parity::GsTexture& t = *pass.texture;
-        state.tex[0] = 1;
+        state.tex[0] = 1 | (int(t.level) << 8);
+        if (t.level && !(triangles || antialiasedLines)) throw std::logic_error(pass.name + ": a mip level is drawn on triangles and antialiased lines only");
         state.tex[1] = sprites ? 2 : (triangles || antialiasedLines) ? (steps.integer ? 0 : 1) : projective ? 1 : 0;
         state.tex[2] = int(t.filter);
-        state.tex[3] = t.alpha.constant ? 1 : 0;
+        state.tex[3] = t.alpha.sixteen ? 2 : t.alpha.constant ? 1 : 0;
         state.texSize[0] = int(t.width); state.texSize[1] = int(t.height); state.texSize[2] = t.alpha.value; state.texSize[3] = t.alpha.zeroWhenBlack ? 1 : 0;
         state.addressU[0] = int(t.addressU.mode); state.addressU[1] = t.addressU.min; state.addressU[2] = t.addressU.max;
-        state.addressV[0] = int(t.addressV.mode); state.addressV[1] = t.addressV.min; state.addressV[2] = t.addressV.max;
+        state.addressV[0] = int(t.addressV.mode); state.addressV[1] = t.addressV.min; state.addressV[2] = t.addressV.max; state.addressV[3] = t.alpha.valueHigh;
     }
     state.flags[0] = pass.antialias && !sprites ? 1 : 0;
     state.flags[1] = int(target->second.width);

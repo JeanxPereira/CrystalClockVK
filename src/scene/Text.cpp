@@ -1,5 +1,6 @@
 #include "scene/Text.hpp"
 
+#include <algorithm>
 #include <bit>
 #include <cmath>
 #include <optional>
@@ -28,12 +29,24 @@ constexpr uint32_t kDateRatio = 0x0036fb94, kHintRatio = 0x0036fb98;
 constexpr uint32_t kPalMultiply = 0x00365570, kPalDivide = 0x00365578;          // func_00226300
 constexpr uint32_t kHintPalMultiply = 0x00365590, kHintPalDivide = 0x00365598;  // func_00226958
 constexpr uint32_t kIconPalMultiply = 0x00365580, kIconPalDivide = 0x00365588;  // DrawIcon
-constexpr uint32_t kPanels = 0x002b2318, kPanel8 = 0x002b2300;  // four string ids per panel, 0x14 apart; + 0xA0 by video mode
+constexpr uint32_t kPanels = 0x002b2318;  // four string ids per panel, 0x14 apart; + 0xA0 by video mode
 constexpr uint32_t kSlots = 0x002b2470;                          // the four slots' x, 16 bytes per language
 constexpr uint32_t kSlotPictures = 0x002b24f0;                   // the picture of each slot
 constexpr uint32_t kHintColour = 0x002b2460;
 constexpr uint32_t kIconRecord = 0x002b2260;                     // DrawIcon's rectangle record
 constexpr uint32_t kIconPlaces = 0x002b22a0;                     // u0, v0, u1, v1 per picture
+
+// The menus' strings and colours (draw_clock_menu_items, browser_str_related, func_002311E8, clock_str_related).
+constexpr uint32_t kChosenColour = 0x002b2540, kPlainColour = 0x002b2550, kValueColour = 0x002b2560, kTitleColour = 0x002b2570;
+constexpr uint32_t kArrow = 0x003702c0;                          // "o018"
+constexpr uint32_t kAdjustTemplate = 0x003655b0;                 // year, month, day: item, lowest, highest (func_00226E68)
+constexpr uint32_t kFormatYear = 0x00370160, kFormat02 = 0x00370168, kFormat2 = 0x00370170;  // "%04d", "%02d", "%2d"
+constexpr uint32_t kFixedOpen = 0x00370178, kFixedClose = 0x00370180;                        // "p@0", "p00"
+constexpr uint32_t kSlash = 0x00370188, kSpace = 0x00370190, kColon = 0x00370198;
+constexpr uint32_t kValueTemplate12 = 0x003655d8, kValueTemplate24 = 0x00365600;
+constexpr uint32_t kFieldMorning = 0x00365618, kFieldAfternoon = 0x00365630;
+constexpr uint32_t kListPalChosen = 0x00365950, kListPalValue = 0x00365958;
+constexpr uint32_t kClockString = 0x00227420, kItemString = 0x00228470, kItemStringJump = 0x00227c60, kClockEdit = 0x00227ad0, kRowEdit = 0x00228660;
 
 int32_t clampTo(int32_t v, int32_t top) { return v < 0 ? 0 : v > top ? top : v; }
 int32_t by128(int64_t x) { return static_cast<int32_t>((x < 0 ? x + 127 : x) >> 7); }
@@ -42,6 +55,23 @@ int32_t divide(int64_t a, int32_t b) {
     return static_cast<int32_t>(a / b);
 }
 int32_t scaleOf(const Ramp& r, int32_t n) { return divide(int64_t(r.counter) * n, r.length); }
+int32_t half(int32_t n) { return (n + static_cast<int32_t>(static_cast<uint32_t>(n) >> 31)) >> 1; }
+
+// func_00231E78: the main menu's items and their button panel.
+int32_t menuAlphaOf(const TextRamps& r, int32_t tail, int32_t overlay) {
+    int32_t a = scaleOf(r.mainMenu, 0x80);
+    a = divide(int64_t(a) * clampTo(tail - r.config.counter, tail), tail);
+    a = by128(int64_t(a) * (0x80 - scaleOf(r.version, 0x80)));
+    a = by128(int64_t(a) * overlay);
+    if (r.dialogClosing.state != 0 || r.firstRun.state != 0) a = 0;
+    return a;
+}
+
+// func_00230E10: System Configuration's list and its button panel.
+int32_t configAlphaOf(const TextRamps& r, int32_t tail, const Ramp& menu) {
+    const int32_t a = divide(int64_t(clampTo(r.config.counter - (r.body + r.lead), tail)) << 7, tail);
+    return divide(int64_t(a) * clampTo(tail - menu.counter, tail), tail);
+}
 
 // sprintf as the program uses it: %s, %d with a zero flag and a width.
 std::string format(const std::string& pattern, const std::vector<std::string>& texts, const std::vector<int32_t>& numbers) {
@@ -97,6 +127,21 @@ Text<A>::Text(std::shared_ptr<const Font> font, std::shared_ptr<const ProgramIma
     m_cells.assign(static_cast<size_t>(m_cache.cells), 0);
     for (const FontCacheEntry& e : m_cache.list)
         if (e.loaded && e.cell >= 0 && e.cell < m_cache.cells) m_cells[static_cast<size_t>(e.cell)] = e.code;
+    // D_00370158 is written the first time the list draws the clock's value, which needs the configuration ramp running: an
+    // input that starts with it running has the width already, measured at the size the list sets (1.0); the cache is left as it was.
+    if (inputs.ramps.config.state != 0) {
+        const FontCache cache = m_cache;
+        const FontState font = m_font;
+        const std::array<float, 4> colour = m_libraryColour;
+        m_font.ratio = 1.0f;
+        m_font.dirty = 1;
+        TextFrame scratch;
+        m_templateFormat = inputs.settings.timeFormat;
+        m_templateWidth = widthOf(m_program->string(m_templateFormat == 1 ? kValueTemplate12 : kValueTemplate24), scratch);
+        m_cache = cache;
+        m_font = font;
+        m_libraryColour = colour;
+    }
 }
 
 // func_002132B8: the size, times the width in percent when one is set.
@@ -463,15 +508,12 @@ void Text<A>::buttonPanel(int32_t panel, int32_t alpha, int32_t y, const TextFra
     const int32_t row = language();
     setRatio(p.single(kHintRatio));
     const int32_t video = m_settings.videoMode > -1 ? m_settings.videoMode : 0;
-    const uint32_t table = panel == 8 ? kPanel8 : kPanels + 0x14u * static_cast<uint32_t>(panel) + (video != 0 ? 0xa0u : 0u);
+    const uint32_t table = kPanels + 0x14u * static_cast<uint32_t>(panel) + (video != 0 ? 0xa0u : 0u);
     const uint32_t slots = kSlots + 16u * static_cast<uint32_t>(row);
-    // get_lang_string (0x002081B8): the language's table, as config_set_langtbl chose it (clock_text.mjs languageOf).
-    const uint32_t language = ((m_settings.settingsWord >> 4) & 0x1f) ? ((m_settings.settingsWord >> 4) & 0x1f) : 1;
-    const uint32_t strings = p.word(kLanguageTables + 4 * language);
     for (uint32_t slot = 0; slot < 4; ++slot) {
-        const int32_t id = p.integer(table + 4 * slot);
+        const int32_t id = panel == 8 ? m_panel8[slot] : p.integer(table + 4 * slot);
         if (id == 1) continue;
-        const std::string text = p.string(p.word(strings + 4 * static_cast<uint32_t>(id)));
+        const std::string text = languageString(id);
         int32_t x;
         if (slot == 3) {
             const int32_t reach = widthOf(text, out) + 0x18;
@@ -494,7 +536,10 @@ TextFrame Text<A>::frame(const TextFrameInputs& in) {
     const ProgramImage& p = *m_program;
     m_width = in.width;
     m_height = in.height;
-    m_drawn.assign(m_cells.size(), false);
+    if (!m_afterPages) m_drawn.assign(m_cells.size(), false);
+    m_afterPages = false;
+    const TextRamps& ramps = in.ramps ? *in.ramps : m_ramps;
+    m_panel8 = ramps.panel8Ids;
     TextFrame out;
 
     // func_00226300: the date at the left and the time ending 22 from the right, 14 from the top (32 when item 0 is 2).
@@ -504,9 +549,9 @@ TextFrame Text<A>::frame(const TextFrameInputs& in) {
     // func_00230008: 128 unless a dialog closes (or the first run's ramp holds it at 0), by the ramps of System
     // Configuration otherwise; times the overlay level.
     int32_t dateAlpha;
-    if (m_ramps.dialogClosing.state != 0) dateAlpha = 0x80;
-    else if (m_ramps.firstRun.state != 0) dateAlpha = 0;
-    else dateAlpha = divide(int64_t(clampTo(m_ramps.config.counter - (m_ramps.lead + m_ramps.body), in.tail)) << 7, in.tail);
+    if (ramps.dialogClosing.state != 0) dateAlpha = 0x80;
+    else if (ramps.firstRun.state != 0) dateAlpha = 0;
+    else dateAlpha = divide(int64_t(clampTo(ramps.config.counter - (ramps.lead + ramps.body), in.tail)) << 7, in.tail);
     setColour(0x60, 0x60, 0x60, by128(int64_t(dateAlpha) * in.overlayLevel));
 
     // do_format_date (0x00214550) by item 0xE; do_format_time (0x00214640) by item 0xD.
@@ -541,32 +586,26 @@ TextFrame Text<A>::frame(const TextFrameInputs& in) {
     // func_002269E0: the button panels and their alpha; func_00226958: their line, 200 (182 when item 0 is 2).
     int32_t hintY = in.item0 == 2 ? 0xb6 : 0xc8;
     if (pal()) hintY = static_cast<int32_t>(std::trunc(double(static_cast<float>(hintY)) * p.doubleAt(kHintPalMultiply) / p.doubleAt(kHintPalDivide)));
-    if (m_ramps.panel7 == 1) {
+    if (ramps.panel7 == 1) {
         buttonPanel(7, 0x80, hintY, in, out);
     } else {
-        if (m_ramps.panel8On != 0) buttonPanel(8, m_ramps.panel8, hintY, in, out);
+        if (ramps.panel8On != 0) buttonPanel(8, ramps.panel8, hintY, in, out);
         // func_002326F0: panels 1 to 6 by func_00231E78, func_00230E10, func_0022A238 (1 and 0), func_00228F40,
         // func_00230C28, capped at 128 (verify_text2.mjs panelsOf).
         const Ramp& menu = in.menu;
         const int32_t tail = in.tail;
         const auto mainMenu = [&] {
-            int32_t a = scaleOf(m_ramps.mainMenu, 0x80);
-            a = divide(int64_t(a) * clampTo(tail - m_ramps.config.counter, tail), tail);
-            a = by128(int64_t(a) * (0x80 - scaleOf(m_ramps.version, 0x80)));
-            a = by128(int64_t(a) * in.overlayLevel);
-            if (m_ramps.dialogClosing.state != 0 || m_ramps.firstRun.state != 0) a = 0;
-            return a;
+            return menuAlphaOf(ramps, tail, in.overlayLevel);
         };
         const auto configuration = [&] {
-            const int32_t a = divide(int64_t(clampTo(m_ramps.config.counter - (m_ramps.body + m_ramps.lead), tail)) << 7, tail);
-            return divide(int64_t(a) * clampTo(tail - menu.counter, tail), tail);
+            return configAlphaOf(ramps, tail, menu);
         };
         const auto adjust = [&](int32_t side) {
-            const int32_t a = by128(int64_t(scaleOf(m_ramps.version, 0x80)) * (0x80 - scaleOf(m_ramps.dialog, 0x80)));
+            const int32_t a = by128(int64_t(scaleOf(ramps.version, 0x80)) * (0x80 - scaleOf(ramps.dialog, 0x80)));
             if (a <= 0) return 0;
-            return ((m_ramps.adjustRow != 0 ? 1 : 0) ^ side) == 0 ? a : 0;
+            return ((ramps.adjustRow != 0 ? 1 : 0) ^ side) == 0 ? a : 0;
         };
-        const auto clock = [&] { return divide(int64_t(clampTo(menu.counter - m_ramps.body, tail)) << 7, tail); };
+        const auto clock = [&] { return divide(int64_t(clampTo(menu.counter - ramps.body, tail)) << 7, tail); };
         for (int32_t panel = 1; panel < 7; ++panel) {
             int32_t a = 0;
             switch (panel) {
@@ -574,7 +613,7 @@ TextFrame Text<A>::frame(const TextFrameInputs& in) {
             case 2: a = configuration(); break;
             case 3: a = adjust(1); break;
             case 4: a = adjust(0); break;
-            case 5: a = scaleOf(m_ramps.dialog, 0x80); break;
+            case 5: a = scaleOf(ramps.dialog, 0x80); break;
             case 6: a = clock(); break;
             }
             if (a > 0x80) a = 0x80;
@@ -584,6 +623,273 @@ TextFrame Text<A>::frame(const TextFrameInputs& in) {
 
     finish(out);
     return out;
+}
+
+// get_lang_string (0x002081B8): the language's table, as config_set_langtbl chose it (clock_text.mjs languageOf).
+template <class A>
+std::string Text<A>::languageString(int32_t id) const {
+    const ProgramImage& p = *m_program;
+    if (m_settings.videoMode > 0 && (id == 0x55 || id == 0x56)) id = 0x55 + 0x56 - id;
+    const uint32_t language = ((m_settings.settingsWord >> 4) & 0x1f) ? ((m_settings.settingsWord >> 4) & 0x1f) : 1;
+    const uint32_t strings = p.word(kLanguageTables + 4 * language);
+    return p.string(p.word(strings + 4 * static_cast<uint32_t>(id)));
+}
+
+template <class A>
+void Text<A>::colourFrom(uint32_t at, int32_t alpha) {
+    const ProgramImage& p = *m_program;
+    setColour(p.integer(at), p.integer(at + 4), p.integer(at + 8), alpha);
+}
+
+// DrawNonSelectableItem (0x002269E6..): the colour at `colour` with the alpha, the pen, the string; returns what
+// func_00213E90 gives the caller after it: (int)((int)(reach - start) + pitch x scale).
+template <class A>
+int32_t Text<A>::drawItem(int32_t x, int32_t y, uint32_t colour, int32_t alpha, const std::string& text, TextFrame& out) {
+    colourFrom(colour, alpha);
+    setLocate(x, y);
+    const float start = m_font.locate[0];
+    const float reach = putString(text, false, out);
+    return A::toInt(A::add(static_cast<float>(A::toInt(A::sub(reach, start))), A::mul(static_cast<float>(m_font.pitch), scaleX(m_font))));
+}
+
+// draw_menu_item (0x00226C00): nothing under alpha 16; otherwise the string centred on x by its measured width.
+template <class A>
+void Text<A>::menuItem(int32_t x, int32_t y, uint32_t colour, int32_t alpha, const std::string& text, TextFrame& out) {
+    if (alpha < 16) return;
+    const int32_t width = widthOf(text, out);
+    drawItem(x - half(width), y, colour, alpha, text, out);
+}
+
+// clock_str_related (0x002270A8): the width of the value's template, measured when the time format changes.
+template <class A>
+int32_t Text<A>::templateWidth(int32_t timeFormat, TextFrame& out) {
+    const ProgramImage& p = *m_program;
+    if (m_templateWidth == 0 || m_templateFormat != timeFormat) {
+        m_templateFormat = timeFormat;
+        m_templateWidth = widthOf(p.string(timeFormat == 1 ? kValueTemplate12 : kValueTemplate24), out);
+    }
+    return m_templateWidth;
+}
+
+// draw_clock_menu_items (0x00232170): item n centred on 430, 16 apart from 14 above the middle; the chosen one in
+// D_002B2540, the others in D_002B2550. func_00232020 and the main menu's ramp decide whether it draws at all.
+template <class A>
+void Text<A>::mainMenuItems(const PagesInputs& in, TextFrame& out) {
+    const TextRamps& r = in.ramps;
+    if (r.mainMenu.state != 2) return;
+    if (r.config.state != 0 || r.version.state != 0 || r.dialogClosing.state != 0 || r.firstRun.state != 0 || in.pending != 0) return;
+    const int32_t alpha = menuAlphaOf(r, in.tail, in.overlayLevel);
+    const ProgramImage& p = *m_program;
+    setRatio(1.0f);
+    for (int32_t n = 0; n < in.mainMenu.count; ++n) {
+        const int32_t id = p.integer(in.mainMenu.items + 16u * static_cast<uint32_t>(n));
+        menuItem(430, half(in.height) - 14 + 16 * n, n == in.mainMenu.selected ? kChosenColour : kPlainColour, alpha, languageString(id), out);
+    }
+}
+
+// browser_str_related (0x00231388): the title, the widest entry's width (browser_str_related2), the arrow and the one or two
+// entries of the crossfade (R4); the places and colours are verify_text2.mjs LIST_Y and PLACES.
+template <class A>
+std::optional<int32_t> Text<A>::list(const PagesInputs& in, TextFrame& out, std::vector<uint32_t>& unmodelled) {
+    const TextRamps& r = in.ramps;
+    const ProgramImage& p = *m_program;
+    const int32_t top = pal() ? 0x65 : 0x58;
+    const int32_t chosenY = static_cast<int32_t>(std::trunc(double(top) + (pal() ? p.doubleAt(kListPalChosen) : 24.0)));
+    if (r.config.state == 0 || in.menuRamp.state == 2) return std::nullopt;
+    const int32_t alpha = configAlphaOf(r, in.tail, in.menuRamp);
+    setRatio(1.0f);
+    menuItem(430, top, kTitleColour, alpha, languageString(in.page.word0), out);
+    int32_t widest = 0;
+    for (int32_t i = 0; i < in.page.count; ++i) {
+        const std::string name = languageString(in.entries.at(static_cast<size_t>(i)).id);
+        widthOf(name, out);
+        widest = std::max(widest, widthOf(name, out));
+    }
+    const std::string arrow = p.string(kArrow);
+    const int32_t reach = half(widest) + widthOf(arrow, out) + 0x1be;
+    const int32_t centre = reach < in.width - 0x18 ? 430 : 430 - (reach + 0x18 - in.width);
+    if (in.page.level != 1 && r.config.state == 2 && in.menuRamp.state == 0) {
+        // The pulse after the chosen entry: |(int)(sinf(counter x 0x7AA8 / (fps x 0x7AA8 / 60) / divisor) x 128)|.
+        const int32_t period = (pal() ? 50 : 60) * 0x7aa8 / 60;
+        const int32_t counter = static_cast<int32_t>(static_cast<uint32_t>(in.page.glow) * 0x7aa8u) / period;
+        const int32_t pulse = A::toInt(A::mul(A::sinf(A::div(static_cast<float>(counter), in.listConstants.divisor)), 128.0f));
+        drawItem(centre + half(widest) + 0x10, chosenY, kValueColour, pulse < 0 ? -pulse : pulse, arrow, out);
+    }
+    listEntry(in, in.page.selected, by128(int64_t(in.listFade.first) * alpha), out, unmodelled);
+    if (in.listFade.second != 0) listEntry(in, in.listFade.secondIndex, by128(int64_t(in.listFade.second) * alpha), out, unmodelled);
+    return widest;
+}
+
+// func_002311E8: one entry of the list, its name under the title and its value under that.
+template <class A>
+void Text<A>::listEntry(const PagesInputs& in, int32_t index, int32_t alpha, TextFrame& out, std::vector<uint32_t>& unmodelled) {
+    const ProgramImage& p = *m_program;
+    const int32_t top = pal() ? 0x65 : 0x58;
+    const int32_t chosenY = static_cast<int32_t>(std::trunc(double(top) + (pal() ? p.doubleAt(kListPalChosen) : 24.0)));
+    const int32_t valueY = static_cast<int32_t>(std::trunc(double(top) + (pal() ? p.doubleAt(kListPalValue) : 42.0)));
+    const ConfigEntry& entry = in.entries.at(static_cast<size_t>(index));
+    const std::string name = languageString(entry.id);
+    const int32_t arrows = widthOf(p.string(kArrow), out) + 0x10;
+    const int32_t width = widthOf(name, out);
+    const int32_t end = 430 + half(width) + arrows;
+    const int32_t centre = end < in.width - 0x18 ? 430 : 430 - (end + 0x18 - in.width);
+    const bool inside = in.page.level == 1;
+    menuItem(centre, chosenY, inside ? kValueColour : kChosenColour, alpha, name, out);
+    const bool editing = inside && in.page.selected == index;
+    if (!entryValue(in, entry, 430, valueY, alpha, editing, out)) unmodelled.push_back(editing ? entry.frameCallback : entry.stringCallback);
+}
+
+// The entry's callback at +0x18 (its value), or at +0x1C while it is being changed.
+template <class A>
+bool Text<A>::entryValue(const PagesInputs& in, const ConfigEntry& entry, int32_t x, int32_t y, int32_t alpha, bool editing, TextFrame& out) {
+    const ProgramImage& p = *m_program;
+    const uint32_t callback = editing ? entry.frameCallback : entry.stringCallback;
+    if (callback == kClockString) {
+        // func_00226E68: the first three fields in the order of the date format, from the template at D_003655B0.
+        std::array<AdjustField, 6> fields = in.adjustFields;
+        const auto field = [&](uint32_t n) { return AdjustField{p.integer(kAdjustTemplate + 12 * n), p.integer(kAdjustTemplate + 12 * n + 4), p.integer(kAdjustTemplate + 12 * n + 8)}; };
+        switch (in.items[0xe]) {
+        case 0: fields[0] = field(0); fields[1] = field(1); fields[2] = field(2); break;
+        case 1: fields[0] = field(1); fields[1] = field(2); fields[2] = field(0); break;
+        case 2: fields[0] = field(2); fields[1] = field(1); fields[2] = field(0); break;
+        default: break;
+        }
+        return clockValue(in, entry, fields, x, y, alpha, false, out);
+    } else if (callback == kClockEdit) {
+        return clockValue(in, entry, in.adjustFields, x, y, alpha, true, out);
+    } else if (callback == kItemString || callback == kItemStringJump) {
+        // func_002283C0: the row of the value table the item holds, then clock_config_get_item_str's string for it.
+        if (entry.item < 0 || static_cast<size_t>(entry.item) >= in.items.size()) return false;
+        const int32_t value = in.items[static_cast<size_t>(entry.item)];
+        const uint32_t table = entry.valueTable;
+        int32_t index = entry.valueIndex;
+        if (value != p.integer(table + 32u * static_cast<uint32_t>(index))) {
+            index = 0;
+            if (entry.valueCount > 0 && value != p.integer(table)) {
+                for (int32_t row = 1; row < entry.valueCount; ++row)
+                    if (value == p.integer(table + 32u * static_cast<uint32_t>(row))) { index = row; break; }
+            }
+        }
+        menuItem(x, y, kValueColour, alpha, languageString(p.integer(table + 32u * static_cast<uint32_t>(index) + 4)), out);
+    } else if (callback == kRowEdit) {
+        valueRow(entry, x, y, alpha, out);
+    } else {
+        return false;
+    }
+    return true;
+}
+
+// func_002284F8: every value of the entry side by side, 16 apart, centred on x; the chosen one in D_002B2540.
+template <class A>
+void Text<A>::valueRow(const ConfigEntry& entry, int32_t x, int32_t y, int32_t alpha, TextFrame& out) {
+    const ProgramImage& p = *m_program;
+    const auto name = [&](int32_t row) { return languageString(p.integer(entry.valueTable + 32u * static_cast<uint32_t>(row) + 4)); };
+    int32_t total = 0;
+    for (int32_t row = 0; row < entry.valueCount; ++row) total += widthOf(name(row), out);
+    total += (entry.valueCount - 1) * 16;
+    int32_t at = x - half(total);
+    for (int32_t row = 0; row < entry.valueCount; ++row) {
+        drawItem(at, y, row == entry.valueIndex ? kChosenColour : kPlainColour, alpha, name(row), out);
+        at += widthOf(name(row), out) + 16;
+    }
+}
+
+// clock_str_related (0x002270A8): the date and time field by field (the program draws each as \ap@0, the digits, \ap00,
+// then the separator), the pen carried by func_00213E90; `editing` draws the chosen field in D_002B2540, the others in D_002B2550.
+template <class A>
+bool Text<A>::clockValue(const PagesInputs& in, const ConfigEntry& entry, const std::array<AdjustField, 6>& fields, int32_t x, int32_t y, int32_t alpha, bool editing, TextFrame& out) {
+    const ProgramImage& p = *m_program;
+    const uint32_t chosen = editing ? kChosenColour : kValueColour, plain = editing ? kPlainColour : kValueColour;
+    const int32_t timeFormat = in.items[0xd];
+    int32_t at = x - half(templateWidth(timeFormat, out));
+    for (int32_t n = 0; n < entry.valueCount; ++n) {
+        const int32_t kind = fields.at(static_cast<size_t>(n)).item - 6;
+        if (kind < 0 || kind > 5) return false;
+        const int32_t value = in.items[static_cast<size_t>(6 + kind)];
+        std::string text;
+        switch (kind) {
+        case 0: text = format(p.string(kFormatYear), {}, {value}); break;
+        case 3: text = format(p.string(kFormat2), {}, {timeFormat == 1 ? (value % 12 != 0 ? value % 12 : 12) : value}); break;
+        default: text = format(p.string(kFormat02), {}, {value}); break;
+        }
+        putString(p.string(kFixedOpen), false, out);
+        at += drawItem(at, y, n == entry.valueIndex ? chosen : plain, alpha, text, out);
+        putString(p.string(kFixedClose), false, out);
+        switch (n) {
+        case 0:
+        case 1: at += drawItem(at, y, plain, alpha, p.string(kSlash), out); break;
+        case 2: at += 2 * widthOf(p.string(kSpace), out); break;
+        case 3:
+        case 4: at += drawItem(at, y, plain, alpha, p.string(kColon), out); break;
+        case 5:
+            if (timeFormat == 1) drawItem(at, y, plain, alpha, p.string(in.items[9] < 12 ? kFieldMorning : kFieldAfternoon), out);
+            break;
+        default: break;
+        }
+    }
+    return true;
+}
+
+// The pages function: the main menu's items, then System Configuration's list.
+template <class A>
+PagesFrame Text<A>::pages(const PagesInputs& in) {
+    m_width = in.width;
+    m_height = in.height;
+    m_drawn.assign(m_cells.size(), false);
+    m_afterPages = true;
+    PagesFrame out;
+    mainMenuItems(in, out.text);
+    out.titleWidth = list(in, out.text, out.unmodelled);
+    finish(out.text);
+    return out;
+}
+
+TextRamps textRampsOf(const MenusState& menus, const TextRamps& constants) {
+    TextRamps r = constants;
+    r.config = menus.page.ramp;
+    r.mainMenu = menus.mainMenu.ramp;
+    r.version = menus.versionRamp;
+    r.dialogClosing = menus.dialogRamp;
+    r.firstRun = menus.firstRunRamp;
+    r.lead = menus.menuLengths[0];
+    r.body = menus.body;
+    // func_002266E0(0x5E, 0x55, 0x56, 0x57), which the list's entry callbacks call when the page opens (D_00227BE8, D_00227CA8,
+    // clock_config_change_cb_*); inside an entry the page calls it with others.
+    if (menus.page.level == 0) r.panel8Ids = {0x5e, 0x55, 0x56, 0x57};
+    return r;
+}
+
+MenusState menusAtPages(const MenusState& before, const MenusState& after) {
+    MenusState at = before;
+    at.page.glow = after.page.glow;
+    const auto ticked = [](Ramp& b, const Ramp& a) {
+        if (b.counter != a.counter) b = a;
+    };
+    ticked(at.page.ramp, after.page.ramp);
+    ticked(at.mainMenu.ramp, after.mainMenu.ramp);
+    ticked(at.versionRamp, after.versionRamp);
+    ticked(at.dialogRamp, after.dialogRamp);
+    ticked(at.firstRunRamp, after.firstRunRamp);
+    return at;
+}
+
+PagesInputs pagesOf(const MenusState& menus, const ClockState& clock, const ConfigItems& items, const TextRamps& ramps, int32_t width, int32_t height) {
+    PagesInputs in;
+    in.mainMenu = menus.mainMenu;
+    in.page = menus.page;
+    in.entries = menus.entries;
+    in.listFade = menus.listFade;
+    in.listConstants = menus.listConstants;
+    in.adjustFields = menus.adjustFields;
+    in.items = items;
+    in.menuRamp = clock.menuRamp;
+    in.tail = clock.tail;
+    in.overlayLevel = clock.overlayLevel;
+    in.ramps = ramps;
+    in.width = width;
+    in.height = height;
+    in.pending = menus.pagePointers[4];
+    return in;
 }
 
 template <class A>

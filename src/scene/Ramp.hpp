@@ -9,6 +9,7 @@ struct Ramp {
     int32_t counter = 0;
     int32_t changed = 0;
     int32_t state = 0;
+    bool operator==(const Ramp&) const = default;
 };
 
 inline void tickRamp(Ramp& ramp) {

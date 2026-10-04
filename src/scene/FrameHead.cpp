@@ -16,7 +16,8 @@ struct Origin {
     float x, y;
 };
 
-Origin originOf(const HeadInputs& in) { return {static_cast<float>(0x800 - (in.width >> 1)), static_cast<float>(0x800 - (in.height >> 1))}; }
+Origin originOf(int32_t width, int32_t height) { return {static_cast<float>(0x800 - (width >> 1)), static_cast<float>(0x800 - (height >> 1))}; }
+Origin originOf(const HeadInputs& in) { return originOf(in.width, in.height); }
 
 // One vertex from the registers the OSD wrote: RGBAQ, ST or UV, XYZF2.
 HeadVertex vertexOf(const Origin& origin, uint64_t rgbaq, uint64_t coordinate, Coordinates kind, uint64_t xyz) {
@@ -58,22 +59,7 @@ void setState(HeadDraw& d, Target target, Source source, AlphaMode alpha, int32_
     d.depthTest = depthTest;
 }
 
-// HDD func_00233770: the two packets of a rectangle record, nothing masked.
-HeadDraw rectangle(const Rect& r, const HeadInputs& in, Part part) {
-    const int32_t ox = (0x800 - (in.width >> 1)) << 4, oy = (0x800 - (in.height >> 1)) << 4;
-    const uint64_t z = wide(r.z) << 32;
-    const uint32_t prim = static_cast<uint32_t>((wide(r.textured) << 4) | 0x100 | (wide(r.blend) << 6) | 6) & 0x7ff;
-    const uint64_t rgbaq = wide(r.colour[0]) | (0x3f800000ull << 32) | (wide(r.colour[2]) << 16) | (wide(r.colour[1]) << 8) | (wide(r.colour[3]) << 24);
-    const uint64_t uv0 = wide(r.u0) | (wide(r.v0) << 16), uv1 = wide(r.u1) | (wide(r.v1) << 16);
-    const uint64_t xyz0 = wide(r.x0 + ox) | (wide(r.y0 + oy) << 16) | z, xyz1 = wide(r.x1 + ox) | (wide(r.y1 + oy) << 16) | z;
-    HeadDraw d;
-    d.part = part;
-    setPrim(d, prim);
-    const Origin origin = originOf(in);
-    d.vertices.push_back(vertexOf(origin, rgbaq, uv0, Coordinates::Uv, xyz0));
-    d.vertices.push_back(vertexOf(origin, rgbaq, uv1, Coordinates::Uv, xyz1));
-    return d;
-}
+HeadDraw rectangle(const Rect& r, const HeadInputs& in, Part part) { return headRectangle(r, in.width, in.height, part); }
 
 // facts/clock-frame-rest.md section 2 (HDD func_00236490): shrink into work buffer 1, stretch back.
 void blurTrips(HeadState& s, const HeadInputs& in, int64_t trips, Part part, std::vector<HeadDraw>& out) {
@@ -202,6 +188,23 @@ void vignette(const RingRecord& r, const HeadInputs& in, std::vector<HeadDraw>& 
     }
 }
 
+}
+
+// HDD func_00233770: the two packets of a rectangle record, nothing masked.
+HeadDraw headRectangle(const Rect& r, int32_t width, int32_t height, Part part) {
+    const int32_t ox = (0x800 - (width >> 1)) << 4, oy = (0x800 - (height >> 1)) << 4;
+    const uint64_t z = wide(r.z) << 32;
+    const uint32_t prim = static_cast<uint32_t>((wide(r.textured) << 4) | 0x100 | (wide(r.blend) << 6) | 6) & 0x7ff;
+    const uint64_t rgbaq = wide(r.colour[0]) | (0x3f800000ull << 32) | (wide(r.colour[2]) << 16) | (wide(r.colour[1]) << 8) | (wide(r.colour[3]) << 24);
+    const uint64_t uv0 = wide(r.u0) | (wide(r.v0) << 16), uv1 = wide(r.u1) | (wide(r.v1) << 16);
+    const uint64_t xyz0 = wide(r.x0 + ox) | (wide(r.y0 + oy) << 16) | z, xyz1 = wide(r.x1 + ox) | (wide(r.y1 + oy) << 16) | z;
+    HeadDraw d;
+    d.part = part;
+    setPrim(d, prim);
+    const Origin origin = originOf(width, height);
+    d.vertices.push_back(vertexOf(origin, rgbaq, uv0, Coordinates::Uv, xyz0));
+    d.vertices.push_back(vertexOf(origin, rgbaq, uv1, Coordinates::Uv, xyz1));
+    return d;
 }
 
 // HDD module_clock_226000 and module_clock_233338 (facts/clock-frame-rest.md sections 1 and 2).
