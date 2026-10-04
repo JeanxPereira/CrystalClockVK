@@ -187,15 +187,23 @@ bin\CrystalClock.exe --resources <folder>
 
 The first run decodes the files and writes a cache, `%LOCALAPPDATA%\CrystalClockVK\assets.bin` (`--assets`
 moves it); later runs read the cache while the files' hashes are unchanged. `--bios` extracts into
-`%LOCALAPPDATA%\CrystalClockVK\resources` unless `--resources` names a folder, and refuses to replace a file
-there that holds other bytes. With no flag the app uses that folder when it holds a `TEXIMAGE`, else the
-configured `CLOCK_DUMPS` folder, else the cache alone. The text needs `FNTOSD` and `hddosd.elf` (an HDD OSD
-install); a BIOS gives the textures only. The decryption tables and key words are read from your `hddosd.elf`.
+`%LOCALAPPDATA%\CrystalClockVK\resources` unless `--resources` names a folder; when a file there holds other
+bytes it writes nothing. With no flag the app uses that folder when it holds a `TEXIMAGE`, else the configured
+`CLOCK_DUMPS` folder. A folder that cannot be decoded falls back to the cache, and with no cache to the loose
+files (`--textures`, `--font`, `--program`, `--mesh` defaults), each with a warning; the cache is also decoded
+again when the decoder changes.
+
+The text needs `FNTOSD` and HDD OSD 1.10U's `hddosd.elf` (the original or the host copy; any other ELF is
+recognised and not read): a BIOS gives the textures only, and the clock then runs without text and with the
+committed `facts/data/rod-mesh.json`. Once files are decoded, a loose file is used only when its flag is given.
+At start-up the app prints where the textures, the mesh and the text come from. The decryption tables and key
+words are read from your `hddosd.elf`.
 
 The tests read your files by configurable absolute paths: `-DCLOCK_DUMPS=<folder>` (HDD OSD resource files),
 `-DCLOCK_BIOS=<rom.bin>` (ROM 2.30, `0230A` of 2008-02-20), `-DCLOCK_REFERENCES=<dir>` (`textures/`, the PNGs
 `References/scripts/extract_textures.mjs` writes from a GS dump, against which the decoded textures are compared,
-and `fixtures/`). A test whose file is missing is not registered.
+and `fixtures/`), `-DCLOCK_HDDOSD_ELF=<hddosd.elf>` (the original ELF, for the program check). A test whose file is
+missing is not registered; `AssetsRobustTest` (synthetic, truncated and corrupted inputs) needs no file and always runs.
 
 ## Running
 
