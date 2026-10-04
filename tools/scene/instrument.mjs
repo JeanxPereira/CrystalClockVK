@@ -128,7 +128,32 @@ export const PIECES = {
   body: int,
   cubeRamp: ramp,
   videoMode: int,
+  // The text (func_00226300, facts/text.md section 5): items 6 to 0xB are the date and time it formats, 0xD the
+  // time format, 0xE the date format (module_clock_get_config_item); the settings word holds the language
+  // (bits 4 to 8, config_get_osd_language) and summer time (bit 29, config_get_daylight_saving).
+  configItems: (b) => ints(b, 0, 20),
+  mechaconParam: (b) => [b.readUInt32LE(0), b.readUInt32LE(4)],
 };
+
+// ---- the text: the font library's context and the program's font state ----------------------
+
+const fontRows = (b, at) => [0, 16, 32, 48].map((r) => [0, 4, 8, 12].map((c) => fl(b, at + r + c)));
+/** The program's font state at state + 0x1000 (facts/text.md section 4), 0x160 bytes. */
+export const fontState = (b) => ({
+  lineHeight: b.readInt32LE(0), fixed: b.readInt32LE(4), percent: b.readInt32LE(8), pitch: b.readInt32LE(0xc), decoration: b.readInt32LE(0x1c),
+  clip: b.readInt32LE(0x20), tv: fl(b, 0x24), ratio: fl(b, 0x28), locate: [fl(b, 0x30), fl(b, 0x34)], colour: [0x40, 0x44, 0x48, 0x4c].map((o) => fl(b, o)),
+  blank: b.readInt32LE(0xa8), ascent: b.readInt32LE(0xb0), dirty: b.readInt32LE(0xb4), matrix: fontRows(b, 0x110),
+});
+/** The library's context (readContext of verify_text2.mjs): the cache list and its layout; addresses in the font data as offsets. */
+export const fontContext = (ctx) => {
+  const offset = (address) => (address === 0 ? 0 : address - ctx.data);
+  return {
+    list: ctx.list.map((e) => ({ code: e.code, loaded: e.loaded, cell: e.cell, block: offset(e.block) })),
+    format: ctx.format, cellW: ctx.cellW, cellH: ctx.cellH, cells: ctx.cells, width: ctx.width, height: ctx.height, logW: ctx.logW, logH: ctx.logH,
+    setUp: ctx.setUp, block: offset(ctx.block), memory: ctx.memory, texture: ctx.texture, table: ctx.table,
+  };
+};
+const textStrings = (strings) => strings.map((s) => ({ text: [...s.text], measuring: s.measuring, own: fontState(s.own), at: s.at }));
 
 export const decode = (m) => Object.fromEntries(Object.entries(PIECES).filter(([name]) => m.has(name)).map(([name, read]) => [name, read(m.at(name))]));
 
@@ -260,8 +285,8 @@ export function recorder(model) {
     const rods = [...record.rods.values()].map(({ whole, passes, ...rod }) => rod);
     return {
       index: frames.length,
-      input: record.input,
-      expect: { drawOrder: out.order, camera: record.camera, rods, orbs, head, after: decode(m) },
+      input: record.text ? { ...record.input, font: record.text.font } : record.input,
+      expect: { drawOrder: out.order, camera: record.camera, rods, orbs, head, after: decode(m), ...(record.text ? { text: record.text.strings } : {}) },
     };
   };
 
@@ -270,7 +295,13 @@ export function recorder(model) {
       const snapshot = args[0];
       if (!snapshot.memory || snapshot.view) return fn(...args);
       const m = snapshot.memory;
-      const record = { input: decode(m), camera: null, rods: new Map(), orbCentres: [], ringsAfterScene: null, inScene: false };
+      // The font context the frame starts from, and the strings of the date and time and of the button hint.
+      const held = snapshot.text;
+      // The program's font state is the one at the frame's first string: what it carries in (the matrix, the escapes'
+      // widths) under what the frame's Font_SetRatio, Font_SetColor and Font_SetLocate have just written.
+      const first = [...held?.strings.text ?? [], ...held?.strings.hint ?? []][0];
+      const text = held ? { font: { ...fontContext(held.state.ctx), state: first ? fontState(first.own) : null }, strings: { text: textStrings(held.strings.text), hint: textStrings(held.strings.hint) } } : null;
+      const record = { input: decode(m), text, camera: null, rods: new Map(), orbCentres: [], ringsAfterScene: null, inScene: false };
       current = record;
       let out;
       try { out = fn(...args); } finally { current = null; }
