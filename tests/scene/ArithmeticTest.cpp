@@ -135,6 +135,36 @@ int libm() {
         CHECK(sameBits(Ee::cosf(x), c.cosine, "cosf(" + scenetest::bitsText(c.x) + ")"));
         CHECK(close(NativeArithmetic::cosf(x), Ee::cosf(x), 1e-6f));
     }
+    const struct { uint32_t x, sine; } sines[] = {
+{0x00000000u, 0x00000000u},
+{0x3089705fu, 0x3089705fu},
+{0x3dcccccdu, 0x3dcc7576u},
+{0xbdcccccdu, 0xbdcc7576u},
+{0x3f000000u, 0x3ef57743u},
+{0x3f47ae14u, 0x3f340a1eu},
+{0x3f4ccccdu, 0x3f37a4a6u},
+{0x3f800000u, 0x3f576aa3u},
+{0x3fc90fdau, 0x3f7fffffu},
+{0x3fd1eb85u, 0x3f7f6321u},
+{0x40000000u, 0x3f68c7b7u},
+{0xc0200000u, 0xbf193578u},
+{0x40490fdbu, 0xb3bbbd2eu},
+{0x40800000u, 0xbf41bdceu},
+{0x40966666u, 0xbf7ffaf8u},
+{0x40b00000u, 0xbf349e4au},
+{0x40c90fdbu, 0x343bbd2eu},
+{0xc0c00000u, 0x3e8f0f8cu},
+{0x41200000u, 0xbf0b44f7u},
+{0x42f6e979u, 0xbf4dcee3u},
+{0xbfd20c4au, 0xbf7f5e91u},
+{0x3ea0d1b7u, 0x3e9e3016u},
+{0x402df854u, 0x3ed251efu},
+{0x42c80000u, 0xbf01a12du}};
+    for (const auto& c : sines) {
+        const float x = asFloat(c.x);
+        CHECK(sameBits(Ee::sinf(x), c.sine, "sinf(" + scenetest::bitsText(c.x) + ")"));
+        CHECK(close(NativeArithmetic::sinf(x), Ee::sinf(x), 1e-6f));
+    }
     std::vector<float> cosines;
     for (int i = 0; i <= 20000; ++i) {
         const float x = static_cast<float>(-201.0 + i * 0.0201);
