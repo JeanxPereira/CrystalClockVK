@@ -9,12 +9,13 @@ Design: `docs/superpowers/specs/2026-10-03-native-clock-design.md`. Plan: `docs/
 |---|---|
 | `scene/` | Plain C++, templated on `Arithmetic` (`EeArithmetic` exact in tests, `NativeArithmetic` in the app). State, camera, rods, orbs, frame head, text, `Clock<A>` assembling one `scene::Frame`. No Vulkan |
 | `render/` | `Device` (instance, device, queues, VMA, swapchain) and `NativeRenderer` (executes a `scene::Frame`: hardware blend, MSAA, any resolution) |
+| `assets/` | Plain C++, no Vulkan: the console's raw resource files decoded (ROMDIR, HDD container decrypt, Expand, `func_002344F8`), the BIOS extractor, the `assets.bin` cache |
 | `app/` | `CrystalClock`: SDL3 window, local time, 59.94 Hz logic, ImGui debug panel; starts from `resources/clock/start.json` |
 | `parity/` | The measuring rule: fixture loader, GS frame types, `GsParityRenderer`, `FromScene` (pure unit conversion), comparison |
 
 Support: `tools/ParityTool` (isolated and chained comparison against budgets; `--native` distance report), `tools/parity/` (fixture generation), `tools/scene/` (scene fixture exporter, start state), `tests/`.
 
-Data: Sony data (textures, font, ELF, dumps) is never committed; it is read from `References/` by configurable absolute paths (`CLOCK_REFERENCES`, `CLOCK_DUMPS`, `CLOCK_SCENE`). No junctions or symlinks into `References/` from worktrees.
+Data: Sony data (textures, font, ELF, dumps, cipher tables) is never committed. The app decodes the console's raw resource files at start-up (`src/assets/`: ROMDIR, HDD container decrypt with the tables read from the user's `hddosd.elf`, Expand, `func_002344F8`); `--bios` extracts them from a ROM, `--resources` names the folder, and a decoded cache `assets.bin` lives in `%LOCALAPPDATA%/CrystalClockVK` (`--assets`). Tests read the files by configurable absolute paths (`CLOCK_REFERENCES`, `CLOCK_DUMPS`, `CLOCK_BIOS`, `CLOCK_SCENE`). No junctions or symlinks into `References/` from worktrees.
 
 ## Build
 - CMake 3.30+, C++23, Windows only (AMD RDNA2 baseline, Vulkan 1.4, glslc from the Vulkan SDK).
