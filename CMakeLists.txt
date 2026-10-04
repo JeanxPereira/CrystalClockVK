@@ -337,3 +337,10 @@ target_link_libraries(ClockScreen PUBLIC ClockSceneNative SceneInputs)
 add_executable(ClockScreenTest tests/scene/opening/ClockScreenTest.cpp)
 target_link_libraries(ClockScreenTest PRIVATE ClockScreen)
 add_test(NAME ClockScreenTest COMMAND ClockScreenTest ${CMAKE_CURRENT_SOURCE_DIR}/resources/clock/start-boot.json ${CMAKE_CURRENT_SOURCE_DIR}/facts/data/rod-mesh.json)
+
+# opening: timeline
+add_executable(TimelineTest tests/scene/opening/TimelineTest.cpp src/scene/opening/Timeline.cpp)
+target_link_libraries(TimelineTest PRIVATE OpeningTestSupport)
+if(EXISTS ${OPENING_FULL_FIXTURE})
+    add_test(NAME TimelineTest COMMAND TimelineTest ${OPENING_FIXTURES})
+endif()
