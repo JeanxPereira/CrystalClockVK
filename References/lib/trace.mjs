@@ -1,11 +1,35 @@
 // Reading Watson captures: the trace reader, GIF decoding, and the probes of one verifier.
 //
 // WATSON_DIST points at another Watson server build (a worktree); by default the main checkout's.
+// A capture kept as `<name>.trace.jsonl.gz` reads like the plain file: the lib unpacks it beside the
+// build's own reader, so a build without gzip support reads it too.
+
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import zlib from 'node:zlib';
 
 const DIST = (process.env.WATSON_DIST ?? 'D:/CodingProjects/Watson/Server/dist').replace(/\\/g, '/').replace(/\/$/, '');
-const { readTrace } = await import(`file:///${DIST.replace(/^\//, '')}/gs/trace.js`);
+const gsTrace = await import(`file:///${DIST.replace(/^\//, '')}/gs/trace.js`);
+const readPlainTrace = gsTrace.readTrace;
 const { GifPath } = await import(`file:///${DIST.replace(/^\//, '')}/gs/gif.js`);
-export { readTrace, GifPath };
+export { GifPath };
+
+/** Whether a trace is on disk, plain or gzipped. */
+export const traceExists = (file) => fs.existsSync(file) || fs.existsSync(`${file}.gz`);
+
+/** `readTrace` of Watson's build, reading `<file>.gz` when only that exists. */
+export function readTrace(file) {
+  if (fs.existsSync(file) || !fs.existsSync(`${file}.gz`) || gsTrace.readTraceBytes) return readPlainTrace(file);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'trace-gz-'));
+  try {
+    const plain = path.join(dir, path.basename(file));
+    fs.writeFileSync(plain, zlib.gunzipSync(fs.readFileSync(`${file}.gz`)));
+    return readPlainTrace(plain);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
 
 /** A trace, refusing an incomplete one. */
 export function loadTrace(file) {
