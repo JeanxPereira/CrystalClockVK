@@ -5578,6 +5578,20 @@
   }
  },
  {
+  "verifier": "verify_sound_expand.mjs",
+  "capture": "hddosd-110U-sound-expand-image",
+  "env": {
+   "CLOCK_BUILD": "hdd"
+  }
+ },
+ {
+  "verifier": "verify_sound_expand.mjs",
+  "capture": "rom-0230A-sound-expand-image",
+  "env": {
+   "CLOCK_BUILD": "rom"
+  }
+ },
+ {
   "verifier": "verify_text_frame.mjs",
   "capture": "hddosd-110U-text2-adjust",
   "env": {
@@ -6386,6 +6400,41 @@
   "env": {
    "CLOCK_BUILD": "rom",
    "CLOCK_VIDEO": "pal"
+  }
+ },
+ {
+  "verifier": "verify_version.mjs",
+  "capture": "hddosd-110U-version-nav",
+  "env": {
+   "CLOCK_BUILD": "hdd"
+  }
+ },
+ {
+  "verifier": "verify_version.mjs",
+  "capture": "hddosd-110U-version-stim",
+  "env": {
+   "CLOCK_BUILD": "hdd"
+  }
+ },
+ {
+  "verifier": "verify_version.mjs",
+  "capture": "hddosd-110U-version-stim2",
+  "env": {
+   "CLOCK_BUILD": "hdd"
+  }
+ },
+ {
+  "verifier": "verify_version.mjs",
+  "capture": "hddosd-110U-version-stim3",
+  "env": {
+   "CLOCK_BUILD": "hdd"
+  }
+ },
+ {
+  "verifier": "verify_version.mjs",
+  "capture": "hddosd-110U-whole3-version",
+  "env": {
+   "CLOCK_BUILD": "hdd"
   }
  },
  {
