@@ -27,3 +27,6 @@ compile_commands.json
 
 # Screenshots and other run output
 out/
+
+# The decoded asset cache when no user data directory is found (src/assets/AssetPack.cpp)
+cache/
