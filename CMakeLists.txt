@@ -313,3 +313,12 @@ target_compile_definitions(CrystalClock PRIVATE
     CLOCK_MESH="${CMAKE_SOURCE_DIR}/facts/data/rod-mesh.json" CLOCK_SCREENSHOTS="${CMAKE_SOURCE_DIR}/out/screenshots"
     CLOCK_FONT="${CLOCK_DUMPS}/FNTOSD" CLOCK_PROGRAM="${CLOCK_DUMPS}/hddosd.elf")
 target_link_libraries(ParityTool PRIVATE ClockRender ClockSceneNative SceneInputs)
+
+target_sources(ClockScene PRIVATE src/scene/Cubes.cpp)
+target_sources(ClockSceneNative PRIVATE src/scene/Cubes.cpp)
+add_executable(CubesTest tests/scene/CubesTest.cpp)
+target_link_libraries(CubesTest PRIVATE StageCompare)
+if(MENU_SCENES)
+    add_test(NAME CubesTest COMMAND CubesTest ${CMAKE_SOURCE_DIR}/References/model/cube-mesh.json ${MENU_SCENES})
+    set_tests_properties(CubesTest PROPERTIES TIMEOUT 3600)
+endif()
