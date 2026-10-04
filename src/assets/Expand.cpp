@@ -6,9 +6,12 @@ namespace assets {
 
 // References/model/sound_data.mjs expand: a match copies (w >> (14 - m)) + 3 bytes from (w & (0x3FFF >> m)) + 1 back;
 // the loop stops once the output holds `size` bytes or more.
-Expanded expand(View src, size_t at) {
+Expanded expand(View src, size_t at, size_t maxSize) {
     Expanded r;
     r.size = le32(src, at);
+    // A match of two bytes gives at most 34 (mode 3: 31 + 3), so a stream cannot give more than 17 bytes per byte.
+    if (r.size > maxSize) throw std::runtime_error("Expand: the stream announces " + std::to_string(r.size) + " bytes, more than " + std::to_string(maxSize));
+    if (r.size > (src.size() - at - 4) * 17 + 64) throw std::runtime_error("Expand: the stream announces more bytes than it can hold");
     Bytes out(size_t(r.size) + 64);
     size_t pos = at + 4, produced = 0;
     uint32_t counter = 0, flags = 0, shift = 0, mask = 0;

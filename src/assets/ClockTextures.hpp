@@ -25,6 +25,8 @@ inline constexpr std::array<ClockTextureInfo, 10> kClockTextures{{
     {"TEXCSTSL", 64, 64, PixelForm::GreyAlpha, 0x2e80},  {"TEXCMARU", 64, 64, PixelForm::Rgba, 0x2ec0},
 }};
 
+// The bytes the form reads: width x height x (1, 2 or 4), or a quarter at 3 bytes for RgbQuarter.
+size_t rawTextureSize(PixelForm form, uint32_t width, uint32_t height);
 // R, G, B, A bytes in memory order, width x height.
 Bytes convertTexture(View raw, uint32_t width, uint32_t height, PixelForm form);
 

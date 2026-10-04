@@ -283,7 +283,7 @@ target_link_libraries(ParityTool PRIVATE ClockRender ClockSceneNative SceneInput
 
 # The clock's assets from the console's own resource files (src/assets: no Vulkan), and their decoded cache.
 add_library(ClockAssets STATIC src/assets/Bytes.cpp src/assets/Expand.cpp src/assets/Romdir.cpp src/assets/ElfImage.cpp src/assets/ImageCipher.cpp
-    src/assets/ClockTextures.cpp src/assets/Resources.cpp src/assets/AssetPack.cpp)
+    src/assets/ClockTextures.cpp src/assets/Resources.cpp src/assets/AssetPack.cpp src/assets/Program.cpp)
 target_include_directories(ClockAssets PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_sources(CrystalClock PRIVATE src/app/ClockAssets.cpp)
 target_link_libraries(CrystalClock PRIVATE ClockAssets)
@@ -296,6 +296,13 @@ target_link_libraries(AssetsTest PRIVATE ClockAssets ClockStb ClockSceneNative n
 add_executable(AssetFrameTest tests/render/AssetFrameTest.cpp src/app/ClockAssets.cpp)
 target_link_libraries(AssetFrameTest PRIVATE ClockAssets ClockRender ClockSceneNative SceneInputs)
 set(ASSETS_SCRATCH ${CMAKE_BINARY_DIR}/assets-scratch)
+add_test(NAME AssetsRobustTest COMMAND AssetsTest robust ${ASSETS_SCRATCH}/robust)
+# The original HDD OSD 1.10U ELF (SHA-1 e932f350...), beside the host copy in CLOCK_DUMPS, for the program check.
+get_filename_component(CLOCK_HDDOSD_ELF_DEFAULT ${CLOCK_REFERENCES}/../../hddosd-recomp-artifacts/hddosd.elf ABSOLUTE)
+set(CLOCK_HDDOSD_ELF ${CLOCK_HDDOSD_ELF_DEFAULT} CACHE FILEPATH "HDD OSD 1.10U's original hddosd.elf")
+if(EXISTS ${CLOCK_HDDOSD_ELF} AND EXISTS ${CLOCK_DUMPS}/TEXIMAGE AND EXISTS ${CLOCK_DUMPS}/hddosd.elf)
+    add_test(NAME AssetsProgramTest COMMAND AssetsTest program ${CLOCK_DUMPS} ${CLOCK_HDDOSD_ELF} ${ASSETS_SCRATCH}/program)
+endif()
 if(EXISTS ${CLOCK_DUMPS}/TEXIMAGE AND EXISTS ${CLOCK_DUMPS}/hddosd.elf AND EXISTS ${CLOCK_DUMPS}/FNTOSD AND EXISTS ${CLOCK_BIOS})
     if(CLOCK_NODE AND EXISTS ${CLOCK_TEXTURES}/tbp-2bc0-64x64.png)
         set(ASSETS_MODEL ${CMAKE_BINARY_DIR}/assets-model)

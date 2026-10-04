@@ -7,6 +7,7 @@ namespace assets {
 
 ElfImage::ElfImage(View elf) : m_elf(elf) {
     if (elf.size() < 52 || std::memcmp(elf.data(), "\x7f" "ELF", 4) != 0) throw std::runtime_error("not an ELF");
+    m_entry = le32(elf, 24);
     const uint32_t phoff = le32(elf, 28), size = le16(elf, 42), count = le16(elf, 44);
     for (uint32_t i = 0; i < count; ++i) {
         const size_t at = phoff + size_t(i) * size;

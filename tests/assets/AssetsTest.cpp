@@ -16,6 +16,7 @@
 #include "assets/ElfImage.hpp"
 #include "assets/Expand.hpp"
 #include "assets/ImageCipher.hpp"
+#include "assets/Program.hpp"
 #include "assets/Resources.hpp"
 #include "assets/Romdir.hpp"
 #include "scene/Rods.hpp"
@@ -44,6 +45,17 @@ int compareDirectory(const nlohmann::json& want, View image, int64_t start, cons
         CHECK(entries[i].name == w.at("name").get<std::string>());
         CHECK(entries[i].size == w.at("size").get<uint32_t>());
         CHECK(entries[i].offset == w.at("offset").get<uint32_t>());
+        if (w.contains("error")) {
+            bool threw = false;
+            try {
+                (void)assets::expand(image, entries[i].offset);
+            } catch (const std::runtime_error&) {
+                threw = true;
+            }
+            CHECK(threw);
+            ++expanded;
+            continue;
+        }
         if (!w.contains("expanded")) continue;
         const assets::Expanded e = assets::expand(image, entries[i].offset);
         CHECK(e.size == w.at("expanded").get<uint32_t>());
@@ -195,7 +207,298 @@ int pack(const fs::path& folder, const fs::path& biosPath, const fs::path& scrat
     return 0;
 }
 
+// The program check: the original HDD OSD 1.10U ELF and the host copy pass; a changed byte in what is read fails, and then
+// an encrypted TEXIMAGE is refused and a plain one gives the textures alone.
+int program(const fs::path& folder, const fs::path& original, const fs::path& scratch) {
+    fs::remove_all(scratch);
+    const Bytes host = assets::readFile(folder / assets::kProgramName), first = assets::readFile(original);
+    std::printf("program digest: host copy 0x%016llx, original 0x%016llx\n", static_cast<unsigned long long>(assets::programDigest(assets::ElfImage(host))),
+                static_cast<unsigned long long>(assets::programDigest(assets::ElfImage(first))));
+    CHECK(assets::isHddOsd110U(assets::ElfImage(host)));
+    CHECK(assets::isHddOsd110U(assets::ElfImage(first)));
+    const auto withProgram = [&](const fs::path& dir, const Bytes& elf, const fs::path& texImage) {
+        fs::create_directories(dir);
+        assets::writeFile(dir / "TEXIMAGE", assets::readFile(texImage));
+        assets::writeFile(dir / assets::kProgramName, elf);
+    };
+    withProgram(scratch / "original", first, folder / "TEXIMAGE");
+    const assets::AssetSet set = assets::decodeFolder(scratch / "original");
+    CHECK(set.find("PROGRAM") && set.find("RODMESH") && set.find("TEXCMARU"));
+    for (const uint32_t address : {0x0036d940u, 0x002ad970u, 0x002b4b90u, 0x002b2460u}) {
+        Bytes changed = host;
+        changed[address - 0x00200000 + 0x1000] ^= 0x01;
+        CHECK(!assets::isHddOsd110U(assets::ElfImage(changed)));
+        const fs::path bad = scratch / ("bad-" + std::to_string(address));
+        withProgram(bad, changed, folder / "TEXIMAGE");
+        bool refused = false;
+        try {
+            (void)assets::decodeFolder(bad);
+        } catch (const std::runtime_error& e) {
+            refused = std::string(e.what()).find("hddosd.elf is not HDD OSD 1.10U") != std::string::npos;
+        }
+        CHECK(refused);
+    }
+    std::printf("program check: the original and the host copy pass, four changed bytes fail\n");
+    return 0;
+}
+
+// --- Without the console's files: synthetic inputs built here, truncated and corrupted. ---
+
+// Literal-only Expand stream: {u32 size, then per 30 bytes a zero flag word and the bytes}.
+Bytes literalStream(View raw, uint32_t size) {
+    Bytes out{uint8_t(size), uint8_t(size >> 8), uint8_t(size >> 16), uint8_t(size >> 24)};
+    for (size_t i = 0; i < raw.size(); ++i) {
+        if (i % 30 == 0) out.insert(out.end(), 4, 0);
+        out.push_back(raw[i]);
+    }
+    return out;
+}
+
+void put32(Bytes& b, size_t at, uint32_t v) {
+    for (int i = 0; i < 4; ++i) b[at + size_t(i)] = uint8_t(v >> (8 * i));
+}
+
+// A ROMDIR image: `lead` bytes of RESET data (0, or the BIOS's boot code), the directory (RESET, ROMDIR, EXTINFO, the
+// members), then each member at a multiple of 16.
+Bytes romdirImage(const std::vector<std::pair<std::string, Bytes>>& members, uint32_t lead = 0) {
+    const uint32_t directory = uint32_t((members.size() + 4) * 16);
+    Bytes out(lead + directory, 0);
+    std::vector<std::pair<std::string, uint32_t>> entries{{"RESET", lead}, {"ROMDIR", directory}, {"EXTINFO", 0}};
+    for (const auto& [name, data] : members) entries.push_back({name, uint32_t(data.size())});
+    for (size_t i = 0; i < entries.size(); ++i) {
+        std::memcpy(out.data() + lead + 16 * i, entries[i].first.data(), entries[i].first.size());
+        put32(out, lead + 16 * i + 12, entries[i].second);
+    }
+    for (const auto& [name, data] : members) {
+        out.resize((out.size() + 15) / 16 * 16, 0);
+        out.insert(out.end(), data.begin(), data.end());
+    }
+    return out;
+}
+
+// The ten TEXC* members, each a literal stream of the bytes its form needs (a pattern).
+std::vector<std::pair<std::string, Bytes>> clockMembers(std::string_view wrongSize = {}) {
+    std::vector<std::pair<std::string, Bytes>> members;
+    for (const auto& info : assets::kClockTextures) {
+        Bytes raw(assets::rawTextureSize(info.form, info.width, info.height));
+        for (size_t i = 0; i < raw.size(); ++i) raw[i] = uint8_t(i * 7 + info.width);
+        if (info.name == wrongSize) raw.push_back(0);
+        members.push_back({std::string(info.name), literalStream(raw, uint32_t(raw.size()))});
+    }
+    return members;
+}
+
+// A minimal EE ELF: one loadable segment of `size` bytes at `address`.
+Bytes tinyElf(uint32_t address, uint32_t size) {
+    Bytes elf(0x100 + size, 0);
+    std::memcpy(elf.data(), "\x7f" "ELF\x01\x01\x01", 7);
+    put32(elf, 24, address);
+    put32(elf, 28, 52);
+    elf[42] = 32;
+    elf[44] = 1;
+    put32(elf, 52, 1);
+    put32(elf, 56, 0x100);
+    put32(elf, 60, address);
+    put32(elf, 68, size);
+    put32(elf, 72, size);
+    return elf;
+}
+
+// Runs `work` and reports a failure unless it returns or throws std::runtime_error.
+template <class F>
+bool survives(F&& work, size_t& threw) {
+    try {
+        work();
+    } catch (const std::runtime_error&) {
+        ++threw;
+    } catch (const std::exception& e) {
+        std::fprintf(stderr, "not a runtime_error: %s\n", e.what());
+        return false;
+    }
+    return true;
+}
+
+bool throwsRuntime(const std::function<void()>& work) {
+    try {
+        work();
+    } catch (const std::runtime_error&) {
+        return true;
+    }
+    return false;
+}
+
+uint32_t g_seed = 12345;
+uint32_t nextRandom() { return g_seed = g_seed * 1664525u + 1013904223u; }
+const Bytes kText{'h', 'e', 'l', 'l', 'o'};
+const Bytes kMatch{10, 0, 0, 0, 0x40, 0, 0, 0, 'a', 0xc0, 0x00, 'b', 'c', 'd'};
+
+int robustExpand() {
+
+    // Expand: literals, one match, a match before the output (the model throws there too), sizes out of bounds.
+    const Bytes& text = kText;
+    const Bytes& match = kMatch;
+    CHECK(assets::expand(literalStream(text, 5)).out == text);
+    CHECK((assets::expand(match).out == Bytes{'a', 'a', 'a', 'a', 'a', 'a', 'a', 'b', 'c', 'd'}));
+    const Bytes before{4, 0, 0, 0, 0x80, 0, 0, 0, 0x00, 0x00};
+    CHECK(throwsRuntime([&] { (void)assets::expand(before); }));
+    CHECK(throwsRuntime([&] { (void)assets::expand(Bytes{0xff, 0xff, 0xff, 0x7f, 0, 0, 0, 0, 1}); }));
+    CHECK(throwsRuntime([&] { (void)assets::expand(literalStream(text, 5), 0, 4); }));
+
+    return 0;
+}
+
+int robustRomdir() {
+    const Bytes& text = kText;
+    const Bytes& match = kMatch;
+    // ROMDIR: a tiny directory, every prefix and byte flips.
+    const Bytes tiny = romdirImage({{"MEMBER", literalStream(text, 5)}});
+    CHECK(assets::romdirStart(tiny) == 0);
+    CHECK(assets::romdirEntries(tiny, 0).size() == 4);
+    size_t threw = 0, runs = 0;
+    for (size_t n = 0; n <= tiny.size(); ++n, ++runs) {
+        const View prefix = View(tiny).first(n);
+        CHECK(survives([&] {
+            const int64_t start = assets::romdirStart(prefix);
+            if (start < 0) return;
+            for (const auto& e : assets::romdirEntries(prefix, size_t(start)))
+                if (e.name == "MEMBER") (void)assets::expand(assets::romdirMember(prefix, assets::romdirEntries(prefix, size_t(start)), e.name));
+        }, threw));
+    }
+    for (size_t n = 0; n <= match.size(); ++n, ++runs) CHECK(survives([&] { (void)assets::expand(View(match).first(n)); }, threw));
+    for (int k = 0; k < 4000; ++k, ++runs) {
+        Bytes flipped = (k & 1) ? tiny : match;
+        flipped[nextRandom() % flipped.size()] ^= uint8_t(1 + nextRandom() % 255);
+        CHECK(survives([&] {
+            const int64_t start = assets::romdirStart(flipped);
+            if (start >= 0) (void)assets::romdirEntries(flipped, size_t(start));
+            (void)assets::expand(flipped);
+        }, threw));
+    }
+    std::printf("robust: ROMDIR and Expand, %zu runs on prefixes and flips, %zu refused, none crashed\n", runs, threw);
+
+    return 0;
+}
+
+int robustDecode(const fs::path& scratch) {
+    // decodeFolder on a synthetic TEXIMAGE: the textures come out; wrong sizes, prefixes and flips are refused cleanly.
+    const fs::path folder = scratch / "folder";
+    const Bytes texImage = romdirImage(clockMembers());
+    assets::writeFile(folder / "TEXIMAGE", texImage);
+    const assets::AssetSet synthetic = assets::decodeFolder(folder);
+    CHECK(synthetic.assets.size() == 10 && synthetic.find("TEXCKABE")->data.size() == 128 * 128 * 4);
+    assets::writeFile(scratch / "wrong" / "TEXIMAGE", romdirImage(clockMembers("TEXCNAVI")));
+    CHECK(throwsRuntime([&] { (void)assets::decodeFolder(scratch / "wrong"); }));
+    // A program that is not HDD OSD 1.10U beside a plain TEXIMAGE: the textures alone.
+    assets::writeFile(folder / assets::kProgramName, tinyElf(0x00200000, 0x200000));
+    const assets::AssetSet foreign = assets::decodeFolder(folder);
+    CHECK(foreign.find("TEXCFLOW") && !foreign.find("PROGRAM") && !foreign.find("RODMESH"));
+    fs::remove(folder / assets::kProgramName);
+    size_t threw = 0, runs = 0;
+    const fs::path cut = scratch / "cut";
+    for (size_t n = 0; n <= texImage.size(); n += (n < 2048 ? 1 : 131), ++runs) {
+        assets::writeFile(cut / "TEXIMAGE", View(texImage).first(n));
+        CHECK(survives([&] { (void)assets::decodeFolder(cut); }, threw));
+    }
+    for (int k = 0; k < 300; ++k, ++runs) {
+        Bytes flipped = texImage;
+        flipped[nextRandom() % 2048] ^= uint8_t(1 + nextRandom() % 255);
+        assets::writeFile(cut / "TEXIMAGE", flipped);
+        CHECK(survives([&] { (void)assets::decodeFolder(cut); }, threw));
+    }
+    std::printf("robust: decodeFolder, %zu runs on prefixes and flips, %zu refused, none crashed\n", runs, threw);
+
+    return 0;
+}
+
+int robustUnpack() {
+    // unpack: a small pack, every prefix and flips.
+    assets::AssetSet small;
+    small.sources = {{"TEXIMAGE", "x/TEXIMAGE", 3, 99}};
+    small.assets = {{"A", assets::AssetKind::TextureRgba32, 1, 1, 0, {1, 2, 3, 4}}, {"B", assets::AssetKind::Font, 0, 0, 0, {5, 6}}};
+    small.decoder = assets::decoderFingerprint();
+    const Bytes packed = assets::packBytes(small);
+    CHECK(assets::unpack(packed) == small);
+    size_t threw = 0, runs = 0;
+    for (size_t n = 0; n <= packed.size(); ++n, ++runs) CHECK(survives([&] { threw += !assets::unpack(View(packed).first(n)).has_value(); }, threw));
+    for (int k = 0; k < 4000; ++k, ++runs) {
+        Bytes flipped = packed;
+        flipped[nextRandom() % flipped.size()] ^= uint8_t(1 + nextRandom() % 255);
+        CHECK(survives([&] { (void)assets::unpack(flipped); }, threw));
+    }
+    std::printf("robust: unpack, %zu runs, %zu refused, none crashed\n", runs, threw);
+
+    return 0;
+}
+
+int robustCache(const fs::path& scratch) {
+    const fs::path folder = scratch / "folder";
+    const Bytes texImage = romdirImage(clockMembers());
+    assets::writeFile(folder / "TEXIMAGE", texImage);
+    // The cache: kept while the sources and the decoder are unchanged; a pack of another decoder is decoded again; a
+    // TEXIMAGE that no longer decodes falls back to the cache with a warning, and without a cache to nothing.
+    const fs::path pack = scratch / "cache" / "assets.bin";
+    CHECK(!assets::loadAssets(folder, pack)->fromPack);
+    CHECK(assets::loadAssets(folder, pack)->fromPack);
+    Bytes other = assets::readFile(pack);
+    other[24] ^= 0xff;
+    assets::writeFile(pack, other);
+    CHECK(!assets::loadAssets(folder, pack)->fromPack);
+    assets::writeFile(folder / "TEXIMAGE", View(texImage).first(100));
+    const auto fallback = assets::loadAssets(folder, pack);
+    CHECK(fallback && fallback->fromPack && !fallback->warning.empty());
+    std::printf("robust: cache fallback: %s\n", fallback->warning.c_str());
+    CHECK(!assets::loadAssets(folder, scratch / "none.bin").has_value());
+
+    return 0;
+}
+
+int robustExtract(const fs::path& scratch) {
+    // extractBios: every target is checked before any is written.
+    const Bytes bios = romdirImage({{"SNDIMAGE", Bytes(40, 1)}, {"TEXIMAGE", Bytes(24, 2)}}, 0x40);
+    assets::writeFile(scratch / "bios.bin", bios);
+    assets::writeFile(scratch / "target" / "TEXIMAGE", Bytes{9});
+    CHECK(throwsRuntime([&] { (void)assets::extractBios(scratch / "bios.bin", scratch / "target"); }));
+    CHECK(!fs::exists(scratch / "target" / "SNDIMAGE"));
+    CHECK(assets::extractBios(scratch / "bios.bin", scratch / "clean").size() == 2);
+    CHECK(assets::readFile(scratch / "clean" / "SNDIMAGE") == Bytes(40, 1));
+    std::printf("robust: extractBios refuses before writing anything\n");
+    return 0;
+}
+
+// Each part runs whatever the others give, so every failure shows.
+int robust(const fs::path& scratch) {
+    fs::remove_all(scratch);
+    int failed = 0;
+    failed += robustExpand();
+    failed += robustRomdir();
+    failed += robustDecode(scratch / "decode");
+    failed += robustUnpack();
+    failed += robustCache(scratch / "cache");
+    failed += robustExtract(scratch / "extract");
+    std::printf("robust: %d of 6 parts failed\n", failed);
+    return failed == 0 ? 0 : 1;
+}
+
 }  // namespace
+
+#if defined(_MSC_VER) && defined(_DEBUG)
+#include <crtdbg.h>
+#include <cstdlib>
+// A debug-iterator or bounds failure ends the test with a message instead of a dialog.
+void invalidParameter(const wchar_t*, const wchar_t*, const wchar_t*, unsigned, uintptr_t) {
+    std::fprintf(stderr, "invalid parameter (out-of-bounds access)\n");
+    std::_Exit(3);
+}
+const bool kQuietFailures = [] {
+    _CrtSetReportMode(_CRT_ASSERT, _CRTDBG_MODE_FILE);
+    _CrtSetReportFile(_CRT_ASSERT, _CRTDBG_FILE_STDERR);
+    _CrtSetReportMode(_CRT_ERROR, _CRTDBG_MODE_FILE);
+    _CrtSetReportFile(_CRT_ERROR, _CRTDBG_FILE_STDERR);
+    _set_invalid_parameter_handler(invalidParameter);
+    _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
+    return true;
+}();
+#endif
 
 int main(int argc, char** argv) {
     try {
@@ -203,6 +506,8 @@ int main(int argc, char** argv) {
         if (mode == "ports" && argc == 5) return ports(argv[2], argv[3], argv[4]);
         if (mode == "textures" && argc == 8) return textures(argv[2], argv[3], argv[4], argv[5], argv[6], argv[7]);
         if (mode == "pack" && argc == 5) return pack(argv[2], argv[3], argv[4]);
+        if (mode == "program" && argc == 5) return program(argv[2], argv[3], argv[4]);
+        if (mode == "robust" && argc == 3) return robust(argv[2]);
         std::fprintf(stderr, "usage: AssetsTest ports <model dir> <resource folder> <bios.bin>\n"
                              "       AssetsTest textures <model dir> <resource folder> <bios.bin> <png dir> <rod-mesh.json> <scratch>\n"
                              "       AssetsTest pack <resource folder> <bios.bin> <scratch>\n");

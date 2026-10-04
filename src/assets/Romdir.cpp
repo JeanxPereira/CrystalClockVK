@@ -13,7 +13,9 @@ int64_t romdirStart(View image, size_t limit) {
 std::vector<RomdirEntry> romdirEntries(View image, size_t start) {
     std::vector<RomdirEntry> entries;
     uint32_t offset = 0;
-    for (size_t at = start; le32(image, at) != 0; at += 16) {
+    for (size_t at = start;; at += 16) {
+        if (at + 16 > image.size()) throw std::runtime_error("ROMDIR: truncated");
+        if (le32(image, at) == 0) break;
         size_t end = at;
         while (end < at + 10 && image[end] != 0) ++end;
         const uint32_t size = le32(image, at + 12);

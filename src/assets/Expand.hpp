@@ -11,6 +11,7 @@ struct Expanded {
     size_t produced = 0;
     size_t consumed = 0;
 };
-Expanded expand(View source, size_t at = 0);
+// Refuses a stream that announces more than `maxSize` bytes, or more than its remaining bytes could give.
+Expanded expand(View source, size_t at = 0, size_t maxSize = size_t(1) << 24);
 
 }

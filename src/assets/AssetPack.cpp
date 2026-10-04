@@ -13,7 +13,7 @@ namespace assets {
 namespace {
 
 constexpr char kMagic[8] = {'C', 'C', 'V', 'K', 'P', 'A', 'C', 'K'};
-constexpr size_t kHeader = 24, kEntry = 64, kName = 16;
+constexpr size_t kHeader = 32, kEntry = 64, kName = 16;
 
 void put32(Bytes& out, uint32_t v) {
     for (int i = 0; i < 4; ++i) out.push_back(uint8_t(v >> (8 * i)));
@@ -38,6 +38,7 @@ Bytes packBytes(const AssetSet& set) {
     put32(out, uint32_t(set.sources.size()));
     put32(out, uint32_t(set.assets.size()));
     put32(out, 0);
+    put64(out, set.decoder);
     for (const SourceFile& s : set.sources) {
         put64(out, s.size);
         put64(out, s.hash);
@@ -77,6 +78,7 @@ std::optional<AssetSet> unpack(View bytes) {
         if (bytes.size() < kHeader || std::memcmp(bytes.data(), kMagic, 8) != 0 || le32(bytes, 8) != kPackVersion) return std::nullopt;
         const uint32_t sources = le32(bytes, 12), entries = le32(bytes, 16);
         AssetSet set;
+        set.decoder = le64(bytes, 24);
         size_t at = kHeader;
         for (uint32_t i = 0; i < sources; ++i) {
             SourceFile s;
@@ -124,17 +126,30 @@ std::optional<LoadedAssets> loadAssets(const fs::path& folder, const fs::path& p
     const auto done = [&](AssetSet set, bool fromPack) {
         return LoadedAssets{std::move(set), fromPack, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - begin).count()};
     };
-    const std::vector<SourceFile> sources = folder.empty() ? std::vector<SourceFile>{} : folderSources(folder);
     std::optional<AssetSet> cached = readPack(pack);
-    if (sources.empty()) return cached ? std::optional(done(std::move(*cached), true)) : std::nullopt;
-    if (cached && sameSources(cached->sources, sources)) return done(std::move(*cached), true);
-    AssetSet set = decodeFolder(folder);
+    if (cached && cached->decoder != decoderFingerprint()) cached.reset();
+    // A folder that cannot be read or decoded falls back to the cache, then to nothing (the caller's loose files).
     try {
-        writePack(pack, set);
-    } catch (const std::exception& e) {
-        std::fprintf(stderr, "assets: the cache %s was not written: %s\n", pack.string().c_str(), e.what());
+        const std::vector<SourceFile> sources = folder.empty() ? std::vector<SourceFile>{} : folderSources(folder);
+        if (sources.empty()) return cached ? std::optional(done(std::move(*cached), true)) : std::nullopt;
+        if (cached && sameSources(cached->sources, sources)) return done(std::move(*cached), true);
+        AssetSet set = decodeFolder(folder);
+        try {
+            writePack(pack, set);
+        } catch (const std::exception& e) {
+            std::fprintf(stderr, "assets: the cache %s was not written: %s\n", pack.string().c_str(), e.what());
+        }
+        return done(std::move(set), false);
+    } catch (const std::runtime_error& e) {
+        if (!cached) {
+            std::fprintf(stderr, "assets: %s: decode failed (%s), and no cache\n", folder.string().c_str(), e.what());
+            return std::nullopt;
+        }
+        LoadedAssets loaded = done(std::move(*cached), true);
+        loaded.warning = folder.string() + ": decode failed (" + e.what() + "), the cache " + pack.string() + " is used";
+        std::fprintf(stderr, "assets: %s\n", loaded.warning.c_str());
+        return loaded;
     }
-    return done(std::move(set), false);
 }
 
 fs::path userDataDirectory() {

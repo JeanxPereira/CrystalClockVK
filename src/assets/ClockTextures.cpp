@@ -6,9 +6,14 @@ namespace assets {
 
 // facts/clock-textures.md, func_002344F8 (HDD OSD 1.10U): grey to (g, g, g, 127); alpha to (255, 255, 255, a); grey and
 // alpha to (g, g, g, a); RGBA as stored; the 3-byte quarter of TEXCKABE tiled 2 x 2 with alpha 127.
+size_t rawTextureSize(PixelForm form, uint32_t width, uint32_t height) {
+    const size_t pixels = size_t(width) * height;
+    return form == PixelForm::RgbQuarter ? pixels / 4 * 3 : form == PixelForm::GreyAlpha ? pixels * 2 : form == PixelForm::Rgba ? pixels * 4 : pixels;
+}
+
 Bytes convertTexture(View raw, uint32_t width, uint32_t height, PixelForm form) {
     const size_t pixels = size_t(width) * height;
-    const size_t need = form == PixelForm::RgbQuarter ? pixels / 4 * 3 : form == PixelForm::GreyAlpha ? pixels * 2 : form == PixelForm::Rgba ? pixels * 4 : pixels;
+    const size_t need = rawTextureSize(form, width, height);
     if (raw.size() < need) throw std::runtime_error("texture: fewer bytes than its form needs");
     Bytes out(pixels * 4);
     const auto put = [&](size_t x, size_t y, uint8_t r, uint8_t g, uint8_t b, uint8_t a) {

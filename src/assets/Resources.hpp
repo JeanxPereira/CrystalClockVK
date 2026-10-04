@@ -35,6 +35,7 @@ struct Asset {
 struct AssetSet {
     std::vector<SourceFile> sources;
     std::vector<Asset> assets;
+    uint64_t decoder = 0;
     const Asset* find(std::string_view name) const;
     const SourceFile& sourceOf(const Asset& asset) const { return sources.at(asset.source); }
     bool operator==(const AssetSet&) const = default;
