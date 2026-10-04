@@ -44,6 +44,40 @@ if (process.env.CLOCK_BUILD !== 'hdd') throw new Error('the scene fixture is HDD
 
 const { install } = await import('./instrument.mjs');
 
+/**
+ * What the alpha rules of the date, time and button hint read (verify_text2.mjs dateAlpha and panelsOf, HDD OSD
+ * 1.10U), from the text probes at func_00230008 and func_002269E0 that precede the frame's date and hint strings:
+ * ramps as { length, counter, changed, state }, words as integers. The menus' code writes them; the clock screen
+ * only reads them. Written into each frame's input as `textRamps`.
+ */
+async function addTextRamps(traceFile, frames) {
+  const { readTraceFor } = await import('../../References/lib/trace.mjs');
+  const { PROBES } = await import('../../References/scripts/verify_text2.mjs');
+  const trace = readTraceFor(traceFile, PROBES);
+  const probes = trace.probes.filter((probe) => !probe.preroll);
+  const before = (pc, at) => probes.filter((probe) => probe.pc === pc && probe.at <= at).at(-1);
+  const reader = (probe) => {
+    const word = (address) => {
+      for (const m of probe.mem) if (m.bytes && address >= m.address && address + 4 <= m.address + m.bytes.length) return m.bytes.readInt32LE(address - m.address);
+      throw new Error(`0x${(address >>> 0).toString(16)} was not probed at 0x${probe.pc.toString(16)}`);
+    };
+    return { word, ramp: (address) => ({ length: word(address), counter: word(address + 4), changed: word(address + 8), state: word(address + 12) }) };
+  };
+  for (const frame of frames) {
+    const text = frame.expect.text;
+    if (!text?.text.length || !text.hint.length) continue;
+    const date = reader(before(0x00230008, text.text[0].at)), panels = reader(before(0x002269e0, text.hint[0].at));
+    const index = panels.word(0x002b2ff8);
+    frame.input.textRamps = {
+      config: date.ramp(0x002b2e04), dialogClosing: date.ramp(0x002b46b8), firstRun: date.ramp(0x002b46d0), lead: date.word(0x003702e0),
+      body: date.word(0x003702cc), tail: date.word(0x003702d0), weight: date.word(0x00370ab8),
+      mainMenu: panels.ramp(0x002b2e78), version: panels.ramp(0x002b3000), menu: panels.ramp(0x002b5780), dialog: panels.ramp(panels.word(0x003701c0) + 0x1c),
+      panel7: panels.word(0x002b2e00), panel8On: panels.word(0x00370140), panel8: panels.word(0x0037013c), adjustRow: panels.word(panels.word(0x002b2fec) + index * 16 + 8),
+      panelConfig: panels.ramp(0x002b2e04), panelLead: panels.word(0x003702e0), panelBody: panels.word(0x003702cc), panelTail: panels.word(0x003702d0), panelWeight: panels.word(0x00370ab8),
+    };
+  }
+}
+
 /** The frames of `traceFile` as the fixture's JSON text. */
 export async function exportScene(traceFile) {
   const recording = await install();
@@ -54,6 +88,7 @@ export async function exportScene(traceFile) {
   if (!result.whole || result.frames === 0 || unequal.length || drift.length || result.matrices[0] !== result.matrices[1] || result.sync[0] !== result.sync[1])
     throw new Error(`the model does not reproduce ${traceFile}: ${[...unequal, ...drift, ...result.problems].join('; ')}`);
   if (recording.frames.length !== result.frames) throw new Error(`${recording.frames.length} frames recorded, ${result.frames} compared`);
+  await addTextRamps(traceFile, recording.frames);
   const capture = path.basename(traceFile).replace(/\.trace\.jsonl$/, '');
   return { capture, frames: recording.frames.length, text: `${JSON.stringify({ capture, build: 'hdd', frames: recording.frames })}\n` };
 }

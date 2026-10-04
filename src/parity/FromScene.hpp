@@ -26,5 +26,7 @@ GsFrameLayout clockLayout(int32_t width, int32_t height, int32_t displayIndex);
 // The scene frame in the GS units of the parity rule: the field's half line added where the OSD draws
 // with it, the targets and textures named by their GS addresses, the state as GS registers express it.
 GsFrame fromScene(const scene::Frame& frame, const GsFrameLayout& layout);
+// The GS name of the glyph cache texture (scene::kGlyphTexture) of a frame.
+std::string glyphTextureId(const scene::GlyphCache& glyphs);
 
 }

@@ -1,11 +1,14 @@
 #pragma once
 #include <cstdint>
+#include <memory>
+#include <optional>
 
 #include "scene/ClockState.hpp"
 #include "scene/Frame.hpp"
 #include "scene/FrameHead.hpp"
 #include "scene/Orbs.hpp"
 #include "scene/Rods.hpp"
+#include "scene/Text.hpp"
 
 namespace scene {
 
@@ -28,19 +31,25 @@ struct ClockInputs {
     float fractionEasing = 0;
     Colour orbColour{};
     int32_t width = 640, height = 224;
+    // The text (facts/text.md): the font file FNTOSD and the program's ELF, and the font state carried. Without the
+    // two files the frame has no text.
+    std::shared_ptr<const Font> font;
+    std::shared_ptr<const ProgramImage> program;
+    TextInputs text;
 };
 
 // What comes from outside the clock each frame: the time keeper, the field flag, the display buffer
-// drawn to, and configuration item 0.
+// drawn to, configuration item 0, and configuration items 6 to 0xB (the date and time the text shows).
 struct FrameInputs {
     ClockTime time;
     int32_t field = 0;
     int32_t displayIndex = 0;
     int32_t item0 = 0;
+    ClockItems items;
 };
 
 // facts/clock-frame.md "Order of a frame", the clock screen's parts: camera; head; rods, orbs and the
-// two extra passes; overlay; trips after the rods; bars; (text); column; then the state step.
+// two extra passes; overlay; trips after the rods; bars; text (date and time, button hint); column; then the state step.
 // The menus, the cubes and the menu ramp step are not part of the clock screen.
 template <class A>
 class Clock {
@@ -52,6 +61,9 @@ public:
     const HeadState& head() const { return m_head.state(); }
     const OrbState& orbs() const { return m_orbs; }
     const RodRecord& rodTemplate() const { return m_rods.rodTemplate(); }
+    const Text<A>* text() const { return m_text ? &*m_text : nullptr; }
+    // The strings of the last frame, as handed to the font code.
+    const std::vector<StringRun>& strings() const { return m_strings; }
 
 private:
     ClockState m_state;
@@ -63,6 +75,8 @@ private:
     float m_minuteFactor, m_fractionEasing;
     Colour m_orbColour;
     int32_t m_width, m_height;
+    std::optional<Text<A>> m_text;
+    std::vector<StringRun> m_strings;
 };
 
 extern template class Clock<EeArithmetic>;

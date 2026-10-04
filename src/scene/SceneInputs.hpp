@@ -18,6 +18,8 @@ Mat4 hexMat4(const nlohmann::json& hex);
 // A frame's `input` of scene.json (tools/scene/export_fixture.mjs) as the clock's state, and its external inputs.
 ClockInputs clockInputs(const nlohmann::json& input, const RodMesh& mesh);
 FrameInputs frameInputs(const nlohmann::json& input);
+// The program's font state as instrument.mjs fontState writes it.
+FontState fontState(const nlohmann::json& state);
 // The input a clock starts from: frames[0].input of a scene.json, parsed alone (the whole file is tens of
 // megabytes), or a start file that holds one input (resources/clock/start.json).
 nlohmann::json firstInput(const std::string& path);

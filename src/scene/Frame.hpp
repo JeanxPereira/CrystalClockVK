@@ -64,14 +64,26 @@ struct Pass {
     std::vector<Vertex> vertices;
 };
 
-// `displayIndex`: which of the two display buffers is drawn; `textAt`: the date, time and button hint go before
-// this pass (the scene draws no text).
+// facts/text.md section 2: the font library's glyph cache, sampled as texture kGlyphTexture. Cells of cellWidth x
+// cellHeight, row by row across `width` texels, in a texture of 2^logWidth x 2^logHeight at GS word `address`;
+// cells[n] is the code whose picture cell n holds (0 for none).
+constexpr int32_t kGlyphTexture = 10;
+struct GlyphCache {
+    uint32_t address = 0;
+    int32_t cellWidth = 0, cellHeight = 0, width = 0, logWidth = 0, logHeight = 0;
+    std::vector<int32_t> cells;
+    bool operator==(const GlyphCache&) const = default;
+};
+
+// `displayIndex`: which of the two display buffers is drawn; `textAt`: the first pass of the date, time and button
+// hint (the passes before it are the bars); `glyphs`: the glyph cache the text's passes sample.
 struct Frame {
     int32_t width = 640, height = 224;
     int32_t field = 0;
     int32_t displayIndex = 0;
     std::vector<Pass> passes;
     size_t textAt = 0;
+    GlyphCache glyphs;
 };
 
 }

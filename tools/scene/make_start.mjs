@@ -15,7 +15,7 @@ const KEYS = [
   'menuRamp', 'tail', 'counter', 'proportions', 'position', 'direction', 'up', 'rotation', 'cameraOffset', 'zmax',
   'cameraFactor', 'greyRamp', 'greys', 'ringRecord', 'tint', 'blurRecord', 'copyRecord', 'fadeRecord', 'bars',
   'column', 'template', 'rings', 'spriteFade', 'clearColour', 'display', 'tubeConstants', 'orbConstants',
-  'orbColour', 'screen', 'index', 'item0',
+  'orbColour', 'screen', 'index', 'item0', 'font', 'textRamps', 'configItems', 'mechaconParam', 'videoMode',
 ];
 
 const input = process.argv[2] ?? 'D:/CodingProjects/CrystalClockVK/References/fixtures/hddosd-110U-whole3-clock/scene.json';
