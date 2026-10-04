@@ -3,7 +3,6 @@
 // source: size in source texels (scene units), image size in pixels. region: min u, max u, min v, max v.
 // mode: source (0 none, 1 texture, 2 target), projective, clamp to region, colour only.
 // shade: edge smoothing (alpha 0x80), premultiplied (Cs * As leaves the shader), texel alpha scale (255 texture, 128 target),
-// per-pixel alpha (0 off, 1 draw the pixels of alpha 1.0 or more, 2 those below).
 // extent: the size of a target read as a texture, in texels (projective coordinates scale to its picture).
 layout(push_constant) uniform PassState {
     vec4 scene;
@@ -30,7 +29,7 @@ void main() {
     float alpha = inColour.a;
     if (state.mode.x != 0) {
         vec2 uv = state.mode.y == 1 ? coordinates.xy / coordinates.z : coordinates.xy / state.source.xy;
-        if (state.mode.x == 2 && state.mode.y == 1) uv *= state.extent.xy / state.source.xy;
+        if (state.mode.x == 2 && state.mode.y == 1 && state.extent.x > 0.0) uv *= state.extent.xy / state.source.xy;
         if (state.mode.z == 1) {
             vec2 low = state.region.xz / state.source.xy + 0.5 / state.source.zw;
             vec2 high = (state.region.yw + 1.0) / state.source.xy - 0.5 / state.source.zw;
@@ -46,8 +45,6 @@ void main() {
     }
     if (state.shade.x == 1) alpha = 128.0;
     float a = alpha / 128.0;
-    if (state.shade.w == 1 && a < 1.0) discard;
-    if (state.shade.w == 2 && a >= 1.0) discard;
     vec3 c = colour / 255.0;
     outColour = vec4(state.shade.y == 1 ? c * a : c, a);
 }

@@ -19,6 +19,7 @@ using scene::Pass;
 using scene::TargetName;
 
 constexpr uint32_t kWidth = 640, kHeight = 448;
+uint32_t g_samples = 1;
 
 Pass sprite(TargetName target, BlendOp blend, uint8_t r, uint8_t g, uint8_t b, uint8_t a, float x0 = 0, float y0 = 0, float x1 = 640, float y1 = 224) {
     Pass p;
@@ -55,7 +56,7 @@ bool near(const std::array<int, 4>& got, double r, double g, double b, const cha
 
 // Cs x Ad + Cd: the destination's alpha is the target's stored alpha over 128.
 int addDestinationAlpha(render::NativeRenderer& renderer) {
-    renderer.configure({kWidth, kHeight, 1});
+    renderer.configure({kWidth, kHeight, g_samples});
     renderer.draw(frameOf({sprite(TargetName::Display, BlendOp::Opaque, 100, 100, 100, 0x40), sprite(TargetName::Display, BlendOp::AddDestinationAlpha, 60, 200, 10, 0x80)}));
     CHECK(near(pixel(renderer.readTarget(TargetName::Display), 320, 224), 100 + 60 * 0.5, 100 + 200 * 0.5, 100 + 10 * 0.5, "Ad 0.5"));
     renderer.draw(frameOf({sprite(TargetName::Display, BlendOp::Opaque, 100, 100, 100, 0x80), sprite(TargetName::Display, BlendOp::AddDestinationAlpha, 60, 100, 10, 0x20)}));
@@ -67,7 +68,7 @@ int addDestinationAlpha(render::NativeRenderer& renderer) {
 
 // Cd - Cs x constant / 128.
 int subtractFixed(render::NativeRenderer& renderer) {
-    renderer.configure({kWidth, kHeight, 1});
+    renderer.configure({kWidth, kHeight, g_samples});
     Pass full = sprite(TargetName::Display, BlendOp::SubtractFixed, 60, 20, 90, 0x00);
     full.material.blendConstant = 0x80;
     renderer.draw(frameOf({sprite(TargetName::Display, BlendOp::Opaque, 128, 128, 128, 0x80), full}));
@@ -79,29 +80,37 @@ int subtractFixed(render::NativeRenderer& renderer) {
     return 0;
 }
 
-// Per-pixel alpha: a source alpha below 1.0 replaces, 1.0 blends.
+// Per-pixel alpha only appears with blending off in the opening: it draws as a plain pass, and with blending on the
+// frame is refused.
 int perPixelAlpha(render::NativeRenderer& renderer) {
-    renderer.configure({kWidth, kHeight, 1});
-    for (BlendOp op : {BlendOp::Add, BlendOp::AlphaOver}) {
-        Pass below = sprite(TargetName::Display, op, 60, 200, 10, 127, 0, 0, 320, 224);
-        Pass above = sprite(TargetName::Display, op, 60, 200, 10, 0x80, 320, 0, 640, 224);
-        below.material.perPixelAlpha = above.material.perPixelAlpha = true;
-        renderer.draw(frameOf({sprite(TargetName::Display, BlendOp::Opaque, 100, 100, 100, 0x80), below, above}));
-        const auto rgba = renderer.readTarget(TargetName::Display);
-        CHECK(near(pixel(rgba, 100, 224), 60, 200, 10, "PABE below 1.0 replaces"));
-        CHECK(pixel(rgba, 100, 224)[3] == 127);
-        if (op == BlendOp::Add) CHECK(near(pixel(rgba, 500, 224), 160, 255, 110, "PABE at 1.0 blends (Add)"));
-        else CHECK(near(pixel(rgba, 500, 224), 60, 200, 10, "PABE at 1.0 blends (AlphaOver)"));
-    }
-    Pass plain = sprite(TargetName::Display, BlendOp::Add, 60, 200, 10, 127);
+    renderer.configure({kWidth, kHeight, g_samples});
+    Pass copy = sprite(TargetName::Display, BlendOp::Opaque, 60, 200, 10, 127);
+    copy.material.perPixelAlpha = true;
+    renderer.draw(frameOf({sprite(TargetName::Display, BlendOp::Opaque, 100, 100, 100, 0x80), copy}));
+    auto rgba = renderer.readTarget(TargetName::Display);
+    CHECK(near(pixel(rgba, 100, 224), 60, 200, 10, "PABE without blending"));
+    CHECK(pixel(rgba, 100, 224)[3] == 127);
+    Pass plain = copy;
+    plain.material.perPixelAlpha = false;
     renderer.draw(frameOf({sprite(TargetName::Display, BlendOp::Opaque, 100, 100, 100, 0x80), plain}));
-    CHECK(near(pixel(renderer.readTarget(TargetName::Display), 100, 224), 100 + 60 * 127 / 128.0, 255, 100 + 10 * 127 / 128.0, "no PABE blends"));
+    CHECK(pixel(renderer.readTarget(TargetName::Display), 100, 224) == pixel(rgba, 100, 224));
+    for (BlendOp op : {BlendOp::Add, BlendOp::AlphaOver, BlendOp::AddDestinationAlpha}) {
+        Pass blended = copy;
+        blended.material.blend = op;
+        bool refused = false;
+        try {
+            renderer.draw(frameOf({blended}));
+        } catch (const std::logic_error&) {
+            refused = true;
+        }
+        CHECK(refused);
+    }
     return 0;
 }
 
 // The Store holds 320 x 224 of content: a sprite reading it across 640 texels finds the right half black.
 int store(render::NativeRenderer& renderer) {
-    renderer.configure({kWidth, kHeight, 1});
+    renderer.configure({kWidth, kHeight, g_samples});
     Pass copy = sprite(TargetName::Display, BlendOp::Opaque, 0x80, 0x80, 0x80, 0x80);
     copy.material.source = scene::SourceKind::Target;
     copy.material.sourceTarget = TargetName::Store;
@@ -123,7 +132,7 @@ int store(render::NativeRenderer& renderer) {
 // The Extra target is 1024 x 256 as a texture with its 640 x 224 picture at the corner: S reaches 0.625 and T 0.875
 // at the picture's far edge.
 int extra(render::NativeRenderer& renderer) {
-    renderer.configure({kWidth, kHeight, 1});
+    renderer.configure({kWidth, kHeight, g_samples});
     Pass read = sprite(TargetName::Display, BlendOp::Opaque, 0x80, 0x80, 0x80, 0x80);
     read.material.source = scene::SourceKind::Target;
     read.material.sourceTarget = TargetName::Extra;
@@ -135,7 +144,7 @@ int extra(render::NativeRenderer& renderer) {
     read.vertices[1].u = 0.625f;
     read.vertices[1].v = 0.875f;
     renderer.draw(frameOf({sprite(TargetName::Extra, BlendOp::Opaque, 10, 200, 10, 0x80, 0, 0, 320, 112), sprite(TargetName::Extra, BlendOp::Opaque, 10, 10, 200, 0x80, 320, 0, 640, 112),
-                           sprite(TargetName::Extra, BlendOp::Opaque, 200, 10, 10, 0x80, 0, 112, 640, 224), read}));
+                           sprite(TargetName::Extra, BlendOp::Opaque, 200, 10, 10, 0x80, 0, 112, 640, 224), read}, scene::TextureSet::Opening));
     const auto rgba = renderer.readTarget(TargetName::Display);
     CHECK(near(pixel(rgba, 280, 100), 10, 200, 10, "extra top left"));
     CHECK(near(pixel(rgba, 360, 100), 10, 10, 200, "extra top right"));
@@ -147,7 +156,7 @@ int extra(render::NativeRenderer& renderer) {
 // The opening's textures: CT16 ones keep TEXA's alpha (127 or 129); a frame of the opening set draws them.
 int textures(render::NativeRenderer& renderer, const std::filesystem::path& directory) {
     renderer.loadOpeningTextures(directory);
-    renderer.configure({kWidth, 224, 1});
+    renderer.configure({kWidth, 224, g_samples});
     const std::filesystem::path file = directory / "tex6-256x256.png";
     int w = 0, h = 0, channels = 0;
     stbi_uc* png = stbi_load(file.string().c_str(), &w, &h, &channels, 4);
@@ -193,7 +202,7 @@ int textures(render::NativeRenderer& renderer, const std::filesystem::path& dire
 #ifndef NDEBUG
 // A texture alpha of 254 (the light sprites) times a vertex alpha of 0x80 is above the 0x80 a target stores: refused.
 int alphaAbove(render::NativeRenderer& renderer) {
-    renderer.configure({kWidth, kHeight, 1});
+    renderer.configure({kWidth, kHeight, g_samples});
     Pass p = sprite(TargetName::Display, BlendOp::Opaque, 0x80, 0x80, 0x80, 0x80);
     p.material.source = scene::SourceKind::Texture;
     p.material.texture = 8;
@@ -222,16 +231,20 @@ int main(int argc, char** argv) {
     try {
         render::Device device(nullptr, {true});
         render::NativeRenderer renderer(device, argv[1]);
-        CHECK(addDestinationAlpha(renderer) == 0);
-        CHECK(subtractFixed(renderer) == 0);
-        CHECK(perPixelAlpha(renderer) == 0);
-        CHECK(store(renderer) == 0);
-        CHECK(extra(renderer) == 0);
-        if (argc == 3) {
-            CHECK(textures(renderer, argv[2]) == 0);
+        for (uint32_t samples : {1u, 4u}) {
+            g_samples = samples;
+            CHECK(addDestinationAlpha(renderer) == 0);
+            CHECK(subtractFixed(renderer) == 0);
+            CHECK(perPixelAlpha(renderer) == 0);
+            CHECK(store(renderer) == 0);
+            CHECK(extra(renderer) == 0);
+            if (argc == 3) {
+                CHECK(textures(renderer, argv[2]) == 0);
 #ifndef NDEBUG
-            CHECK(alphaAbove(renderer) == 0);
+                CHECK(alphaAbove(renderer) == 0);
 #endif
+            }
+            std::printf("samples %u: opening paths equal\n", samples);
         }
         std::printf("validation errors: %u\n", device.validationErrors());
         CHECK(device.validationErrors() == 0);

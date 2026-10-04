@@ -603,6 +603,8 @@ void NativeRenderer::checkAlpha(const scene::Frame& frame) {
     std::array<uint32_t, kTargets> bounds = m_alphaBound;
     for (const scene::Pass& pass : frame.passes) {
         if (pass.vertices.empty()) continue;
+        if (pass.material.perPixelAlpha && pass.material.blend != scene::BlendOp::Opaque)
+            throw std::logic_error("pass " + pass.name + ": per-pixel alpha with blending is not drawn (every opening pass that sets it has blending off)");
         const uint32_t written = writtenAlphaWith(pass, frame.textureSet, bounds);
         const scene::BlendOp blend = pass.material.blend;
         uint32_t factor = written;
@@ -691,8 +693,10 @@ void NativeRenderer::record(VkCommandBuffer cmd, const scene::Frame& frame) {
             push.source[3] = float(m_output.height);
             push.mode[0] = 2;
             push.shade[2] = 128;
-            push.extent[0] = kTargetTextureWidth;
-            push.extent[1] = kTargetTextureHeight;
+            if (frame.textureSet == scene::TextureSet::Opening) {
+                push.extent[0] = kTargetTextureWidth;
+                push.extent[1] = kTargetTextureHeight;
+            }
         }
         for (int k = 0; k < 4; ++k) push.region[k] = float(m.region[k]);
         push.mode[1] = m.coordinates == scene::CoordinateKind::Projective;
@@ -711,25 +715,14 @@ void NativeRenderer::record(VkCommandBuffer cmd, const scene::Frame& frame) {
         const float constant = float(m.blendConstant) / 128.0f;
         const float constants[4] = {constant, constant, constant, constant};
         vkCmdSetBlendConstants(cmd, constants);
-        // Per-pixel alpha (PABE): a pixel whose alpha is below 1.0 is written as it is, the others blend; the two
-        // sets of pixels are disjoint, so the pass is drawn twice, replacing and then blending.
-        const auto issue = [&](scene::BlendOp blend, int32_t pixels) {
-            const VkPipeline p = pipeline(pass, blend);
-            if (p != bound) {
-                vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, p);
-                bound = p;
-            }
-            push.shade[1] = premultiplied(blend);
-            push.shade[3] = pixels;
-            vkCmdPushConstants(cmd, m_layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof push, &push);
-            vkCmdDraw(cmd, ranges[i].second, 1, ranges[i].first, 0);
-        };
-        if (m.perPixelAlpha && m.blend != scene::BlendOp::Opaque) {
-            issue(scene::BlendOp::Opaque, 2);
-            issue(m.blend, 1);
-        } else {
-            issue(m.blend, 0);
+        const VkPipeline p = pipeline(pass, m.blend);
+        if (p != bound) {
+            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, p);
+            bound = p;
         }
+        push.shade[1] = premultiplied(m.blend);
+        vkCmdPushConstants(cmd, m_layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof push, &push);
+        vkCmdDraw(cmd, ranges[i].second, 1, ranges[i].first, 0);
     }
     if (open) vkCmdEndRendering(cmd);
 }
