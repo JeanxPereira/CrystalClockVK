@@ -2,17 +2,19 @@
 
 ## Project Overview
 Native C++23 / Vulkan 1.4 reimplementation of the PlayStation 2 OSDSYS Crystal Clock. The code is written from what `facts/` verified, not ported from the original. `facts/` is the truth; the GS parity rule is a measuring instrument (the native frame is compared with the GS oracle), not the product.
-Design: `docs/superpowers/specs/2026-10-03-native-clock-design.md`. Plan: `docs/superpowers/plans/2026-10-03-native-clock.md`. Read `facts/README.md` first.
+Design: `docs/superpowers/specs/2026-10-03-native-clock-design.md`. Plan: `docs/superpowers/plans/2026-10-03-native-clock.md` (done, merged 2026-10-03). Open fronts in `D:/CodingProjects/CrystalClockVK-wt/`: `menus` (`feat/native-menus`), `sound` (`feat/native-sound`), `icon` (`feat/icon-lab`), `assets` (`feat/native-assets`). Read `facts/README.md` first.
 
 ## Layers
 | Layer | Role |
 |---|---|
-| `scene/` (planned, native clock plan Tasks 2-10) | Plain C++. The clock: state, camera, placement, ramps, frame assembly into one `scene::Frame`. No Vulkan |
-| `render/` (planned, native clock plan Tasks 2-10) | `Device` (instance, device, queues, VMA, swapchain) and `NativeRenderer` (executes a `scene::Frame`) |
-| `app/` (planned, native clock plan Tasks 2-10) | SDL3 window, real time, frame loop, ImGui debug panel |
-| `parity/` | The measuring rule: fixture loader, GS frame types, `GsParityRenderer`, comparison. Plus `core/HeadlessContext` for tests |
+| `scene/` | Plain C++, templated on `Arithmetic` (`EeArithmetic` exact in tests, `NativeArithmetic` in the app). State, camera, rods, orbs, frame head, text, `Clock<A>` assembling one `scene::Frame`. No Vulkan |
+| `render/` | `Device` (instance, device, queues, VMA, swapchain) and `NativeRenderer` (executes a `scene::Frame`: hardware blend, MSAA, any resolution) |
+| `app/` | `CrystalClock`: SDL3 window, local time, 59.94 Hz logic, ImGui debug panel; starts from `resources/clock/start.json` |
+| `parity/` | The measuring rule: fixture loader, GS frame types, `GsParityRenderer`, `FromScene` (pure unit conversion), comparison |
 
-Support: `tools/ParityTool` (isolated and chained comparison against budgets), `tools/parity/` (fixture generation), `tests/`.
+Support: `tools/ParityTool` (isolated and chained comparison against budgets; `--native` distance report), `tools/parity/` (fixture generation), `tools/scene/` (scene fixture exporter, start state), `tests/`.
+
+Data: Sony data (textures, font, ELF, dumps) is never committed; it is read from `References/` by configurable absolute paths (`CLOCK_REFERENCES`, `CLOCK_DUMPS`, `CLOCK_SCENE`). No junctions or symlinks into `References/` from worktrees.
 
 ## Build
 - CMake 3.30+, C++23, Windows only (AMD RDNA2 baseline, Vulkan 1.4, glslc from the Vulkan SDK).
