@@ -101,3 +101,11 @@ test('replayUploads leaves transfers after maxFrame out', () => {
   const memory = memoryImage();
   assert.equal(replayUploads(memory, packets, { maxFrame: 1 }).length, 0);
 });
+
+test('entries settled only by allocation order and draw counts are marked inferred, with their basis', async () => {
+  const { TEXTURES } = await import('./extract_opening_textures.mjs');
+  const mapping = Object.fromEntries(TEXTURES.map((t) => [t.index, t.mapping]));
+  for (const index of [8, 10, 11, 12]) assert.equal(mapping[index], 'inferred', `index ${index}`);
+  for (const index of [0, 2, 3, 5, 6]) assert.equal(mapping[index], 'settled', `index ${index}`);
+  for (const t of TEXTURES) assert.ok(t.basis && t.basis.length > 10, `basis of index ${t.index}`);
+});
