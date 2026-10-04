@@ -420,3 +420,12 @@ if(EXISTS ${TOWERS_WHOLE}/opening.json AND EXISTS ${CLOCK_DUMPS}/hddosd.elf)
     add_test(NAME TowersWholeTest COMMAND TowersTest ${CLOCK_DUMPS}/hddosd.elf ${TOWERS_WHOLE}/opening.json)
     set_tests_properties(TowersWholeTest PROPERTIES TIMEOUT 3600)
 endif()
+
+# opening: renderer
+add_executable(NativeOpeningTest tests/render/NativeOpeningTest.cpp)
+target_link_libraries(NativeOpeningTest PRIVATE ClockRender ClockStb)
+if(EXISTS ${OPENING_TEXTURES}/tex6-256x256.png)
+    add_test(NAME NativeOpeningTest COMMAND NativeOpeningTest ${CMAKE_SOURCE_DIR}/bin/shaders ${OPENING_TEXTURES})
+else()
+    add_test(NAME NativeOpeningTest COMMAND NativeOpeningTest ${CMAKE_SOURCE_DIR}/bin/shaders)
+endif()

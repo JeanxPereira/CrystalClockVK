@@ -131,9 +131,108 @@ int nativeReport(const std::filesystem::path& fixtureDirectory, const std::files
     return 0;
 }
 
+// A scene::Frame as the opening's assembly writes it for this report: the enums as their numbers, a vertex as
+// [x, y, z, u, v, q, r, g, b, a].
+scene::Frame readSceneFrame(const std::filesystem::path& path) {
+    std::ifstream in(path, std::ios::binary);
+    if (!in) throw std::runtime_error("cannot open the scene frame " + path.string());
+    const nlohmann::json j = nlohmann::json::parse(in);
+    scene::Frame frame;
+    frame.width = j.at("width");
+    frame.height = j.at("height");
+    frame.field = j.at("field");
+    frame.displayIndex = j.at("displayIndex");
+    frame.depthBits = j.at("depthBits");
+    frame.textureSet = static_cast<scene::TextureSet>(j.at("textureSet").get<int>());
+    for (const nlohmann::json& p : j.at("passes")) {
+        scene::Pass pass;
+        pass.name = p.at("name");
+        pass.target = static_cast<scene::TargetName>(p.at("target").get<int>());
+        pass.topology = static_cast<scene::PassTopology>(p.at("topology").get<int>());
+        pass.edgeSmoothing = p.at("edgeSmoothing");
+        pass.halfLine = p.at("halfLine");
+        const nlohmann::json& m = p.at("material");
+        scene::Material& material = pass.material;
+        material.source = static_cast<scene::SourceKind>(m.at("source").get<int>());
+        material.texture = m.at("texture");
+        material.sourceTarget = static_cast<scene::TargetName>(m.at("sourceTarget").get<int>());
+        material.colourOnly = m.at("colourOnly");
+        material.coordinates = static_cast<scene::CoordinateKind>(m.at("coordinates").get<int>());
+        material.sampling = static_cast<scene::Sampling>(m.at("sampling").get<int>());
+        for (size_t k = 0; k < 4; ++k) material.region[k] = m.at("region").at(k);
+        material.bilinear = m.at("bilinear");
+        material.blend = static_cast<scene::BlendOp>(m.at("blend").get<int>());
+        material.blendConstant = m.at("blendConstant");
+        material.depthTest = static_cast<scene::DepthTest>(m.at("depthTest").get<int>());
+        material.depthWrite = m.at("depthWrite");
+        material.gouraud = m.at("gouraud");
+        material.perPixelAlpha = m.at("perPixelAlpha");
+        material.alphaCorrection = m.at("alphaCorrection");
+        for (const nlohmann::json& v : p.at("vertices"))
+            pass.vertices.push_back({v.at(0), v.at(1), v.at(2).get<uint32_t>(), v.at(3), v.at(4), v.at(5), v.at(6), v.at(7), v.at(8), v.at(9)});
+        frame.passes.push_back(std::move(pass));
+    }
+    frame.textAt = frame.passes.size();
+    return frame;
+}
+
+// A distance, not a gate: an opening scene frame drawn by the native renderer at 640 x 224 against the oracle's
+// buffers at the end of the same frame, per target: the differing share, the share off by 16 or more, the largest
+// difference. The frame starts from black targets, so a target that carries content from earlier frames (Store,
+// Extra) shows that as distance. Text-free, report only.
+int nativeOpeningReport(const std::filesystem::path& fixtureDirectory, const std::filesystem::path& shaders, const std::filesystem::path& textures, const std::filesystem::path& framePath,
+                        const std::filesystem::path& out) {
+    const parity::Fixture fixture = parity::loadFixture(fixtureDirectory);
+    const scene::Frame frame = readSceneFrame(framePath);
+    const parity::GsFrameLayout layout = parity::openingLayout(frame.displayIndex);
+    std::map<std::string, parity::Image> oracle = fixture.targetStart;
+    for (size_t i = 0; i < fixture.frame.passes.size(); i++) paste(oracle.at(fixture.frame.passes[i].target), fixture.oracleColour(i));
+
+    render::Device device(nullptr, {true});
+    render::NativeRenderer renderer(device, shaders);
+    renderer.loadOpeningTextures(textures);
+    const std::string capture = std::filesystem::absolute(fixtureDirectory).parent_path().filename().string();
+    std::printf("native opening frame for %s: %zu passes at %dx%d\n", capture.c_str(), frame.passes.size(), frame.width, frame.height);
+    std::printf("%-5s %-17s %-7s %22s %22s %8s\n", "MSAA", "target", "id", "colour differing", "by 16 or more", "largest");
+    static const char* names[] = {"Display", "RefractionSource", "Work", "Store", "Extra"};
+    for (const uint32_t samples : {1u, 4u}) {
+        renderer.configure({uint32_t(frame.width), uint32_t(frame.height), samples});
+        renderer.draw(frame);
+        for (size_t t = 0; t < layout.targets.size(); t++) {
+            const std::string& id = layout.targets[t];
+            if (id.empty() || !oracle.contains(id)) continue;
+            const parity::Image& want = oracle.at(id);
+            const std::vector<uint8_t> all = renderer.readTarget(scene::TargetName(t));
+            parity::Image ours{want.width, want.height, std::vector<uint8_t>(size_t(want.width) * want.height * 4)};
+            for (uint32_t y = 0; y < want.height; ++y) std::copy_n(&all[size_t(y) * frame.width * 4], size_t(want.width) * 4, &ours.rgba[size_t(y) * want.width * 4]);
+            parity::Image oursColour = ours, wantColour = want;
+            for (size_t i = 0; i < ours.rgba.size(); i += 4) oursColour.rgba[i + 3] = wantColour.rgba[i + 3] = 0;
+            if (!out.empty()) {
+                std::filesystem::create_directories(out);
+                writeRaw(out / ("native-opening-" + id + "-msaa" + std::to_string(samples) + ".ours.rgba"), ours.rgba);
+                writeRaw(out / ("native-opening-" + id + ".oracle.rgba"), want.rgba);
+            }
+            const parity::Difference colour = parity::compare(oursColour, wantColour);
+            const auto share = [](uint64_t n, uint64_t of) { return 100.0 * double(n) / double(of); };
+            std::printf("%-5s %-17s %-7s %9llu (%7.3f%%) %9llu (%7.3f%%) %8u\n", (std::to_string(samples) + "x").c_str(), names[t], id.c_str(), (unsigned long long)colour.differing,
+                        share(colour.differing, colour.pixels), (unsigned long long)colour.buckets[4], share(colour.buckets[4], colour.pixels), colour.largest);
+        }
+    }
+    std::printf("validation errors: %u\n", device.validationErrors());
+    return 0;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
+    if ((argc == 6 || argc == 7) && std::string(argv[1]) == "--native-opening") {
+        try {
+            return nativeOpeningReport(argv[2], argv[3], argv[4], argv[5], argc == 7 ? argv[6] : "");
+        } catch (const std::exception& error) {
+            std::fprintf(stderr, "ParityTool: %s\n", error.what());
+            return 1;
+        }
+    }
     if ((argc == 6 || argc == 7) && std::string(argv[1]) == "--native") {
         try {
             return nativeReport(argv[2], argv[3], argv[4], argv[5], argc == 7 ? argv[6] : "");
@@ -142,7 +241,7 @@ int main(int argc, char** argv) {
             return 1;
         }
     }
-    if (argc != 4 && argc != 5) { std::fprintf(stderr, "usage: ParityTool <fixture dir> <out dir> <shader dir> [budgets.json]\n       ParityTool --native <fixture dir> <shader dir> <rod-mesh.json> <textures dir> [out dir]\n"); return 1; }
+    if (argc != 4 && argc != 5) { std::fprintf(stderr, "usage: ParityTool <fixture dir> <out dir> <shader dir> [budgets.json]\n       ParityTool --native <fixture dir> <shader dir> <rod-mesh.json> <textures dir> [out dir]\n       ParityTool --native-opening <fixture dir> <shader dir> <opening textures dir> <scene frame.json> [out dir]\n"); return 1; }
     try {
         const parity::Fixture fixture = parity::loadFixture(argv[1]);
         const std::filesystem::path out = argv[2];
