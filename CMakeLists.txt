@@ -280,3 +280,15 @@ target_compile_definitions(CrystalClock PRIVATE
     CLOCK_MESH="${CMAKE_SOURCE_DIR}/facts/data/rod-mesh.json" CLOCK_SCREENSHOTS="${CMAKE_SOURCE_DIR}/out/screenshots"
     CLOCK_FONT="${CLOCK_DUMPS}/FNTOSD" CLOCK_PROGRAM="${CLOCK_DUMPS}/hddosd.elf")
 target_link_libraries(ParityTool PRIVATE ClockRender ClockSceneNative SceneInputs)
+
+add_library(ClockInput STATIC src/app/Input.cpp)
+target_include_directories(ClockInput PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(ClockInput PUBLIC SDL3::SDL3)
+add_executable(InputTest tests/app/InputTest.cpp)
+target_link_libraries(InputTest PRIVATE ClockInput nlohmann_json::nlohmann_json)
+get_filename_component(ENTER_SCENE ${CLOCK_FIXTURE}/../../hddosd-110U-whole3-enter/scene.json ABSOLUTE)
+if(EXISTS ${ENTER_SCENE})
+    add_test(NAME InputTest COMMAND InputTest ${ENTER_SCENE})
+else()
+    add_test(NAME InputTest COMMAND InputTest)
+endif()
