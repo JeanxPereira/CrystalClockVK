@@ -102,6 +102,8 @@ test('Z24, PABE and FBA are drawn and flagged, other depth formats are refused',
   assert.equal(flags.skip, null);
   assert.equal(flags.perPixelAlpha, true);
   assert.equal(flags.alphaCorrection, true);
+  const blended = describeState(drawable({ PABE: '1', PRIM: String(1 << 6) }), new Map(), 'Sprites');
+  assert.match(blended.skip, /per-pixel alpha with blending/);
   const plain = describeState(drawable({}), new Map(), 'Sprites');
   assert.equal(plain.perPixelAlpha, false);
   assert.equal(plain.alphaCorrection, false);

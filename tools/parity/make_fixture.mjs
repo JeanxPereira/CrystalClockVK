@@ -101,6 +101,7 @@ export function describeState(state, targetOfBlock, primitive, mip = null) {
   if (test.DATE) reasons.push('destination alpha test');
   if (prim.FGE) reasons.push('fog');
   if (fields(state, 'DTHE').DTHE) reasons.push('dithering');
+  if (fields(state, 'PABE').PABE && (prim.ABE || (prim.AA1 && primitive !== 'Sprites'))) reasons.push('per-pixel alpha with blending (no capture exercises it)');
   if (!fields(state, 'COLCLAMP').CLAMP) reasons.push('colour wrap');
 
   // AA1 on a line or triangle forces the blend with ALPHA as it stands, even with ABE 0 (GSDrawScanline.cpp: abe || aa1).
@@ -252,6 +253,7 @@ export function oracleStart(oracleDir, draws, names, blocks) {
     const block = parseInt(/_rt0_([0-9a-f]+)_/.exec(before.file)[1], 16);
     if (!targets.has(block)) throw new Error(`draw ${draw}: its before-image is of block 0x${hex(block, 4)}, which no pass draws into`);
     const target = targets.get(block), mask = known.get(block), width = blocks.get(block).width;
+    if (before.width > width || before.height * width * 4 > target.length) throw new Error(`draw ${draw}: its before-image ${before.width}x${before.height} does not fit block 0x${hex(block, 4)}`);
     for (let y = 0; y < before.height; y++) for (let x = 0; x < before.width; x++) {
       if (mask[y * width + x]) continue;
       before.rgba.copy(target, (y * width + x) * 4, (y * before.width + x) * 4, (y * before.width + x) * 4 + 4);
