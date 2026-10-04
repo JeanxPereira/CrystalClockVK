@@ -222,8 +222,46 @@ int sceneFixture(const std::string& path) {
 
 }
 
+int openingVectors(const std::string& path) {
+    const nlohmann::json vectors = scenetest::loadScene(path);
+    for (const auto& v : vectors.at("sinCos")) {
+        const float x = scene::hexFloat(v.at("x"));
+        CHECK(sameBits(Ee::sinf(x), v.at("sin"), "sinf"));
+        CHECK(sameBits(Ee::cosf(x), v.at("cos"), "cosf"));
+        CHECK(close(NativeArithmetic::sinf(x), scene::hexFloat(v.at("sin")), 1e-5f));
+        CHECK(close(NativeArithmetic::cosf(x), scene::hexFloat(v.at("cos")), 1e-5f));
+    }
+    for (const auto& v : vectors.at("sums")) {
+        const float a = scene::hexFloat(v.at("a")), b = scene::hexFloat(v.at("b"));
+        CHECK(sameBits(Ee::addExact(a, b), v.at("add"), "addExact"));
+        CHECK(sameBits(Ee::subExact(a, b), v.at("sub"), "subExact"));
+    }
+    for (const auto& v : vectors.at("quotients")) {
+        const float a = scene::hexFloat(v.at("a")), b = scene::hexFloat(v.at("b"));
+        CHECK(sameBits(Ee::quotientExact(a, b), v.at("q"), "quotientExact"));
+        const float native = NativeArithmetic::quotientExact(a, b);
+        const float want = scene::hexFloat(v.at("q"));
+        CHECK(b == 0.0f ? native == want : close(native, want, 1e-6f));
+    }
+    for (const auto& v : vectors.at("roots")) {
+        const float x = scene::hexFloat(v.at("x"));
+        CHECK(sameBits(Ee::rootExact(x), v.at("r"), "rootExact"));
+        CHECK(close(NativeArithmetic::rootExact(x), scene::hexFloat(v.at("r")), 1e-6f));
+    }
+    CHECK(sameBits(Ee::addExact(1.0f, -1e-22f), 0x3f7fffffu, "addExact(1, -1e-22)"));
+    CHECK(sameBits(Ee::addExact(1.0f, 1e-22f), 0x3f800000u, "addExact(1, 1e-22)"));
+    CHECK(sameBits(Ee::quotientExact(1.0f, 0.0f), 0x7f7fffffu, "quotientExact(1, 0)"));
+    CHECK(sameBits(Ee::quotientExact(-1.0f, 0.0f), 0xff7fffffu, "quotientExact(-1, 0)"));
+    return 0;
+}
+
 int main(int argc, char** argv) {
     return scenetest::run(argc, argv, [](int count, char** arguments) {
+        if (count > 2 && std::string(arguments[1]) == "--opening") {
+            if (int failed = openingVectors(arguments[2])) return failed;
+            std::printf("arithmetic (opening): all equal bit for bit\n");
+            return 0;
+        }
         if (int failed = fixedCases()) return failed;
         if (int failed = sweeps()) return failed;
         if (int failed = sineTable()) return failed;
