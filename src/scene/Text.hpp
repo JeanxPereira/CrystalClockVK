@@ -143,9 +143,14 @@ struct PagesInputs {
 struct PagesFrame {
     TextFrame text;
     std::optional<int32_t> titleWidth;   // configPage + 0xC as the list's drawing measures it (browser_str_related2)
+    // Entry callbacks the model does not cover (their value is left undrawn); such an entry is not enterable until ported.
+    std::vector<uint32_t> unmodelled;
 };
 // TextRamps from the menus' live ramps (config, mainMenu, version, dialogClosing, firstRun, lead, body); the rest from `constants`.
 TextRamps textRampsOf(const MenusState& menus, const TextRamps& constants);
+// The menus' state at the pages call: the state before the frame's input with the ramps as ticked (a ramp whose counter moved in the
+// step is taken whole from `after`) and the glow as stepped; selection, level and entries are not yet changed by the frame's input.
+MenusState menusAtPages(const MenusState& before, const MenusState& after);
 PagesInputs pagesOf(const MenusState& menus, const ClockState& clock, const ConfigItems& items, const TextRamps& ramps, int32_t width, int32_t height);
 
 // facts/text.md: the date and time (func_00226300) and the button hint (func_002269E0) of the clock screen, through
@@ -185,11 +190,11 @@ private:
     void menuItem(int32_t x, int32_t y, uint32_t colour, int32_t alpha, const std::string& text, TextFrame& out);
     int32_t templateWidth(int32_t timeFormat, TextFrame& out);
     void mainMenuItems(const PagesInputs& in, TextFrame& out);
-    std::optional<int32_t> list(const PagesInputs& in, TextFrame& out);
-    void listEntry(const PagesInputs& in, int32_t index, int32_t alpha, TextFrame& out);
-    void clockValue(const PagesInputs& in, const ConfigEntry& entry, const std::array<AdjustField, 6>& fields, int32_t x, int32_t y, int32_t alpha, bool editing, TextFrame& out);
+    std::optional<int32_t> list(const PagesInputs& in, TextFrame& out, std::vector<uint32_t>& unmodelled);
+    void listEntry(const PagesInputs& in, int32_t index, int32_t alpha, TextFrame& out, std::vector<uint32_t>& unmodelled);
+    bool clockValue(const PagesInputs& in, const ConfigEntry& entry, const std::array<AdjustField, 6>& fields, int32_t x, int32_t y, int32_t alpha, bool editing, TextFrame& out);
     void valueRow(const ConfigEntry& entry, int32_t x, int32_t y, int32_t alpha, TextFrame& out);
-    void entryValue(const PagesInputs& in, const ConfigEntry& entry, int32_t x, int32_t y, int32_t alpha, bool editing, TextFrame& out);
+    bool entryValue(const PagesInputs& in, const ConfigEntry& entry, int32_t x, int32_t y, int32_t alpha, bool editing, TextFrame& out);
     bool pal() const { return m_settings.videoMode == 2; }
 
     std::shared_ptr<const Font> m_fontFile;

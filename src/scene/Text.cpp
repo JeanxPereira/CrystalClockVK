@@ -676,9 +676,9 @@ int32_t Text<A>::templateWidth(int32_t timeFormat, TextFrame& out) {
 template <class A>
 void Text<A>::mainMenuItems(const PagesInputs& in, TextFrame& out) {
     const TextRamps& r = in.ramps;
-    const int32_t alpha = menuAlphaOf(r, in.tail, in.overlayLevel);
     if (r.mainMenu.state != 2) return;
     if (r.config.state != 0 || r.version.state != 0 || r.dialogClosing.state != 0 || r.firstRun.state != 0 || in.pending != 0) return;
+    const int32_t alpha = menuAlphaOf(r, in.tail, in.overlayLevel);
     const ProgramImage& p = *m_program;
     setRatio(1.0f);
     for (int32_t n = 0; n < in.mainMenu.count; ++n) {
@@ -690,13 +690,13 @@ void Text<A>::mainMenuItems(const PagesInputs& in, TextFrame& out) {
 // browser_str_related (0x00231388): the title, the widest entry's width (browser_str_related2), the arrow and the one or two
 // entries of the crossfade (R4); the places and colours are verify_text2.mjs LIST_Y and PLACES.
 template <class A>
-std::optional<int32_t> Text<A>::list(const PagesInputs& in, TextFrame& out) {
+std::optional<int32_t> Text<A>::list(const PagesInputs& in, TextFrame& out, std::vector<uint32_t>& unmodelled) {
     const TextRamps& r = in.ramps;
     const ProgramImage& p = *m_program;
     const int32_t top = pal() ? 0x65 : 0x58;
     const int32_t chosenY = static_cast<int32_t>(std::trunc(double(top) + (pal() ? p.doubleAt(kListPalChosen) : 24.0)));
-    const int32_t alpha = configAlphaOf(r, in.tail, in.menuRamp);
     if (r.config.state == 0 || in.menuRamp.state == 2) return std::nullopt;
+    const int32_t alpha = configAlphaOf(r, in.tail, in.menuRamp);
     setRatio(1.0f);
     menuItem(430, top, kTitleColour, alpha, languageString(in.page.word0), out);
     int32_t widest = 0;
@@ -715,14 +715,14 @@ std::optional<int32_t> Text<A>::list(const PagesInputs& in, TextFrame& out) {
         const int32_t pulse = A::toInt(A::mul(A::sinf(A::div(static_cast<float>(counter), in.listConstants.divisor)), 128.0f));
         drawItem(centre + half(widest) + 0x10, chosenY, kValueColour, pulse < 0 ? -pulse : pulse, arrow, out);
     }
-    listEntry(in, in.page.selected, by128(int64_t(in.listFade.first) * alpha), out);
-    if (in.listFade.second != 0) listEntry(in, in.listFade.secondIndex, by128(int64_t(in.listFade.second) * alpha), out);
+    listEntry(in, in.page.selected, by128(int64_t(in.listFade.first) * alpha), out, unmodelled);
+    if (in.listFade.second != 0) listEntry(in, in.listFade.secondIndex, by128(int64_t(in.listFade.second) * alpha), out, unmodelled);
     return widest;
 }
 
 // func_002311E8: one entry of the list, its name under the title and its value under that.
 template <class A>
-void Text<A>::listEntry(const PagesInputs& in, int32_t index, int32_t alpha, TextFrame& out) {
+void Text<A>::listEntry(const PagesInputs& in, int32_t index, int32_t alpha, TextFrame& out, std::vector<uint32_t>& unmodelled) {
     const ProgramImage& p = *m_program;
     const int32_t top = pal() ? 0x65 : 0x58;
     const int32_t chosenY = static_cast<int32_t>(std::trunc(double(top) + (pal() ? p.doubleAt(kListPalChosen) : 24.0)));
@@ -735,12 +735,13 @@ void Text<A>::listEntry(const PagesInputs& in, int32_t index, int32_t alpha, Tex
     const int32_t centre = end < in.width - 0x18 ? 430 : 430 - (end + 0x18 - in.width);
     const bool inside = in.page.level == 1;
     menuItem(centre, chosenY, inside ? kValueColour : kChosenColour, alpha, name, out);
-    entryValue(in, entry, 430, valueY, alpha, inside && in.page.selected == index, out);
+    const bool editing = inside && in.page.selected == index;
+    if (!entryValue(in, entry, 430, valueY, alpha, editing, out)) unmodelled.push_back(editing ? entry.frameCallback : entry.stringCallback);
 }
 
 // The entry's callback at +0x18 (its value), or at +0x1C while it is being changed.
 template <class A>
-void Text<A>::entryValue(const PagesInputs& in, const ConfigEntry& entry, int32_t x, int32_t y, int32_t alpha, bool editing, TextFrame& out) {
+bool Text<A>::entryValue(const PagesInputs& in, const ConfigEntry& entry, int32_t x, int32_t y, int32_t alpha, bool editing, TextFrame& out) {
     const ProgramImage& p = *m_program;
     const uint32_t callback = editing ? entry.frameCallback : entry.stringCallback;
     if (callback == kClockString) {
@@ -753,9 +754,9 @@ void Text<A>::entryValue(const PagesInputs& in, const ConfigEntry& entry, int32_
         case 2: fields[0] = field(2); fields[1] = field(1); fields[2] = field(0); break;
         default: break;
         }
-        clockValue(in, entry, fields, x, y, alpha, false, out);
+        return clockValue(in, entry, fields, x, y, alpha, false, out);
     } else if (callback == kClockEdit) {
-        clockValue(in, entry, in.adjustFields, x, y, alpha, true, out);
+        return clockValue(in, entry, in.adjustFields, x, y, alpha, true, out);
     } else if (callback == kItemString || callback == kItemStringJump) {
         // func_002283C0: the row of the value table the item holds, then clock_config_get_item_str's string for it.
         const int32_t value = in.items.at(static_cast<size_t>(entry.item));
@@ -772,8 +773,9 @@ void Text<A>::entryValue(const PagesInputs& in, const ConfigEntry& entry, int32_
     } else if (callback == kRowEdit) {
         valueRow(entry, x, y, alpha, out);
     } else {
-        throw std::runtime_error("text: the entry callback " + std::to_string(callback) + " is not modelled");
+        return false;
     }
+    return true;
 }
 
 // func_002284F8: every value of the entry side by side, 16 apart, centred on x; the chosen one in D_002B2540.
@@ -794,14 +796,14 @@ void Text<A>::valueRow(const ConfigEntry& entry, int32_t x, int32_t y, int32_t a
 // clock_str_related (0x002270A8): the date and time field by field (the program draws each as \ap@0, the digits, \ap00,
 // then the separator), the pen carried by func_00213E90; `editing` draws the chosen field in D_002B2540, the others in D_002B2550.
 template <class A>
-void Text<A>::clockValue(const PagesInputs& in, const ConfigEntry& entry, const std::array<AdjustField, 6>& fields, int32_t x, int32_t y, int32_t alpha, bool editing, TextFrame& out) {
+bool Text<A>::clockValue(const PagesInputs& in, const ConfigEntry& entry, const std::array<AdjustField, 6>& fields, int32_t x, int32_t y, int32_t alpha, bool editing, TextFrame& out) {
     const ProgramImage& p = *m_program;
     const uint32_t chosen = editing ? kChosenColour : kValueColour, plain = editing ? kPlainColour : kValueColour;
     const int32_t timeFormat = in.items[0xd];
     int32_t at = x - half(templateWidth(timeFormat, out));
     for (int32_t n = 0; n < entry.valueCount; ++n) {
         const int32_t kind = fields.at(static_cast<size_t>(n)).item - 6;
-        if (kind < 0 || kind > 5) throw std::runtime_error("text: an adjustment field that is not a date or time item");
+        if (kind < 0 || kind > 5) return false;
         const int32_t value = in.items[static_cast<size_t>(6 + kind)];
         std::string text;
         switch (kind) {
@@ -824,6 +826,7 @@ void Text<A>::clockValue(const PagesInputs& in, const ConfigEntry& entry, const 
         default: break;
         }
     }
+    return true;
 }
 
 // The pages function: the main menu's items, then System Configuration's list.
@@ -835,7 +838,7 @@ PagesFrame Text<A>::pages(const PagesInputs& in) {
     m_afterPages = true;
     PagesFrame out;
     mainMenuItems(in, out.text);
-    out.titleWidth = list(in, out.text);
+    out.titleWidth = list(in, out.text, out.unmodelled);
     finish(out.text);
     return out;
 }
@@ -853,6 +856,20 @@ TextRamps textRampsOf(const MenusState& menus, const TextRamps& constants) {
     // clock_config_change_cb_*); inside an entry the page calls it with others.
     if (menus.page.level == 0) r.panel8Ids = {0x5e, 0x55, 0x56, 0x57};
     return r;
+}
+
+MenusState menusAtPages(const MenusState& before, const MenusState& after) {
+    MenusState at = before;
+    at.page.glow = after.page.glow;
+    const auto ticked = [](Ramp& b, const Ramp& a) {
+        if (b.counter != a.counter) b = a;
+    };
+    ticked(at.page.ramp, after.page.ramp);
+    ticked(at.mainMenu.ramp, after.mainMenu.ramp);
+    ticked(at.versionRamp, after.versionRamp);
+    ticked(at.dialogRamp, after.dialogRamp);
+    ticked(at.firstRunRamp, after.firstRunRamp);
+    return at;
 }
 
 PagesInputs pagesOf(const MenusState& menus, const ClockState& clock, const ConfigItems& items, const TextRamps& ramps, int32_t width, int32_t height) {

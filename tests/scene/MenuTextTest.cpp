@@ -14,7 +14,6 @@ namespace {
 
 using nlohmann::json;
 
-// Frames whose hint is empty carry no textRamps (export_fixture.mjs): the panels' ramps are all at rest there.
 json withRamps(const json& input) {
     if (input.contains("textRamps")) return input;
     const json rest = {{"length", 10}, {"counter", 0}, {"changed", 0}, {"state", 0}};
@@ -38,24 +37,22 @@ int sceneFile(const std::string& path, const std::shared_ptr<const scene::Font>&
         const json& input = frame.at("input");
         const scene::ClockInputs here = scene::clockInputs(withRamps(input), mesh);
         const json& stages = frame.at("expect").at("stages");
-        // The pages are drawn before the menus' step of the frame, the date and the hint after it.
         scene::MenusState before = scene::menusState(stages.at("menus").at("before"));
         if (frame.at("expect").contains("listFade")) before.listFade = scene::listFade(frame.at("expect").at("listFade"));
         const scene::MenusState after = scene::menusState(stages.at("menus").at("after"));
-        before.page.glow = after.page.glow;
-        for (auto [b, a] : {std::pair{&before.page.ramp, &after.page.ramp}, {&before.mainMenu.ramp, &after.mainMenu.ramp}, {&before.versionRamp, &after.versionRamp},
-                            {&before.dialogRamp, &after.dialogRamp}, {&before.firstRunRamp, &after.firstRunRamp}})
-            if (b->counter != a->counter) *b = *a;
+        const scene::MenusState atPages = scene::menusAtPages(before, after);
         const scene::ConfigItems items = scene::configItems(input);
-        const scene::TextRamps pageRamps = scene::textRampsOf(before, here.text.ramps);
+        const scene::TextRamps pageRamps = scene::textRampsOf(atPages, here.text.ramps);
         const scene::TextRamps ramps = scene::textRampsOf(after, here.text.ramps);
-        scene::ClockState pageClock = here.state;
-        pageClock.menuRamp = stagePieces(stages.at("menuStep").at("after")).clock.menuRamp;
         scene::ClockState clock = here.state;
         clock.menuRamp = stagePieces(stages.at("menuStep").at("after")).clock.menuRamp;
-        const scene::PagesFrame pages = text.pages(scene::pagesOf(before, pageClock, items, pageRamps, here.width, here.height));
+        const scene::PagesFrame pages = text.pages(scene::pagesOf(atPages, clock, items, pageRamps, here.width, here.height));
         const json& menusAfter = stages.at("menus").at("after");
         const scene::ConfigItems itemsAfter = menusAfter.contains("configItems") ? scene::configItems(menusAfter) : items;
+        if (!pages.unmodelled.empty()) {
+            std::fprintf(stderr, "%s: entry callback 0x%x is not modelled\n", at.c_str(), pages.unmodelled.front());
+            return 1;
+        }
         scene::TextFrameInputs in;
         in.items = {itemsAfter[6], itemsAfter[7], itemsAfter[8], itemsAfter[9], itemsAfter[10], itemsAfter[11]};
         in.item0 = itemsAfter[0];
