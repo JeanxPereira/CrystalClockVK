@@ -301,3 +301,11 @@ if(OPENING_ACTIVE)
 else()
     message(STATUS "opening gates inactive: no fixture at ${OPENING_FULL_FIXTURE}")
 endif()
+
+# opening: lib
+set(OPENING_VU0_VECTORS ${CMAKE_CURRENT_SOURCE_DIR}/tests/scene/opening/vu0_vectors.json)
+add_test(NAME ArithmeticOpeningTest COMMAND ArithmeticTest --opening ${OPENING_VU0_VECTORS})
+add_executable(Vu0Test tests/scene/opening/Vu0Test.cpp)
+target_link_libraries(Vu0Test PRIVATE OpeningTestSupport)
+set(OPENING_INPUTS_FIXTURE ${OPENING_FIXTURES}/hddosd-110U-opening2-inputs/opening.json)
+add_test(NAME Vu0Test COMMAND Vu0Test ${OPENING_VU0_VECTORS} ${OPENING_INPUTS_FIXTURE} ${OPENING_FULL_FIXTURE})
