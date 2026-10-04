@@ -133,15 +133,15 @@ function replayUploads(memory, packets, { maxFrame = 10 } = {}) {
 const TEXA = { TA0: 127, TA1: 129, AEM: 1 };
 const RESOURCES = { 0: 35, 2: 29, 3: 34, 5: 30, 6: 26, 8: 36, 10: 31, 11: 27, 12: 32 };
 const TEXTURES = [
-  { index: 0, tbp0: 0x2bc0, tbw: 4, psm: 0, width: 256, height: 64 },
-  { index: 2, tbp0: 0x2cc0, tbw: 1, psm: 2, width: 64, height: 64 },
-  { index: 3, tbp0: 0x2ce0, tbw: 1, psm: 2, width: 64, height: 64 },
-  { index: 5, tbp0: 0x2d20, tbw: 1, psm: 2, width: 64, height: 64 },
-  { index: 6, tbp0: 0x2d40, tbw: 4, psm: 2, width: 256, height: 256 },
-  { index: 8, tbp0: 0x3020, tbw: 1, psm: 0, width: 64, height: 64 },
-  { index: 10, tbp0: 0x3060, tbw: 2, psm: 2, width: 128, height: 128 },
-  { index: 11, tbp0: 0x30e0, tbw: 1, psm: 0, width: 64, height: 64 },
-  { index: 12, tbp0: 0x3120, tbw: 1, psm: 0, width: 64, height: 64 },
+  { index: 0, tbp0: 0x2bc0, tbw: 4, psm: 0, width: 256, height: 64, mapping: 'settled', basis: 'upload 0x2bc0 is the only 256x64 CT32; the logo draws (120) use it' },
+  { index: 2, tbp0: 0x2cc0, tbw: 1, psm: 2, width: 64, height: 64, mapping: 'settled', basis: 'fog passes use 2d20, 2ce0, 2cc0 in that order = D_003653E8 (5, 3, 2); consecutive allocation 2cc0 = index 2' },
+  { index: 3, tbp0: 0x2ce0, tbw: 1, psm: 2, width: 64, height: 64, mapping: 'settled', basis: 'fog passes use 2d20, 2ce0, 2cc0 in that order = D_003653E8 (5, 3, 2); consecutive allocation 2ce0 = index 3' },
+  { index: 5, tbp0: 0x2d20, tbw: 1, psm: 2, width: 64, height: 64, mapping: 'settled', basis: 'fog passes use 2d20, 2ce0, 2cc0 in that order = D_003653E8 (5, 3, 2); consecutive allocation 2d20 = index 5' },
+  { index: 6, tbp0: 0x2d40, tbw: 4, psm: 2, width: 256, height: 256, mapping: 'settled', basis: 'only 256x256 CT16; the tower draws of opening2-ee-a use 0x2d40' },
+  { index: 8, tbp0: 0x3020, tbw: 1, psm: 0, width: 64, height: 64, mapping: 'inferred', basis: 'allocation order and draw count only: 3020 is drawn 217 times (lights run 7..224); the loader was not read' },
+  { index: 10, tbp0: 0x3060, tbw: 2, psm: 2, width: 128, height: 128, mapping: 'inferred', basis: 'allocation order and size only: the only 128x128 CT16 that is drawn (3976 draws, mirror map); the loader was not read' },
+  { index: 11, tbp0: 0x30e0, tbw: 1, psm: 0, width: 64, height: 64, mapping: 'inferred', basis: 'allocation order only: 30e0 before 3120, 1988 draws each, so 11 and 12 could be swapped; the loader was not read' },
+  { index: 12, tbp0: 0x3120, tbw: 1, psm: 0, width: 64, height: 64, mapping: 'inferred', basis: 'allocation order only: 30e0 before 3120, 1988 draws each, so 11 and 12 could be swapped; the loader was not read' },
 ];
 const textureId = (t) => `t${t.tbp0.toString(16).padStart(4, '0')}-${t.tbw}-${t.psm}-${Math.log2(t.width)}x${Math.log2(t.height)}`;
 
@@ -175,9 +175,9 @@ async function main(args) {
       if (rgba[i] | rgba[i + 1] | rgba[i + 2]) nonzero += 1;
       low = Math.min(low, rgba[i + 3]); high = Math.max(high, rgba[i + 3]);
     }
-    console.log(`${file}: upload ${upload ? `frame ${upload.frame}` : 'NOT FOUND'}, alpha ${low}..${high}, ${nonzero} of ${t.width * t.height} texels not black`);
+    console.log(`${file}: mapping ${t.mapping}${t.mapping === 'inferred' ? ` (${t.basis})` : ''}; upload ${upload ? `frame ${upload.frame}` : 'NOT FOUND'}, alpha ${low}..${high}, ${nonzero} of ${t.width * t.height} texels not black`);
     manifest.push({
-      index: t.index, resource: RESOURCES[t.index], width: t.width, height: t.height, tbp0: t.tbp0, tbw: t.tbw, psm: t.psm, file,
+      index: t.index, resource: RESOURCES[t.index], width: t.width, height: t.height, tbp0: t.tbp0, tbw: t.tbw, psm: t.psm, file, mapping: t.mapping, basis: t.basis,
       ...(t.psm === 2 ? { texa: TEXA } : {}), source: { capture, frame: upload ? upload.frame : null },
     });
   }
@@ -192,6 +192,7 @@ async function main(args) {
     for (const t of TEXTURES) {
       const n = seen.get(textureId(t)) ?? 0;
       console.log(`check ${textureId(t)} (index ${t.index}): ${n} draws`);
+      if (t.mapping === 'inferred') console.log(`check index ${t.index}: INFERRED, ${t.basis}`);
       if (n < 5 && t.index !== 6) bad += 1;
     }
     for (const id of seen.keys()) if (!TEXTURES.some((t) => textureId(t) === id)) { console.log(`check: draws use ${id}, not in the manifest`); bad += 1; }
