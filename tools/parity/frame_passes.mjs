@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describeState, nativeVertices } from './make_fixture.mjs';
+import { describeState, mipLevels, mipOf, mipRegisters, nativeVertices } from './make_fixture.mjs';
 
 const DIST = (process.env.WATSON_DIST ?? 'D:/CodingProjects/Watson/Server/dist').replace(/\\/g, '/').replace(/\/$/, '');
 const { parseGsDump } = await import(`file:///${DIST}/gs/parse.js`);
@@ -26,6 +26,8 @@ export function framePasses(dump) {
     const block = Number(decodeRegister('FRAME', BigInt(d.state.FRAME)).FBP) * 32;
     targetOfBlock.set(block, `fb${hex(block, 4)}`);
   }
+  let mipValues = null;
+  const levelsOf = (ctxt) => mipLevels(mipValues ??= mipRegisters(fs.readFileSync(dump)), ctxt);
   const frames = [];
   for (const d of draws) {
     const kind = KIND[d.primitive];
@@ -33,7 +35,7 @@ export function framePasses(dump) {
     const [primitive, size] = kind;
     const primitives = [];
     for (let i = 0; i < d.indices.length; i += size) primitives.push(d.indices.slice(i, i + size).map((at) => d.vertices[at]));
-    const state = describeState(d.state, targetOfBlock, primitive);
+    const state = describeState(d.state, targetOfBlock, primitive, mipOf(d.vertices, levelsOf));
     if (state.smooth && primitive === 'Lines') state.skip ||= 'gouraud line';
     let texture = null;
     if (state.texture) {

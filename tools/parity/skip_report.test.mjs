@@ -8,12 +8,12 @@ const BASE = {
 };
 const draw = (index, state) => ({ index, frame: 0, primitive: 'sprite', state: { ...BASE, ...state } });
 
-test('one pass with a 24-bit depth buffer and one free pass', () => {
-  const report = reportDraws([draw(0, {}), draw(1, { ZBUF: '0x0000000001000000' })]);
+test('one pass with a 16-bit depth buffer and one free pass', () => {
+  const report = reportDraws([draw(0, {}), draw(1, { ZBUF: '0x0000000002000000' })]);
   assert.equal(report.passes, 2);
   assert.equal(report.free, 1);
   assert.equal(report.reasons.get('(none)').count, 1);
-  assert.equal(report.reasons.get('depth format 0x31').count, 1);
+  assert.equal(report.reasons.get('depth format 0x32').count, 1);
   assert.equal(report.features.size, 1);
-  assert.match([...report.features.keys()][0], /^ZBUF\.PSM=0x31 /);
+  assert.match([...report.features.keys()][0], /^ZBUF\.PSM=0x32 /);
 });
