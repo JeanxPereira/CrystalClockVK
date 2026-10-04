@@ -113,6 +113,20 @@ void takeForeign(scene::HeadState& s, const json& from) {
     takeStart(s.greyRamp, rampOf(from.at("greyRamp")));
 }
 
+// The menus' thread step (clock_menus.mjs between) runs before the frame and may write the head's ramps and records
+// (whole2-leave frame 3: mode 3 sends the vignette ramp down). A frame's input is taken after it; the carried state
+// takes what between changed.
+void takeBetween(scene::HeadState& s, const json& frame) {
+    if (!frame.contains("between") || frame.at("between").is_null()) return;
+    const json& before = frame.at("between").at("before");
+    const json& after = frame.at("between").at("after");
+    const auto changed = [&](const char* key) { return after.contains(key) && before.at(key) != after.at(key); };
+    if (changed("vignetteRamp")) s.vignetteRamp = rampOf(after.at("vignetteRamp"));
+    if (changed("greyRamp")) s.greyRamp = rampOf(after.at("greyRamp"));
+    if (changed("fadeRecord")) s.fade = rectOf(after.at("fadeRecord"));
+    if (changed("copyRecord")) s.copy = rectOf(after.at("copyRecord"));
+}
+
 bool stateEqual(scene::HeadState s, const json& after, const std::string& at) {
     takeForeign(s, after);
     bool ok = rampEqual(s.greyRamp, after.at("greyRamp"), at + " greyRamp") && rampEqual(s.vignetteRamp, after.at("vignetteRamp"), at + " vignetteRamp");
@@ -276,6 +290,7 @@ int sceneFixture(const std::string& path) {
         CHECK(stateEqual(alone.state(), expect.at("after"), at + " isolated"));
 
         if (!carried) carried.emplace(stateOf(in));
+        else takeBetween(carried->state(), frame);
         CHECK(drawsEqual(frameDraws(*carried, inputs, view, screen), head, inputs.width, inputs.height, at + " carried", carriedCover));
         CHECK(stateEqual(carried->state(), expect.at("after"), at + " carried"));
         takeForeign(carried->state(), expect.at("after"));

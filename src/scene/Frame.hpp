@@ -53,7 +53,8 @@ struct Material {
 };
 
 // Vertices as lists: 3 per triangle, 2 per line, 2 per sprite (opposite corners). `edgeSmoothing` is the
-// OSD's AA1 (the edges' coverage becomes the alpha); `halfLine`: the OSD draws it with the field's half-line offset.
+// OSD's AA1 (the edges' coverage becomes the alpha); `halfLine`: the OSD draws it with the field's half-line offset;
+// `primBlend`: the primitive's own blend enable (PRIM ABE) on top of AA1 (the parity oracle cannot reproduce the pair on triangles).
 struct Pass {
     std::string name;
     TargetName target = TargetName::Display;
@@ -61,6 +62,7 @@ struct Pass {
     Material material;
     bool edgeSmoothing = false;
     bool halfLine = false;
+    bool primBlend = false;
     std::vector<Vertex> vertices;
 };
 

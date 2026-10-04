@@ -3,6 +3,7 @@
 #include <string>
 
 #include "scene/Frame.hpp"
+#include "scene/MenuTypes.hpp"
 
 namespace app {
 
@@ -31,6 +32,8 @@ struct PanelInfo {
     uint32_t validationErrors = 0;
     std::string clock;
     std::string lastScreenshot;
+    std::string screen;
+    scene::PadWords pad;
 };
 
 void drawPanel(PanelState& state, const PanelInfo& info);

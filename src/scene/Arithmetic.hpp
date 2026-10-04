@@ -31,6 +31,7 @@ struct EeArithmetic {
     static float sin16(int32_t angle);                // clock_math sin: the 16385 table
     static float cos16(int32_t angle);                // clock_math cos
     static float cosf(float x);                       // ee_libm cosf
+    static float sinf(float x);                       // opening-libm sinf (HDD OSD 0x00294D98)
     static std::pair<float, float> sineCosine(float radians);  // clock_camera sineCosine: {sine, cosine}
 };
 
@@ -59,6 +60,7 @@ struct NativeArithmetic {
     }
     static float cos16(int32_t angle) { return sin16(s16(angle) + 0x4000); }
     static float cosf(float x) { return std::cos(x); }
+    static float sinf(float x) { return std::sin(x); }
     static std::pair<float, float> sineCosine(float radians) { return {std::sin(radians), std::cos(radians)}; }
 };
 
