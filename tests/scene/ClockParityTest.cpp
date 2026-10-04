@@ -211,15 +211,24 @@ int compareAfter(const EeClock& clock, const json& after, const std::string& at)
     return ok ? 0 : 1;
 }
 
-// The pieces the menus, the cubes and the menu ramp step need are not in this capture, so the model leaves them idle.
+// The clock alone runs no menus, so the capture must hold them idle: no button pressed, the menu and cube ramps still,
+// no entry entered. System Configuration may stand open behind Square (its ramp full), its selected entry's glow moving.
 int menusIdle(const json& frame, const std::string& at) {
     const json& input = frame.at("input");
-    for (const char* piece : {"pad", "configPage", "cubeRecord", "screenCode"})
-        if (input.contains(piece)) { std::fprintf(stderr, "%s: the capture has %s: the menus are not idle\n", at.c_str(), piece); return 1; }
     const json& after = frame.at("expect").at("after");
-    if (after.at("menuRamp") != input.at("menuRamp") || after.at("cubeRamp") != input.at("cubeRamp")) {
-        std::fprintf(stderr, "%s: the menu or cube ramp moved\n", at.c_str());
+    const auto busy = [&](const char* why) {
+        std::fprintf(stderr, "%s: %s: the menus are not idle\n", at.c_str(), why);
         return 1;
+    };
+    if (input.contains("pad") && input.at("pad").at("pressed") != 0) return busy("a button is pressed");
+    if (after.at("menuRamp") != input.at("menuRamp") || after.at("cubeRamp") != input.at("cubeRamp")) return busy("the menu or cube ramp moved");
+    if (input.contains("configPage")) {
+        json page = input.at("configPage"), pageAfter = after.at("configPage");
+        if (page.at("level") != 0 || pageAfter.at("level") != 0 || input.at("entryActive") != 0 || after.at("entryActive") != 0) return busy("an entry is entered");
+        page.erase("glow");
+        pageAfter.erase("glow");
+        if (page != pageAfter) return busy("System Configuration's page moved");
+        if (after.at("mainMenu") != input.at("mainMenu") || after.at("screenCode") != input.at("screenCode")) return busy("the main menu or the screen moved");
     }
     return 0;
 }
