@@ -135,7 +135,7 @@ for (const [name, camera, builder, done] of [
   ['rom-0230E-pal-boot-approach', 0x00221610, 0x00235360, 0x002216d0],
 ]) {
   const file = `${CAPTURES}/${name}.trace.jsonl`;
-  test(`the EE's own results in ${name}`, { skip: !fs.existsSync(file) }, () => {
+  test(`the EE's own results in ${name}`, { skip: !fs.existsSync(file) && !fs.existsSync(`${file}.gz`) }, () => {
     const probes = loadTrace(file).probes;
     let steps = 0;
     for (let n = 0; n + 2 < probes.length; n++) {

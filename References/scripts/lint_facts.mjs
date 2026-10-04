@@ -22,7 +22,7 @@ const INDEX_PAGES = new Set(['README.md', 'verification.md']);
 const files = process.argv.slice(2).length
   ? process.argv.slice(2).map((p) => path.resolve(p))
   : fs.readdirSync(FACTS).filter((n) => n.endsWith('.md')).map((n) => path.join(FACTS, n));
-const captures = fs.existsSync(CAPTURES) ? new Set(fs.readdirSync(CAPTURES).map((n) => n.replace(/\.(trace\.jsonl|gs|png|log)$/, ''))) : null;
+const captures = fs.existsSync(CAPTURES) ? new Set(fs.readdirSync(CAPTURES).map((n) => n.replace(/\.(trace\.jsonl(\.gz)?|gs|png|log)$/, ''))) : null;
 const exists = (name) => ['References/scripts', 'References/model', 'References/lib'].some((d) => fs.existsSync(path.join(ROOT, d, name)));
 
 let errors = 0, warnings = 0;

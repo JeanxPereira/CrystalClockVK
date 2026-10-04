@@ -15,9 +15,11 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
+const traceExists = (file) => fs.existsSync(file) || fs.existsSync(`${file}.gz`);
 const CAPTURES = process.env.WATSON_CAPTURES ?? 'D:/CodingProjects/Watson/Runtime/captures';
 const MANIFEST = path.join(HERE, 'run_all.manifest.json');
 const CACHE = path.join(CAPTURES, '.run_all-probes.json');
@@ -88,13 +90,24 @@ function captureProbes() {
   const cache = fs.existsSync(CACHE) ? JSON.parse(fs.readFileSync(CACHE, 'utf8')) : {};
   const out = {};
   const marker = Buffer.from('{"type":"probe","pc":"0x');
-  for (const name of fs.readdirSync(CAPTURES).filter((n) => n.endsWith('.trace.jsonl'))) {
+  const compressed = fs.existsSync(path.join(CAPTURES, 'compressed.manifest.json')) ? JSON.parse(fs.readFileSync(path.join(CAPTURES, 'compressed.manifest.json'), 'utf8')) : [];
+  const originalSize = new Map(compressed.map((entry) => [entry.name, entry.originalSize]));
+  const names = fs.readdirSync(CAPTURES).filter((n) => /\.trace\.jsonl(\.gz)?$/.test(n));
+  for (const name of names) {
+    const gzipped = name.endsWith('.gz');
+    const plainName = gzipped ? name.slice(0, -3) : name;
+    if (gzipped && names.includes(plainName)) continue;
     const file = path.join(CAPTURES, name);
     const stat = fs.statSync(file);
-    const key = `${stat.size}:${stat.mtimeMs}`;
-    const capture = name.replace(/\.trace\.jsonl$/, '');
+    const key = `${gzipped ? originalSize.get(plainName) ?? stat.size : stat.size}:${stat.mtimeMs}`;
+    const capture = plainName.replace(/\.trace\.jsonl$/, '');
     if (cache[capture]?.key === key) { out[capture] = cache[capture]; continue; }
     const pcs = new Set();
+    if (gzipped) {
+      const data = zlib.gunzipSync(fs.readFileSync(file));
+      for (let at = 0; (at = data.indexOf(marker, at)) >= 0 && at + marker.length + 8 <= data.length; at += marker.length)
+        pcs.add(parseInt(data.toString('latin1', at + marker.length, at + marker.length + 8), 16));
+    } else {
     const fd = fs.openSync(file, 'r');
     const chunk = Buffer.alloc(64 << 20);
     let carry = Buffer.alloc(0);
@@ -112,6 +125,7 @@ function captureProbes() {
       carry = data.subarray(Math.max(0, data.length - marker.length - 8));
     }
     fs.closeSync(fd);
+    }
     out[capture] = { key, pcs: [...pcs] };
     console.error(`scanned ${capture}: ${pcs.size} probe addresses`);
   }
@@ -208,7 +222,7 @@ async function suite() {
   if (filter) entries = entries.filter((entry) => new RegExp(filter).test(label(entry)));
   const state = fs.existsSync(STATE) ? JSON.parse(fs.readFileSync(STATE, 'utf8')) : {};
   if (argv.includes('--changed')) entries = entries.filter((entry) => !(state[label(entry)] >= newest(entry.verifier)));
-  const missing = entries.filter((entry) => !(entry.files ?? [path.join(CAPTURES, `${entry.capture}.trace.jsonl`)]).every((file) => fs.existsSync(file)));
+  const missing = entries.filter((entry) => !(entry.files ?? [path.join(CAPTURES, `${entry.capture}.trace.jsonl`)]).every(traceExists));
   entries = entries.filter((entry) => !missing.includes(entry));
 
   const started = Date.now();
