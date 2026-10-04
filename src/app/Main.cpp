@@ -30,6 +30,7 @@
 #include "app/OpeningScreen.hpp"
 #include "app/Png.hpp"
 #include "assets/AssetPack.hpp"
+#include "assets/ClockTextures.hpp"
 #include "assets/Program.hpp"
 #include "app/Screens.hpp"
 #include "render/Device.hpp"
@@ -242,7 +243,13 @@ int main(int argc, char** argv) {
         render::NativeRenderer renderer(device, options.shaders);
         if (useTextureFiles) renderer.loadClockTextures(options.textures);
         else app::uploadClockTextures(renderer, *decoded);
-        if (options.boot) renderer.loadOpeningTextures(options.openingTextures.empty() ? options.textures / "opening" : options.openingTextures);
+        if (options.boot) {
+            const bool openingFiles = !decoded || !options.openingTextures.empty();
+            const std::filesystem::path openingDirectory = options.openingTextures.empty() ? options.textures / "opening" : options.openingTextures;
+            if (openingFiles) renderer.loadOpeningTextures(openingDirectory);
+            else app::uploadOpeningTextures(renderer, *decoded);
+            std::printf("opening textures: %s\n", openingFiles ? ("PNG files in " + openingDirectory.string()).c_str() : sourceOf(*decoded->find(assets::kOpeningTextures[0].name)).c_str());
+        }
 
         // The clock as the whole3-clock capture holds it at its first frame (resources/clock/start.json, or a
         // capture's scene.json through --start), then real time.

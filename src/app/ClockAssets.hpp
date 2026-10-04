@@ -9,5 +9,7 @@ namespace app {
 scene::RodMesh rodMeshOf(const assets::Asset& mesh);
 // The ten clock textures, texture n at its place in assets::kClockTextures; throws when one is missing.
 void uploadClockTextures(render::NativeRenderer& renderer, const assets::AssetSet& set);
+// The opening's nine textures at their opening indices (assets::kOpeningTextures); throws when one is missing.
+void uploadOpeningTextures(render::NativeRenderer& renderer, const assets::AssetSet& set);
 
 }

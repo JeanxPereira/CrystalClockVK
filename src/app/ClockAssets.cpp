@@ -36,4 +36,14 @@ void uploadClockTextures(render::NativeRenderer& renderer, const assets::AssetSe
     }
 }
 
+void uploadOpeningTextures(render::NativeRenderer& renderer, const assets::AssetSet& set) {
+    for (const assets::OpeningTextureInfo& info : assets::kOpeningTextures) {
+        const assets::Asset* texture = set.find(info.name);
+        if (!texture || texture->kind != assets::AssetKind::TextureRgba32) throw std::runtime_error("no opening texture " + std::string(info.name));
+        if (texture->width != info.width || texture->height != info.height || texture->data.size() != size_t(info.width) * info.height * 4)
+            throw std::runtime_error("opening texture " + std::string(info.name) + ": not " + std::to_string(info.width) + " x " + std::to_string(info.height));
+        renderer.setTexture(scene::TextureSet::Opening, info.index, texture->width, texture->height, texture->data);
+    }
+}
+
 }

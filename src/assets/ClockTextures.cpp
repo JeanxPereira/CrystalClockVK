@@ -8,7 +8,7 @@ namespace assets {
 // alpha to (g, g, g, a); RGBA as stored; the 3-byte quarter of TEXCKABE tiled 2 x 2 with alpha 127.
 size_t rawTextureSize(PixelForm form, uint32_t width, uint32_t height) {
     const size_t pixels = size_t(width) * height;
-    return form == PixelForm::RgbQuarter ? pixels / 4 * 3 : form == PixelForm::GreyAlpha ? pixels * 2 : form == PixelForm::Rgba ? pixels * 4 : pixels;
+    return form == PixelForm::RgbQuarter ? pixels / 4 * 3 : form == PixelForm::Rgb555 ? pixels * 2 + 24 : form == PixelForm::GreyAlpha ? pixels * 2 : form == PixelForm::Rgba ? pixels * 4 : pixels;
 }
 
 Bytes convertTexture(View raw, uint32_t width, uint32_t height, PixelForm form) {
@@ -30,9 +30,15 @@ Bytes convertTexture(View raw, uint32_t width, uint32_t height, PixelForm form) 
         return out;
     }
     for (size_t i = 0; i < pixels; ++i) {
+        if (form == PixelForm::Rgb555) {
+            const uint32_t v = raw[16 + i * 2] | raw[17 + i * 2] << 8;
+            put(i % width, i / width, uint8_t((v & 31) << 3), uint8_t(((v >> 5) & 31) << 3), uint8_t(((v >> 10) & 31) << 3), (v & 0x7fff) == 0 ? 0 : v & 0x8000 ? 129 : 127);
+            continue;
+        }
         const size_t x = i % width, y = i / width;
         switch (form) {
         case PixelForm::Grey: put(x, y, raw[i], raw[i], raw[i], 0x7f); break;
+        case PixelForm::BlackAlpha: put(x, y, 0, 0, 0, raw[i]); break;
         case PixelForm::Alpha: put(x, y, 0xff, 0xff, 0xff, raw[i]); break;
         case PixelForm::GreyAlpha: put(x, y, raw[i * 2], raw[i * 2], raw[i * 2], raw[i * 2 + 1]); break;
         default: put(x, y, raw[i * 4], raw[i * 4 + 1], raw[i * 4 + 2], raw[i * 4 + 3]); break;
