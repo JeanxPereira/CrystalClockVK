@@ -55,6 +55,33 @@ int main(int argc, char** argv) {
     pass["texture"]["alpha"] = {{"mode", "Texel"}};
     std::ofstream(scratch / "frame.json") << nlohmann::json{{"field", 0}, {"depthStart", "d"}, {"targets", nlohmann::json::array()}, {"textures", nlohmann::json::array()}, {"passes", {pass}}}.dump();
     CHECK(parity::loadFixture(scratch).frame.passes.size() == 1);
+
+    // The opening's formats: the depth format, the two per-draw flags and a 16-bit texture's TEXA survive a read and a write; a frame.json
+    // without them (the clock's) reads as Z32, no flags, no 16-bit alpha.
+    CHECK(!copy.depth.z24 && !copy.perPixelAlpha && !copy.alphaCorrection && !copy.texture->alpha.sixteen);
+    pass["depth"]["format"] = "Z24";
+    pass["perPixelAlpha"] = true;
+    pass["alphaCorrection"] = true;
+    pass["texture"]["alpha"] = {{"mode", "Texel16"}, {"value", 127}, {"valueHigh", 129}, {"zeroWhenBlack", true}};
+    const parity::GsPass opening = parity::readPass(pass);
+    CHECK(opening.depth.z24 && opening.perPixelAlpha && opening.alphaCorrection);
+    CHECK(opening.texture->alpha.sixteen && !opening.texture->alpha.constant && opening.texture->alpha.value == 127 && opening.texture->alpha.valueHigh == 129 && opening.texture->alpha.zeroWhenBlack);
+    const nlohmann::json written = parity::writePass(opening);
+    CHECK(written["depth"]["format"] == "Z24" && written["perPixelAlpha"] == true && written["alphaCorrection"] == true);
+    CHECK(written["texture"]["alpha"]["mode"] == "Texel16" && written["texture"]["alpha"]["valueHigh"] == 129);
+    const parity::GsPass again = parity::readPass(written);
+    CHECK(again.depth.z24 && again.perPixelAlpha && again.alphaCorrection && again.texture->alpha.sixteen && again.texture->alpha.valueHigh == 129);
+
+    parity::GsFrame scene{};
+    scene.depthFormat = 1;
+    scene.passes = {again, again};
+    scene.passes[1].depth.z24 = false;
+    parity::applyDepthFormat(scene);
+    CHECK(scene.passes[0].depth.z24 && scene.passes[1].depth.z24);
+    scene.depthFormat = 0;
+    parity::applyDepthFormat(scene);
+    CHECK(!scene.passes[0].depth.z24 && !scene.passes[1].depth.z24);
+
     std::filesystem::remove_all(scratch);
     return 0;
 }

@@ -76,7 +76,9 @@ GsPass readPass(const nlohmann::json& p) {
     pass.antialias = p.at("antialias");
     pass.depth = {pick<GsDepthTest>(p.at("depth").at("test"), {{"Never", GsDepthTest::Never}, {"Always", GsDepthTest::Always},
                       {"GreaterEqual", GsDepthTest::GreaterEqual}, {"Greater", GsDepthTest::Greater}}, "depth test"),
-                  p.at("depth").at("write")};
+                  p.at("depth").at("write"), p.at("depth").value("format", "Z32") == "Z24"};
+    pass.perPixelAlpha = p.value("perPixelAlpha", false);
+    pass.alphaCorrection = p.value("alphaCorrection", false);
     if (!p.at("texture").is_null()) {
         const auto& t = p.at("texture");
         GsTexture texture{};
@@ -87,9 +89,11 @@ GsPass readPass(const nlohmann::json& p) {
         texture.coordinates = pick<GsCoordinates>(t.at("coordinates"), {{"Texel", GsCoordinates::Texel}, {"Projective", GsCoordinates::Projective}}, "coordinates");
         texture.addressU = address(t.at("addressU"));
         texture.addressV = address(t.at("addressV"));
+        texture.level = t.value("level", 0);
         texture.filter = pick<GsFilter>(t.at("filter"), {{"Nearest", GsFilter::Nearest}, {"Bilinear", GsFilter::Bilinear}}, "filter");
         const auto& a = t.at("alpha");
         if (a.at("mode") == "Constant") texture.alpha = {true, a.at("value"), a.at("zeroWhenBlack")};
+        else if (a.at("mode") == "Texel16") texture.alpha = {false, a.at("value"), a.at("zeroWhenBlack"), true, a.at("valueHigh")};
         else if (a.at("mode") != "Texel") throw std::runtime_error("unknown texture alpha mode " + a.at("mode").dump());
         pass.texture = std::move(texture);
     }
@@ -107,15 +111,17 @@ nlohmann::json writePass(const GsPass& pass) {
     const auto place = [](const GsAddress& a) { return nlohmann::json{{"mode", modes[int(a.mode)]}, {"min", a.min}, {"max", a.max}}; };
     nlohmann::json j{{"index", pass.index}, {"name", pass.name}, {"target", pass.target}, {"primitive", primitives[int(pass.primitive)]},
                      {"scissor", {pass.scissor.x0, pass.scissor.y0, pass.scissor.x1, pass.scissor.y1}}, {"antialias", pass.antialias},
-                     {"depth", {{"test", tests[int(pass.depth.test)]}, {"write", pass.depth.write}}}, {"blend", nullptr}, {"texture", nullptr},
+                     {"depth", {{"test", tests[int(pass.depth.test)]}, {"write", pass.depth.write}, {"format", pass.depth.z24 ? "Z24" : "Z32"}}},
+                     {"perPixelAlpha", pass.perPixelAlpha}, {"alphaCorrection", pass.alphaCorrection}, {"blend", nullptr}, {"texture", nullptr},
                      {"skip", pass.skip.empty() ? nlohmann::json(nullptr) : nlohmann::json(pass.skip)}, {"vertices", nlohmann::json::array()}};
     if (pass.blend) j["blend"] = {{"a", terms[int(pass.blend->a)]}, {"b", terms[int(pass.blend->b)]}, {"c", factors[int(pass.blend->c)]}, {"d", terms[int(pass.blend->d)]}, {"fixed", pass.blend->fixed}};
     if (pass.texture) {
         const GsTexture& t = *pass.texture;
         j["texture"] = {{"source", {{t.sourceIsTarget ? "target" : "image", t.source}}}, {"width", t.width}, {"height", t.height},
                         {"coordinates", t.coordinates == GsCoordinates::Texel ? "Texel" : "Projective"}, {"addressU", place(t.addressU)}, {"addressV", place(t.addressV)},
-                        {"filter", t.filter == GsFilter::Bilinear ? "Bilinear" : "Nearest"},
-                        {"alpha", t.alpha.constant ? nlohmann::json{{"mode", "Constant"}, {"value", t.alpha.value}, {"zeroWhenBlack", t.alpha.zeroWhenBlack}} : nlohmann::json{{"mode", "Texel"}}}};
+                        {"filter", t.filter == GsFilter::Bilinear ? "Bilinear" : "Nearest"}, {"level", t.level},
+                        {"alpha", t.alpha.sixteen ? nlohmann::json{{"mode", "Texel16"}, {"value", t.alpha.value}, {"valueHigh", t.alpha.valueHigh}, {"zeroWhenBlack", t.alpha.zeroWhenBlack}}
+                                  : t.alpha.constant ? nlohmann::json{{"mode", "Constant"}, {"value", t.alpha.value}, {"zeroWhenBlack", t.alpha.zeroWhenBlack}} : nlohmann::json{{"mode", "Texel"}}}};
     }
     for (const GsVertex& v : pass.vertices) j["vertices"].push_back({v.x, v.y, v.depth, v.r, v.g, v.b, v.a, v.s, v.t, v.q});
     return j;
