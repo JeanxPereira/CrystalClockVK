@@ -167,7 +167,7 @@ int constants(const std::string& elf) {
 }
 
 struct Totals {
-    size_t calls = 0, matrices = 0, sounds = 0;
+    size_t calls = 0, matrices = 0, sounds = 0, gaps = 0;
 };
 
 // (a) and (e): every call from the probed state at its entry.
@@ -193,6 +193,14 @@ int isolated(const std::string& path, Totals& totals) {
                 return 1;
             }
             for (size_t i = 0; i < step.sounds.size(); ++i) CHECK(step.sounds[i] == want[i]);
+            if (k == 0 && step.sounds.empty() && !want.empty() && fixture.frameCount() > 1) {
+                const TimelineStep next = timeline.step(static_cast<uint32_t>(line->discState));
+                CHECK(next.sounds.size() == want.size());
+                for (size_t i = 0; i < want.size(); ++i) CHECK(next.sounds[i].id == want[i].id && next.sounds[i].argument == want[i].argument);
+                CHECK(poseMatches(timeline.state(), fixture.timeline(1)->before, name.c_str(), 0));
+                totals.sounds += want.size();
+                ++totals.gaps;
+            }
             totals.sounds += step.sounds.size();
         }
         if (k + 1 < fixture.frameCount() && fixture.timeline(k + 1) && fixture.counter(k + 1) && *fixture.counter(k + 1) == counter + 1)
