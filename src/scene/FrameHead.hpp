@@ -44,7 +44,7 @@ struct HeadInputs {
     TubeConstants tube;
 };
 
-enum class Part { Background, Blur, Copy, Tint, Vignette, Fade, BlurAfter, Bars, Column };
+enum class Part { Background, Blur, Copy, Tint, Vignette, Fade, BlurAfter, Bars, Column, CubeHalf, CubeAdded, CubeChainShrink, CubeChainStretch, CubeToDisplay };
 enum class Target { Display, Work0, Work1 };
 enum class Source { None, Background, Frame, Work0, Work1 };
 enum class AlphaMode { Add, AlphaOver, Subtract, Constant, Keep };
@@ -73,6 +73,9 @@ struct HeadDraw {
     Coordinates coordinates = Coordinates::None;
     std::vector<HeadVertex> vertices;
 };
+
+// The two packets of a rectangle record (HDD func_00233770), as FrameHead draws them.
+HeadDraw headRectangle(const Rect& record, int32_t width, int32_t height, Part part);
 
 // facts/clock-frame-rest.md: head (background, blur trips, copies, tint), overlay, trips after the rods,
 // bars, column. Call order of a frame: head, [rods], overlay, tripsAfter, [pages], bars, column.
