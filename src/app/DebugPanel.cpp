@@ -11,6 +11,8 @@ void drawPanel(PanelState& state, const PanelInfo& info) {
     ImGui::Text("%s", info.clock.c_str());
     ImGui::Text("output %ux%u, %.1f fps, logic frame %llu", info.outputWidth, info.outputHeight, info.framesPerSecond, static_cast<unsigned long long>(info.logicFrames));
     ImGui::Text("validation errors: %u", info.validationErrors);
+    if (!info.screen.empty()) ImGui::Text("screen: %s", info.screen.c_str());
+    ImGui::Text("pad held %04x pressed %04x", info.pad.held, info.pad.pressed);
     ImGui::Separator();
 
     static const char* resolutions[] = {"640x448 (native)", "window", "x2", "x4"};

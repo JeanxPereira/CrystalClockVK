@@ -12,13 +12,16 @@
 #include <exception>
 #include <filesystem>
 #include <functional>
+#include <map>
 #include <string>
 #include <vector>
 
 #include "scene/SceneInputs.hpp"
 #include "app/DebugPanel.hpp"
 #include "app/NativeFrames.hpp"
+#include "app/Input.hpp"
 #include "app/Png.hpp"
+#include "app/Screens.hpp"
 #include "render/Device.hpp"
 #include "render/NativeRenderer.hpp"
 #include "scene/Clock.hpp"
@@ -34,7 +37,10 @@ struct Options {
     double soak = 0;
     std::filesystem::path shaders = CLOCK_SHADERS;
     std::filesystem::path textures = CLOCK_TEXTURES;
-    std::filesystem::path start = CLOCK_START;
+    std::filesystem::path start = CLOCK_MENUS_START;
+    bool startGiven = false;
+    bool clockStart = false;
+    std::filesystem::path cubeMesh = CLOCK_CUBE_MESH;
     std::filesystem::path mesh = CLOCK_MESH;
     std::filesystem::path screenshots = CLOCK_SCREENSHOTS;
     std::filesystem::path font = CLOCK_FONT;
@@ -96,17 +102,20 @@ int main(int argc, char** argv) {
         else if (arg == "--soak" && more) options.soak = std::atof(argv[++i]);
         else if (arg == "--shaders" && more) options.shaders = argv[++i];
         else if (arg == "--textures" && more) options.textures = argv[++i];
-        else if (arg == "--start" && more) options.start = argv[++i];
+        else if (arg == "--start" && more) { options.start = argv[++i]; options.startGiven = true; }
+        else if (arg == "--clock") options.clockStart = true;
+        else if (arg == "--cube-mesh" && more) options.cubeMesh = argv[++i];
         else if (arg == "--mesh" && more) options.mesh = argv[++i];
         else if (arg == "--screenshots" && more) options.screenshots = argv[++i];
         else if (arg == "--font" && more) options.font = argv[++i];
         else if (arg == "--program" && more) options.program = argv[++i];
         else {
-            std::fprintf(stderr, "usage: CrystalClock [--smoke] [--soak seconds] [--no-validation] [--shaders dir] [--textures dir] [--start scene.json] [--mesh rod-mesh.json] [--screenshots dir] [--font FNTOSD] [--program hddosd.elf]\n");
+            std::fprintf(stderr, "usage: CrystalClock [--smoke] [--soak seconds] [--no-validation] [--shaders dir] [--textures dir] [--start scene.json] [--clock] [--cube-mesh cube-mesh.json] [--mesh rod-mesh.json] [--screenshots dir] [--font FNTOSD] [--program hddosd.elf]\n");
             return 1;
         }
     }
-    if (!SDL_Init(SDL_INIT_VIDEO)) {
+    if (!options.startGiven) options.start = options.clockStart ? CLOCK_CLOCK_START : CLOCK_MENUS_START;
+    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD)) {
         std::fprintf(stderr, "SDL: %s\n", SDL_GetError());
         return 1;
     }
@@ -123,8 +132,11 @@ int main(int argc, char** argv) {
 
         // The clock as the whole3-clock capture holds it at its first frame (resources/clock/start.json, or a
         // capture's scene.json through --start), then real time.
+        const scene::RodMesh cubeMesh = scene::loadRodMesh(options.cubeMesh);
         const nlohmann::json input = scene::firstInput(options.start.string());
-        scene::ClockInputs clockInputs = scene::clockInputs(input, scene::loadRodMesh(options.mesh));
+        scene::ClockInputs clockInputs = scene::hasMenus(input) ? scene::clockInputs(input, scene::loadRodMesh(options.mesh), &cubeMesh)
+                                                                                      : scene::clockInputs(input, scene::loadRodMesh(options.mesh));
+        if (clockInputs.menus) clockInputs.menus->options.browserEnters = false;
         // The text needs the font library's context of the start state; a start without it runs without text.
         std::shared_ptr<const scene::Font> font;
         if (input.contains("font")) {
@@ -137,6 +149,7 @@ int main(int argc, char** argv) {
         Clock clock(clockInputs);
         scene::FrameInputs inputs = scene::frameInputs(input);
         app::firstFrame(inputs);
+        inputs.threadStep = false;
 
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
@@ -163,6 +176,13 @@ int main(int argc, char** argv) {
         app::PanelInfo info;
         info.sampleCounts = device.sampleCounts();
         system_clock::duration offset{};
+        app::Bindings bindings = app::Bindings::defaults();
+        app::PadReader reader;
+        std::map<SDL_JoystickID, SDL_Gamepad*> gamepads;
+        scene::ConfigItems items = clockInputs.menus ? clockInputs.menus->items : scene::ConfigItems{};
+        int32_t previousLevel = 0;
+        std::vector<std::string> visited;
+        bool soakFailed = false;
         scene::Frame frame;
         bool fresh = false;
         uint64_t logicFrames = 0;
@@ -170,7 +190,36 @@ int main(int argc, char** argv) {
             const system_clock::time_point now = system_clock::now() + offset;
             inputs.time = clockTime(now);
             inputs.items = clockItems(now);
+            if (const scene::MenusState* menus = clock.menus()) {
+                const int32_t level = menus->page.level;
+                if (previousLevel == 1 && level == 0 && menus->page.selected >= 0 && menus->page.selected < 9 &&
+                    menus->entries[menus->page.selected].confirm == 0x00227b90u) {
+                    const std::chrono::local_time<std::chrono::seconds> wanted{std::chrono::local_days{std::chrono::year(items[6]) / items[7] / items[8]} +
+                                                                                std::chrono::hours(items[9]) + std::chrono::minutes(items[10]) + std::chrono::seconds(items[11])};
+                    offset = std::chrono::current_zone()->to_sys(wanted) - system_clock::now();
+                }
+                previousLevel = level;
+                if (level != 1) {
+                    const scene::ClockItems local = clockItems(system_clock::now() + offset);
+                    items[6] = local.year, items[7] = local.month, items[8] = local.day, items[9] = local.hour, items[10] = local.minute, items[11] = local.second;
+                }
+                const auto utc9 = std::chrono::floor<std::chrono::seconds>(now) + std::chrono::minutes(540);
+                const auto day = std::chrono::floor<std::chrono::days>(utc9);
+                const std::chrono::year_month_day date{day};
+                const std::chrono::hh_mm_ss hms{utc9 - day};
+                inputs.menu.pad = reader.frame();
+                inputs.menu.rtcMirror = std::array<int32_t, 6>{int32_t(date.year()), int32_t(unsigned(date.month())), int32_t(unsigned(date.day())),
+                                                               int32_t(hms.hours().count()), int32_t(hms.minutes().count()), int32_t(hms.seconds().count())};
+                inputs.configItems = items;
+            }
             frame = clock.frame(inputs);
+            if (const scene::MenusState* menus = clock.menus()) {
+                items = clock.items();
+                const app::Screen screen = app::screenOf(*menus, clock.state().menuRamp);
+                if (visited.empty() || visited.back() != app::screenName(screen)) visited.push_back(app::screenName(screen));
+                if (clock.state().mode == 3 || clock.state().scene.leaving != 0 || menus->screenCode == 9999) soakFailed = true;
+            }
+            inputs.threadStep = true;
             app::nextFrame(inputs);
             ++logicFrames;
             fresh = true;
@@ -196,6 +245,42 @@ int main(int argc, char** argv) {
             script = {{1.0, resize(800, 600)}, {2.0, resize(1024, 700)}, {2.5, [&] { SDL_MinimizeWindow(window); }}, {3.5, [&] { SDL_RestoreWindow(window); }},
                       {4.5, resize(1280, 896)}};
             options.soak = 5.5;
+        } else if (options.soak > 0 && clockInputs.menus && !options.clockStart) {
+            const auto press = [&](double at, app::PadButton button) {
+                const uint32_t bit = app::bitOf(button);
+                script.push_back({at, [&reader, bit] { reader.down(0, bit); }});
+                script.push_back({at + 0.1, [&reader, bit] { reader.up(0, bit); }});
+            };
+            using app::PadButton;
+            script.push_back({1.5, shot("main-menu")});
+            press(2.0, PadButton::Down);
+            press(3.5, PadButton::Up);
+            press(5.0, PadButton::Up);
+            press(6.5, PadButton::Triangle);
+            press(8.0, PadButton::Cross);
+            press(10.0, PadButton::Down);
+            press(11.5, PadButton::Cross);
+            script.push_back({17.0, shot("configuration")});
+            for (double at : {18.0, 19.0, 20.0}) press(at, PadButton::Down);
+            for (double at : {21.0, 22.0, 23.0, 24.0, 25.0}) press(at, PadButton::Up);
+            for (double at : {26.0, 27.0, 28.0}) press(at, PadButton::Down);
+            press(30.0, PadButton::Cross);
+            script.push_back({32.0, shot("entry")});
+            press(33.0, PadButton::Right);
+            press(34.5, PadButton::Circle);
+            press(36.0, PadButton::Cross);
+            press(38.0, PadButton::Cross);
+            press(40.0, PadButton::Square);
+            script.push_back({44.0, shot("clock-alone")});
+            script.push_back({45.0, resize(800, 600)});
+            script.push_back({46.0, set(app::Resolution::Window, 4)});
+            press(48.0, PadButton::Square);
+            script.push_back({50.0, [&] { SDL_MinimizeWindow(window); }});
+            script.push_back({51.0, [&] { SDL_RestoreWindow(window); }});
+            script.push_back({52.0, set(app::Resolution::Quadruple, 4)});
+            press(54.0, PadButton::Circle);
+            script.push_back({55.0, set(app::Resolution::Native, 1)});
+            script.push_back({56.0, resize(1280, 896)});
         } else if (options.soak > 0) {
             script = {
                 {8.0, shot("native")},
@@ -232,6 +317,7 @@ int main(int argc, char** argv) {
                 {58.0, resize(1280, 896)},
             };
         }
+        std::stable_sort(script.begin(), script.end(), [](const Step& l, const Step& r) { return l.at < r.at; });
         size_t next = 0;
 
         const double step = 1001.0 / 60000.0;
@@ -255,6 +341,17 @@ int main(int argc, char** argv) {
             SDL_Event event;
             while (SDL_PollEvent(&event)) {
                 ImGui_ImplSDL3_ProcessEvent(&event);
+                if (event.type == SDL_EVENT_GAMEPAD_ADDED) {
+                    if (SDL_Gamepad* pad = SDL_OpenGamepad(event.gdevice.which)) gamepads[event.gdevice.which] = pad;
+                }
+                if (!ImGui::GetIO().WantCaptureKeyboard || event.type != SDL_EVENT_KEY_DOWN) app::feed(reader, bindings, event);
+                if (event.type == SDL_EVENT_GAMEPAD_REMOVED) {
+                    const auto found = gamepads.find(event.gdevice.which);
+                    if (found != gamepads.end()) {
+                        SDL_CloseGamepad(found->second);
+                        gamepads.erase(found);
+                    }
+                }
                 if (event.type == SDL_EVENT_QUIT || event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) running = false;
             }
             const Uint64 now = SDL_GetTicksNS();
@@ -298,6 +395,8 @@ int main(int argc, char** argv) {
             std::snprintf(text, sizeof text, "%02d:%02d:%02d", shownTime.hours, shownTime.minutes, shownTime.seconds);
             info.clock = text;
             info.logicFrames = logicFrames;
+            info.screen = visited.empty() ? "" : visited.back();
+            info.pad = inputs.menu.pad;
             info.framesPerSecond = fps;
             info.validationErrors = device.validationErrors();
             ImGui_ImplVulkan_NewFrame();
@@ -367,6 +466,15 @@ int main(int argc, char** argv) {
             std::printf("display %.2f Hz; %llu present intervals, mean %.3f ms (step %.3f ms), %llu off by more than 2 ms, worst off by %.3f ms\n", refreshRate(),
                         static_cast<unsigned long long>(intervals), intervals ? intervalSum / double(intervals) * 1e3 : 0.0, step * 1e3,
                         static_cast<unsigned long long>(uneven), intervalWorst * 1e3);
+        if (options.soak > 0 && clock.menus()) {
+            std::string list;
+            for (const std::string& name : visited) list += (list.empty() ? "" : ", ") + name;
+            std::printf("screens visited: %s\n", list.c_str());
+            if (soakFailed) {
+                std::fprintf(stderr, "soak: mode 3, leaving or screen code 9999 seen\n");
+                code = 1;
+            }
+        }
         if (device.validationErrors() != 0) code = 1;
     } catch (const std::exception& error) {
         std::fprintf(stderr, "fatal: %s\n", error.what());

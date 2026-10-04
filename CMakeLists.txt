@@ -354,9 +354,15 @@ target_compile_definitions(CrystalClock PRIVATE
     CLOCK_FONT="${CLOCK_DUMPS}/FNTOSD" CLOCK_PROGRAM="${CLOCK_DUMPS}/hddosd.elf")
 target_link_libraries(ParityTool PRIVATE ClockRender ClockSceneNative SceneInputs)
 
-add_library(ClockInput STATIC src/app/Input.cpp)
+add_library(ClockInput STATIC src/app/Input.cpp src/app/Screens.cpp)
 target_include_directories(ClockInput PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(ClockInput PUBLIC SDL3::SDL3 ClockScene)
+add_executable(ScreensTest tests/app/ScreensTest.cpp)
+target_link_libraries(ScreensTest PRIVATE ClockInput)
+add_test(NAME ScreensTest COMMAND ScreensTest)
+target_link_libraries(CrystalClock PRIVATE ClockInput)
+target_compile_definitions(CrystalClock PRIVATE CLOCK_MENUS_START="${CMAKE_SOURCE_DIR}/resources/menus/start-menu.json"
+    CLOCK_CLOCK_START="${CMAKE_SOURCE_DIR}/resources/menus/start-clock.json" CLOCK_CUBE_MESH="${CMAKE_SOURCE_DIR}/References/model/cube-mesh.json")
 add_executable(InputTest tests/app/InputTest.cpp)
 target_link_libraries(InputTest PRIVATE ClockInput nlohmann_json::nlohmann_json)
 get_filename_component(ENTER_SCENE ${CLOCK_FIXTURE}/../../hddosd-110U-whole3-enter/scene.json ABSOLUTE)

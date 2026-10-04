@@ -759,7 +759,8 @@ bool Text<A>::entryValue(const PagesInputs& in, const ConfigEntry& entry, int32_
         return clockValue(in, entry, in.adjustFields, x, y, alpha, true, out);
     } else if (callback == kItemString || callback == kItemStringJump) {
         // func_002283C0: the row of the value table the item holds, then clock_config_get_item_str's string for it.
-        const int32_t value = in.items.at(static_cast<size_t>(entry.item));
+        if (entry.item < 0 || static_cast<size_t>(entry.item) >= in.items.size()) return false;
+        const int32_t value = in.items[static_cast<size_t>(entry.item)];
         const uint32_t table = entry.valueTable;
         int32_t index = entry.valueIndex;
         if (value != p.integer(table + 32u * static_cast<uint32_t>(index))) {
