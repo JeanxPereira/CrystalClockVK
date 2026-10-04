@@ -313,3 +313,12 @@ target_compile_definitions(CrystalClock PRIVATE
     CLOCK_MESH="${CMAKE_SOURCE_DIR}/facts/data/rod-mesh.json" CLOCK_SCREENSHOTS="${CMAKE_SOURCE_DIR}/out/screenshots"
     CLOCK_FONT="${CLOCK_DUMPS}/FNTOSD" CLOCK_PROGRAM="${CLOCK_DUMPS}/hddosd.elf")
 target_link_libraries(ParityTool PRIVATE ClockRender ClockSceneNative SceneInputs)
+
+target_sources(ClockScene PRIVATE src/scene/ClockDate.cpp src/scene/Menus.cpp)
+target_sources(ClockSceneNative PRIVATE src/scene/ClockDate.cpp src/scene/Menus.cpp)
+add_executable(MenusTest tests/scene/MenusTest.cpp)
+target_link_libraries(MenusTest PRIVATE StageCompare)
+if(MENU_SCENES)
+    add_test(NAME MenusTest COMMAND MenusTest ${MENU_SCENES})
+    set_tests_properties(MenusTest PROPERTIES TIMEOUT 3600)
+endif()
