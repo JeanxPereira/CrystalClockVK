@@ -57,7 +57,35 @@ int main(int argc, char** argv) {
         const assets::AssetSet& set = loaded->set;
         const nlohmann::json start = scene::firstInput(argv[2]);
 
+        // The bridge refuses a mesh of another face count and a texture of another size than the OSD's.
+        assets::Asset mesh = *set.find("RODMESH");
+        mesh.width = 15;
+        mesh.data.resize(size_t(15) * 9 * 16);
+        bool refusedMesh = false;
+        try {
+            (void)app::rodMeshOf(mesh);
+        } catch (const std::runtime_error&) {
+            refusedMesh = true;
+        }
+        CHECK(refusedMesh);
+
         render::Device device(nullptr, {true});
+        {
+            assets::AssetSet wrong = set;
+            for (assets::Asset& a : wrong.assets)
+                if (a.name == "TEXCKABE") {
+                    a.width = a.height = 64;
+                    a.data.resize(64 * 64 * 4);
+                }
+            render::NativeRenderer renderer(device, argv[1]);
+            bool refusedTexture = false;
+            try {
+                app::uploadClockTextures(renderer, wrong);
+            } catch (const std::runtime_error&) {
+                refusedTexture = true;
+            }
+            CHECK(refusedTexture);
+        }
         std::vector<std::vector<uint8_t>> files, pack;
         {
             render::NativeRenderer renderer(device, argv[1]);
