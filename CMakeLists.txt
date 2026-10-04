@@ -365,3 +365,12 @@ target_link_libraries(LightsTest PRIVATE OpeningTestSupport)
 if(EXISTS ${OPENING_FULL_FIXTURE})
     add_test(NAME LightsTest COMMAND LightsTest ${OPENING_FULL_FIXTURE})
 endif()
+
+# opening: flat
+add_executable(FlatTest tests/scene/opening/FlatTest.cpp)
+target_sources(FlatTest PRIVATE src/scene/opening/Flat.cpp)
+target_link_libraries(FlatTest PRIVATE OpeningTestSupport ClockParity)
+set(OPENING_FLAT_FIXTURE ${OPENING_FIXTURES}/hddosd-110U-opening2-flat/opening.json)
+if(EXISTS ${OPENING_FLAT_FIXTURE} AND EXISTS ${OPENING_FULL_FIXTURE})
+    add_test(NAME FlatTest COMMAND FlatTest ${OPENING_FLAT_FIXTURE} ${OPENING_FULL_FIXTURE})
+endif()

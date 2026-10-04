@@ -1,6 +1,7 @@
 #pragma once
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -58,7 +59,8 @@ struct Material {
 };
 
 // Vertices as lists: 3 per triangle, 2 per line, 2 per sprite (opposite corners). `edgeSmoothing` is the
-// OSD's AA1 (the edges' coverage becomes the alpha); `halfLine`: the OSD draws it with the field's half-line offset.
+// OSD's AA1 (the edges' coverage becomes the alpha); `halfLine`: the OSD draws it with the field's half-line offset;
+// `scissor`: x0, y0, x1, y1 inclusive when the pass is drawn under a scissor other than the whole picture.
 struct Pass {
     std::string name;
     TargetName target = TargetName::Display;
@@ -67,6 +69,7 @@ struct Pass {
     bool edgeSmoothing = false;
     bool halfLine = false;
     std::vector<Vertex> vertices;
+    std::optional<std::array<int32_t, 4>> scissor;
 };
 
 // facts/text.md section 2: the font library's glyph cache, sampled as texture kGlyphTexture. Cells of cellWidth x
