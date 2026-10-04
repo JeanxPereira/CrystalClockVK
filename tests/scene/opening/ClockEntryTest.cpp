@@ -116,6 +116,7 @@ int main(int argc, char** argv) {
             clock.frame(last);
             if (clock.state().mode == 0 && clock.state().overlayLevel == 128) reached = n;
         }
+        CHECK(reached == 128);
         std::printf("report only: mode 0 and weight 128 reached at frame %d of the run (T0 + %d), the plan expects T0 + 129\n", reached, reached);
         return 0;
     });

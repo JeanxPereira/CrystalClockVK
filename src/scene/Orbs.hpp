@@ -48,6 +48,7 @@ struct OrbInputs {
     int32_t height = 224;
     int32_t mode = 0;
     int32_t overlayLevel = 0;
+    bool hasEntryData = false;
     int32_t wide = 0;
     std::array<int32_t, kOrbCount> random{};
     std::array<std::array<int32_t, 4>, kOrbCount> colours{};

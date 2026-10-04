@@ -78,7 +78,7 @@ OrbFrame Orbs<A>::frame(OrbState& state, const OrbInputs& in, const Mat4& view, 
         OrbRing& ring = state.rings[orb.k];
         float px = orb.cx, py = orb.cy;
         std::array<int32_t, 4> colour = in.colour;
-        if (in.mode == 2 || in.mode == 3) {
+        if (in.hasEntryData && (in.mode == 2 || in.mode == 3)) {
             const int32_t weight = in.overlayLevel;
             const int k = orb.k;
             if ((in.mode == 2 && (in.wide == 1 || k == 0)) || (in.mode == 3 && k == 0)) {

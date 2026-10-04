@@ -89,8 +89,14 @@ int capture(const std::string& path) {
 int main(int argc, char** argv) {
     return scenetest::run(argc, argv, [](int count, char** arguments) {
         if (int failed = branches()) return failed;
-        for (int i = 1; i < count; ++i)
-            if (int failed = capture(arguments[i])) return failed;
+        for (int i = 1; i < count; ++i) {
+            const std::string argument = arguments[i];
+            if (argument.rfind("--missing=", 0) == 0) {
+                std::printf("MISSING capture, not checked: %s\n", argument.c_str() + 10);
+                continue;
+            }
+            if (int failed = capture(argument)) return failed;
+        }
         std::printf("HandoffTest passed\n");
         return 0;
     });

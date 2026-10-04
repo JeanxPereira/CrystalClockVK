@@ -18,7 +18,6 @@ const KEYS = [
   'orbColour', 'screen', 'index', 'item0', 'font', 'textRamps', 'configItems', 'mechaconParam', 'videoMode',
   'wide', 'orbRandom', 'orbColours',
 ];
-// The clock entered from the opening has no text and carries the orbs' entry motion.
 const OPTIONAL = new Set(['font', 'textRamps', 'mechaconParam', 'videoMode', 'wide', 'orbRandom', 'orbColours']);
 
 const input = process.argv[2] ?? 'D:/CodingProjects/CrystalClockVK/References/fixtures/hddosd-110U-whole3-clock/scene.json';

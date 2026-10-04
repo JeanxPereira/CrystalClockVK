@@ -6,8 +6,6 @@
 
 namespace app {
 
-// The clock as the opening leaves it: the state of resources/clock/start-boot.json (the whole-boot-opening capture at the
-// clock's first frame, previous module 1), then the local time. facts/opening.md section 8.
 class ClockScreen : public Screen {
 public:
     ClockScreen(const scene::ClockInputs& inputs, const scene::FrameInputs& frame);

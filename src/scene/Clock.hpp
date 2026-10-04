@@ -30,7 +30,7 @@ struct ClockInputs {
     float minuteFactor = 0;
     float fractionEasing = 0;
     Colour orbColour{};
-    // facts/opening.md section 8, clock_frame.mjs orbEntry: the orbs' entry motion and colours (overlay modes 2 and 3).
+    bool hasEntryData = false;
     int32_t wide = 0;
     std::array<int32_t, kOrbCount> orbRandom{};
     std::array<Colour, kOrbCount> orbColours{};
@@ -50,7 +50,6 @@ struct FrameInputs {
     int32_t displayIndex = 0;
     int32_t item0 = 0;
     ClockItems items;
-    // 0 until the time keeper has read the clock once (the scene scale stays zero); the clock entered from the opening starts so.
     int32_t timeFilled = 1;
 };
 
@@ -80,6 +79,7 @@ private:
     TubeConstants m_tube;
     float m_minuteFactor, m_fractionEasing;
     Colour m_orbColour;
+    bool m_hasEntryData;
     int32_t m_wide;
     std::array<int32_t, kOrbCount> m_orbRandom;
     std::array<Colour, kOrbCount> m_orbColours;

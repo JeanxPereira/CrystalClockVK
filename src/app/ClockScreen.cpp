@@ -19,6 +19,7 @@ void ClockScreen::setTime(const scene::ClockTime& time, const scene::ClockItems&
 
 void ClockScreen::step() {
     m_frame = m_clock.frame(m_inputs);
+    m_inputs.timeFilled = 1;
     nextFrame(m_inputs);
 }
 

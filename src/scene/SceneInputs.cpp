@@ -205,6 +205,7 @@ ClockInputs clockInputs(const json& in, const RodMesh& mesh) {
     c.minuteFactor = f(in.at("orbConstants").at("minuteFactor"));
     c.fractionEasing = f(in.at("orbConstants").at("fractionEasing"));
     c.orbColour = colour(in.at("orbColour"));
+    c.hasEntryData = in.contains("wide") && in.contains("orbRandom") && in.contains("orbColours");
     if (in.contains("wide")) c.wide = in.at("wide");
     if (in.contains("orbRandom"))
         for (size_t k = 0; k < kOrbCount; ++k) c.orbRandom[k] = in.at("orbRandom").at(k);

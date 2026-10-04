@@ -311,6 +311,8 @@ foreach(CAPTURE opening2-handoff-probes opening3-illegal opening3-disc65-b openi
         opening3-disc6f opening3-disc70 opening3-disc71 opening3-disc73 opening3-forced opening3-ready-b opening3-ill74-c opening3-ill72-b)
     if(EXISTS ${OPENING_FIXTURES}/hddosd-110U-${CAPTURE}/opening.json)
         list(APPEND HANDOFF_ARGS ${OPENING_FIXTURES}/hddosd-110U-${CAPTURE}/opening.json)
+    else()
+        list(APPEND HANDOFF_ARGS --missing=${CAPTURE})
     endif()
 endforeach()
 add_test(NAME HandoffTest COMMAND HandoffTest ${HANDOFF_ARGS})
