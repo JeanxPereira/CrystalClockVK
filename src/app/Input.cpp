@@ -4,14 +4,14 @@ namespace app {
 
 uint32_t bitOf(PadButton button) {
     switch (button) {
-    case PadButton::Up: return padbits::Up;
-    case PadButton::Down: return padbits::Down;
-    case PadButton::Left: return padbits::Left;
-    case PadButton::Right: return padbits::Right;
-    case PadButton::Cross: return padbits::Cross;
-    case PadButton::Circle: return padbits::Circle;
-    case PadButton::Square: return padbits::Square;
-    case PadButton::Triangle: return padbits::Triangle;
+    case PadButton::Up: return scene::pad::Up;
+    case PadButton::Down: return scene::pad::Down;
+    case PadButton::Left: return scene::pad::Left;
+    case PadButton::Right: return scene::pad::Right;
+    case PadButton::Cross: return scene::pad::Cross;
+    case PadButton::Circle: return scene::pad::Circle;
+    case PadButton::Square: return scene::pad::Square;
+    case PadButton::Triangle: return scene::pad::Triangle;
     }
     return 0;
 }

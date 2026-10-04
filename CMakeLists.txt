@@ -316,7 +316,7 @@ target_link_libraries(ParityTool PRIVATE ClockRender ClockSceneNative SceneInput
 
 add_library(ClockInput STATIC src/app/Input.cpp)
 target_include_directories(ClockInput PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(ClockInput PUBLIC SDL3::SDL3)
+target_link_libraries(ClockInput PUBLIC SDL3::SDL3 ClockScene)
 add_executable(InputTest tests/app/InputTest.cpp)
 target_link_libraries(InputTest PRIVATE ClockInput nlohmann_json::nlohmann_json)
 get_filename_component(ENTER_SCENE ${CLOCK_FIXTURE}/../../hddosd-110U-whole3-enter/scene.json ABSOLUTE)

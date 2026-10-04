@@ -5,18 +5,7 @@
 
 #include <SDL3/SDL.h>
 
-namespace app::padbits {
-constexpr uint32_t Triangle = 0x10, Cross = 0x20, Circle = 0x40, Square = 0x80;
-constexpr uint32_t Up = 0x1000, Right = 0x2000, Down = 0x4000, Left = 0x8000;
-
-struct PadWords {
-    uint32_t held = 0, pressed = 0, released = 0, repeating = 0;
-};
-}
-
-namespace scene {
-using PadWords = app::padbits::PadWords;
-}
+#include "scene/MenuTypes.hpp"
 
 namespace app {
 enum class PadButton { Up, Down, Left, Right, Cross, Circle, Square, Triangle };
