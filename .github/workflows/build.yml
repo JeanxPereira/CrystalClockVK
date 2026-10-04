@@ -22,8 +22,19 @@ jobs:
         with:
           cache: true
 
-      - name: Configure CMake
-        run: cmake -B build -G "Visual Studio 17 2022" -A x64
+      - name: Developer shell
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Cache dependency sources
+        uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: deps-${{ hashFiles('CMakeLists.txt') }}
+
+      - name: Configure
+        run: cmake --preset app
 
       - name: Build
-        run: cmake --build build --config Release --target ClockParity HeadlessTest RendererTest FixtureTest CompareTest ParityTool NativeRendererTest CrystalClock
+        run: cmake --build --preset app-release

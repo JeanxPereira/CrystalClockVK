@@ -1,4 +1,5 @@
 cmake_minimum_required(VERSION 3.30)
+set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 project(CrystalClockVK VERSION 1.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
@@ -8,41 +9,41 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 include(FetchContent)
 
-FetchContent_Declare(
-    SDL3
-    GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
-    GIT_TAG release-3.4.4
-    GIT_SHALLOW ON
-)
-FetchContent_MakeAvailable(SDL3)
+option(CLOCK_BUILD_TESTS "Build the tests, ParityTool and the parity gates instead of the app" OFF)
+set(CLOCK_DEPS_DIR ${CMAKE_SOURCE_DIR}/build/_deps CACHE PATH "Dependency sources shared by the app and tests build trees")
+if(CLOCK_BUILD_TESTS)
+    set(CLOCK_BIN_DIR ${CMAKE_BINARY_DIR}/bin)
+else()
+    set(CLOCK_BIN_DIR ${CMAKE_SOURCE_DIR}/bin)
+endif()
 
-FetchContent_Declare(
-    vma
-    GIT_REPOSITORY https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator.git
-    GIT_TAG v3.3.0
-    GIT_SHALLOW ON
-)
-FetchContent_MakeAvailable(vma)
+find_package(Git REQUIRED)
+function(clock_fetch NAME REPOSITORY TAG)
+    string(TOUPPER ${NAME} UPPER)
+    set(DIR ${CLOCK_DEPS_DIR}/${NAME}-src)
+    if(NOT EXISTS ${DIR}/.git)
+        file(REMOVE_RECURSE ${DIR})
+        execute_process(COMMAND ${GIT_EXECUTABLE} clone --quiet --depth 1 --branch ${TAG} ${REPOSITORY} ${DIR} RESULT_VARIABLE STATUS)
+        if(NOT STATUS EQUAL 0)
+            file(REMOVE_RECURSE ${DIR})
+            message(FATAL_ERROR "clone of ${REPOSITORY} ${TAG} failed")
+        endif()
+    endif()
+    set(FETCHCONTENT_SOURCE_DIR_${UPPER} ${DIR} CACHE PATH "" FORCE)
+    FetchContent_Declare(${NAME} GIT_REPOSITORY ${REPOSITORY} GIT_TAG ${TAG})
+    FetchContent_MakeAvailable(${NAME})
+endfunction()
 
-FetchContent_Declare(
-    vk-bootstrap
-    GIT_REPOSITORY https://github.com/charles-lunarg/vk-bootstrap.git
-    GIT_TAG v1.4.341
-    GIT_SHALLOW ON
-)
-FetchContent_MakeAvailable(vk-bootstrap)
-
-FetchContent_Declare(
-    glm
-    GIT_REPOSITORY https://github.com/g-truc/glm.git
-    GIT_TAG 1.0.1
-    GIT_SHALLOW ON
-)
-FetchContent_MakeAvailable(glm)
+clock_fetch(SDL3 https://github.com/libsdl-org/SDL.git release-3.4.4)
+clock_fetch(vma https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator.git v3.3.0)
+clock_fetch(vk-bootstrap https://github.com/charles-lunarg/vk-bootstrap.git v1.4.341)
+clock_fetch(glm https://github.com/g-truc/glm.git 1.0.1)
+clock_fetch(json https://github.com/nlohmann/json.git v3.11.3)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # IMGUI (SUBMODULE: 3rdparty/imgui)
 # ──────────────────────────────────────────────────────────────────────────────
+if(NOT CLOCK_BUILD_TESTS)
 set(IMGUI_DIR ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/imgui)
 add_library(ImGui STATIC
     ${IMGUI_DIR}/imgui.cpp
@@ -56,6 +57,7 @@ target_include_directories(ImGui PUBLIC
     ${IMGUI_DIR}
     ${IMGUI_DIR}/backends
 )
+endif()
 
 # ──────────────────────────────────────────────────────────────────────────────
 # SHADER COMPILATION (glslc → SPIR-V)
@@ -66,7 +68,7 @@ if(NOT GLSLC)
 endif()
 
 set(SHADER_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/shaders)
-set(SHADER_OUT_DIR ${CMAKE_SOURCE_DIR}/bin/shaders)
+set(SHADER_OUT_DIR ${CLOCK_BIN_DIR}/shaders)
 file(MAKE_DIRECTORY ${SHADER_OUT_DIR})
 
 # Glob all shader sources
@@ -94,23 +96,18 @@ endforeach()
 add_custom_target(Shaders ALL DEPENDS ${SHADER_SPIRV_OUTPUTS})
 
 find_package(Vulkan REQUIRED)
+if(NOT CLOCK_BUILD_TESTS)
 target_link_libraries(ImGui PRIVATE Vulkan::Vulkan SDL3::SDL3)
+endif()
 
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG ${CMAKE_SOURCE_DIR}/bin)
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_SOURCE_DIR}/bin)
-
-FetchContent_Declare(
-    json
-    GIT_REPOSITORY https://github.com/nlohmann/json.git
-    GIT_TAG v3.11.3
-    GIT_SHALLOW ON
-)
-FetchContent_MakeAvailable(json)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CLOCK_BIN_DIR})
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG ${CLOCK_BIN_DIR})
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CLOCK_BIN_DIR})
 
 add_library(ClockVma STATIC src/core/VmaUsage.cpp)
 target_link_libraries(ClockVma PUBLIC VulkanMemoryAllocator Vulkan::Vulkan)
 
+if(CLOCK_BUILD_TESTS)
 add_library(ClockParity STATIC
     src/core/HeadlessContext.cpp
     src/parity/GsParityRenderer.cpp
@@ -118,15 +115,19 @@ add_library(ClockParity STATIC
     src/parity/Compare.cpp
     src/parity/FromScene.cpp
 )
+endif()
 add_library(ClockStb STATIC src/parity/StbImage.cpp)
 target_include_directories(ClockStb PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty)
+if(CLOCK_BUILD_TESTS)
 target_link_libraries(ClockParity PUBLIC ClockStb)
 add_dependencies(ClockParity Shaders)
 target_include_directories(ClockParity PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty)
 target_link_libraries(ClockParity PUBLIC ClockVma nlohmann_json::nlohmann_json vk-bootstrap VulkanMemoryAllocator Vulkan::Vulkan)
+endif()
 
 set(CLOCK_FIXTURE ${CMAKE_SOURCE_DIR}/References/fixtures/hddosd-110U-whole3-clock/f0 CACHE PATH "Parity fixture")
 
+if(CLOCK_BUILD_TESTS)
 enable_testing()
 
 add_executable(HeadlessTest tests/HeadlessTest.cpp)
@@ -135,7 +136,7 @@ add_test(NAME HeadlessTest COMMAND HeadlessTest)
 
 add_executable(RendererTest tests/RendererTest.cpp)
 target_link_libraries(RendererTest PRIVATE ClockParity)
-add_test(NAME RendererTest COMMAND RendererTest ${CMAKE_SOURCE_DIR}/bin/shaders)
+add_test(NAME RendererTest COMMAND RendererTest ${CLOCK_BIN_DIR}/shaders)
 
 add_executable(FixtureTest tests/FixtureTest.cpp)
 target_link_libraries(FixtureTest PRIVATE ClockParity)
@@ -151,6 +152,7 @@ add_test(NAME CompareTest COMMAND CompareTest)
 
 add_executable(ParityTool tools/ParityTool/main.cpp)
 target_link_libraries(ParityTool PRIVATE ClockParity)
+endif()
 
 add_library(ClockScene STATIC src/scene/Arithmetic.cpp src/scene/ClockState.cpp src/scene/Camera.cpp)
 target_include_directories(ClockScene PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
@@ -164,8 +166,10 @@ endif()
 add_library(SceneInputs STATIC src/scene/SceneInputs.cpp)
 target_include_directories(SceneInputs PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(SceneInputs PUBLIC nlohmann_json::nlohmann_json)
+if(CLOCK_BUILD_TESTS)
 add_library(SceneTestSupport STATIC tests/scene/SceneFixture.cpp)
 target_link_libraries(SceneTestSupport PUBLIC SceneInputs ClockScene nlohmann_json::nlohmann_json)
+endif()
 
 get_filename_component(SCENE_FIXTURE_DEFAULT ${CLOCK_FIXTURE}/../scene.json ABSOLUTE)
 if(EXISTS ${CLOCK_FIXTURE}/../scene.menus.json)
@@ -176,6 +180,7 @@ set(SCENE_FIXTURE ${CLOCK_SCENE})
 # The font file and the program the text reads (facts/text.md), in the main checkout's References/dumps.
 get_filename_component(CLOCK_DUMPS_DEFAULT ${CLOCK_FIXTURE}/../../../dumps/hddosd-host ABSOLUTE)
 set(CLOCK_DUMPS ${CLOCK_DUMPS_DEFAULT} CACHE PATH "HDD OSD 1.10U's files: FNTOSD and hddosd.elf")
+if(CLOCK_BUILD_TESTS)
 add_executable(ArithmeticTest tests/scene/ArithmeticTest.cpp)
 target_link_libraries(ArithmeticTest PRIVATE SceneTestSupport)
 add_test(NAME ArithmeticTest COMMAND ArithmeticTest)
@@ -183,7 +188,9 @@ if(EXISTS ${SCENE_FIXTURE})
     add_test(NAME ArithmeticSceneTest COMMAND ArithmeticTest ${SCENE_FIXTURE})
 endif()
 
+endif()
 target_sources(ClockScene PRIVATE src/scene/FrameHead.cpp)
+if(CLOCK_BUILD_TESTS)
 # A capture's scene.menus.json (the menus' schema) stands in for its scene.json in the same folder.
 function(prefer_menus_scenes VARIABLE)
     set(SCENES ${${VARIABLE}})
@@ -208,7 +215,7 @@ function(add_parity_test NAME CAPTURE)
     set(FIXTURE ${FIXTURE_ROOT}/hddosd-110U-${CAPTURE}/f0)
     if(EXISTS ${FIXTURE}/frame.json)
         set(PARITY_ACTIVE ${PARITY_ACTIVE} ${NAME} PARENT_SCOPE)
-        add_test(NAME ${NAME} COMMAND ParityTool ${FIXTURE} ${CMAKE_BINARY_DIR}/parity-report/${CAPTURE} ${CMAKE_SOURCE_DIR}/bin/shaders ${CMAKE_SOURCE_DIR}/tools/ParityTool/budgets/hddosd-110U-${CAPTURE}.json)
+        add_test(NAME ${NAME} COMMAND ParityTool ${FIXTURE} ${CMAKE_BINARY_DIR}/parity-report/${CAPTURE} ${CLOCK_BIN_DIR}/shaders ${CMAKE_SOURCE_DIR}/tools/ParityTool/budgets/hddosd-110U-${CAPTURE}.json)
     endif()
 endfunction()
 add_parity_test(ParityClock whole3-clock)
@@ -238,7 +245,7 @@ function(add_menus_gate NAME CAPTURE)
     endif()
     if(EXISTS ${DIR}/f0/frame.json)
         list(APPEND ARGS --f0 ${DIR}/f0 --out ${CMAKE_BINARY_DIR}/scene-fixture/${CAPTURE})
-        add_test(NAME ${NAME}Pixels COMMAND ParityTool ${CMAKE_BINARY_DIR}/scene-fixture/${CAPTURE} ${CMAKE_BINARY_DIR}/parity-report/${CAPTURE}-scene ${CMAKE_SOURCE_DIR}/bin/shaders ${BUDGET})
+        add_test(NAME ${NAME}Pixels COMMAND ParityTool ${CMAKE_BINARY_DIR}/scene-fixture/${CAPTURE} ${CMAKE_BINARY_DIR}/parity-report/${CAPTURE}-scene ${CLOCK_BIN_DIR}/shaders ${BUDGET})
         set_tests_properties(${NAME}Pixels PROPERTIES FIXTURES_REQUIRED ${NAME}Fixture)
         list(APPEND ACTIVE ${NAME}Pixels)
     endif()
@@ -260,24 +267,30 @@ if(PARITY_ACTIVE)
 else()
     message(STATUS "parity gates inactive: no fixture at ${CLOCK_FIXTURE}")
 endif()
+endif()
 
 add_library(ClockRender STATIC src/render/Device.cpp src/render/NativeRenderer.cpp)
 add_dependencies(ClockRender Shaders)
 target_include_directories(ClockRender PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(ClockRender PUBLIC ClockVma ClockStb vk-bootstrap VulkanMemoryAllocator Vulkan::Vulkan SDL3::SDL3 ClockSceneNative)
 
+if(CLOCK_BUILD_TESTS)
 add_executable(DeviceTest tests/render/DeviceTest.cpp)
 target_link_libraries(DeviceTest PRIVATE ClockRender)
 add_test(NAME DeviceTest COMMAND DeviceTest)
 
+endif()
 target_sources(ClockScene PRIVATE src/scene/Orbs.cpp)
+if(CLOCK_BUILD_TESTS)
 add_executable(OrbsTest tests/scene/OrbsTest.cpp)
 target_link_libraries(OrbsTest PRIVATE SceneTestSupport)
 if(EXISTS ${SCENE_FIXTURE})
     add_test(NAME OrbsTest COMMAND OrbsTest ${SCENE_FIXTURE})
 endif()
+endif()
 target_sources(ClockScene PRIVATE src/scene/Rods.cpp)
 target_link_libraries(ClockScene PRIVATE nlohmann_json::nlohmann_json)
+if(CLOCK_BUILD_TESTS)
 add_executable(RodsTest tests/scene/RodsTest.cpp)
 target_link_libraries(RodsTest PRIVATE SceneTestSupport)
 if(EXISTS ${SCENE_FIXTURE})
@@ -288,7 +301,9 @@ target_link_libraries(StateTest PRIVATE SceneTestSupport)
 if(EXISTS ${SCENE_FIXTURE})
     add_test(NAME StateTest COMMAND StateTest ${SCENE_FIXTURE})
 endif()
+endif()
 target_sources(ClockScene PRIVATE src/scene/Clock.cpp src/scene/Font.cpp src/scene/ProgramImage.cpp src/scene/Text.cpp)
+if(CLOCK_BUILD_TESTS)
 get_filename_component(SCENE_PASSES ${CLOCK_FIXTURE}/../passes.json ABSOLUTE)
 add_executable(TextTest tests/scene/TextTest.cpp)
 target_link_libraries(TextTest PRIVATE SceneTestSupport)
@@ -302,7 +317,7 @@ if(EXISTS ${SCENE_FIXTURE} AND EXISTS ${SCENE_PASSES} AND EXISTS ${CLOCK_FIXTURE
     add_test(NAME ClockParityTest COMMAND ClockParityTest ${SCENE_FIXTURE} ${CMAKE_SOURCE_DIR}/facts/data/rod-mesh.json ${SCENE_PASSES} ${CLOCK_FIXTURE} ${SCENE_PARITY_FIXTURE}
         ${CLOCK_DUMPS}/FNTOSD ${CLOCK_DUMPS}/hddosd.elf)
     set_tests_properties(ClockParityTest PROPERTIES FIXTURES_SETUP ClockSceneFixture)
-    add_test(NAME ParityClockScene COMMAND ParityTool ${SCENE_PARITY_FIXTURE} ${CMAKE_BINARY_DIR}/parity-report/whole3-clock-scene ${CMAKE_SOURCE_DIR}/bin/shaders ${CMAKE_SOURCE_DIR}/tools/ParityTool/budgets/hddosd-110U-whole3-clock.json)
+    add_test(NAME ParityClockScene COMMAND ParityTool ${SCENE_PARITY_FIXTURE} ${CMAKE_BINARY_DIR}/parity-report/whole3-clock-scene ${CLOCK_BIN_DIR}/shaders ${CMAKE_SOURCE_DIR}/tools/ParityTool/budgets/hddosd-110U-whole3-clock.json)
     set_tests_properties(ParityClockScene PROPERTIES FIXTURES_REQUIRED ClockSceneFixture)
 endif()
 
@@ -324,6 +339,7 @@ else()
     message(STATUS "menu scenes inactive: none under ${MENU_FIXTURES}")
 endif()
 
+endif()
 # The app's scene: the same sources with NativeArithmetic only. EeArithmetic's functions are defined in
 # Arithmetic.cpp alone, which this library leaves out, so any use of them in the app fails to link.
 add_library(ClockSceneNative STATIC src/scene/ClockState.cpp src/scene/Camera.cpp src/scene/FrameHead.cpp src/scene/Orbs.cpp src/scene/Rods.cpp src/scene/Clock.cpp
@@ -338,33 +354,42 @@ set(CLOCK_TEXTURES ${CLOCK_REFERENCES}/textures)
 set(CLOCK_START ${CMAKE_SOURCE_DIR}/resources/clock/start.json)
 set(CLOCK_START_BOOT ${CMAKE_SOURCE_DIR}/resources/clock/start-boot.json)
 
+if(CLOCK_BUILD_TESTS)
 add_executable(NativeRendererTest tests/render/NativeRendererTest.cpp)
 target_link_libraries(NativeRendererTest PRIVATE ClockRender ClockSceneNative SceneInputs)
 if(EXISTS ${CLOCK_SCENE} AND EXISTS ${CLOCK_TEXTURES}/tbp-2bc0-64x64.png AND EXISTS ${CLOCK_DUMPS}/FNTOSD)
-    add_test(NAME NativeRendererTest COMMAND NativeRendererTest ${CMAKE_SOURCE_DIR}/bin/shaders ${CLOCK_SCENE} ${CMAKE_SOURCE_DIR}/facts/data/rod-mesh.json ${CLOCK_TEXTURES}
+    add_test(NAME NativeRendererTest COMMAND NativeRendererTest ${CLOCK_BIN_DIR}/shaders ${CLOCK_SCENE} ${CMAKE_SOURCE_DIR}/facts/data/rod-mesh.json ${CLOCK_TEXTURES}
         ${CLOCK_DUMPS}/FNTOSD ${CLOCK_DUMPS}/hddosd.elf ${CLOCK_START})
 else()
-    add_test(NAME NativeRendererTest COMMAND NativeRendererTest ${CMAKE_SOURCE_DIR}/bin/shaders)
+    add_test(NAME NativeRendererTest COMMAND NativeRendererTest ${CLOCK_BIN_DIR}/shaders)
 endif()
 
+endif()
+if(NOT CLOCK_BUILD_TESTS)
 add_executable(CrystalClock src/app/Main.cpp src/app/DebugPanel.cpp src/app/Png.cpp)
 target_link_libraries(CrystalClock PRIVATE ClockRender ClockSceneNative SceneInputs ImGui)
 target_compile_definitions(CrystalClock PRIVATE
-    CLOCK_SHADERS="${CMAKE_SOURCE_DIR}/bin/shaders" CLOCK_TEXTURES="${CLOCK_TEXTURES}" CLOCK_START="${CLOCK_START}" CLOCK_START_BOOT="${CLOCK_START_BOOT}"
+    CLOCK_SHADERS="${CLOCK_BIN_DIR}/shaders" CLOCK_TEXTURES="${CLOCK_TEXTURES}" CLOCK_START="${CLOCK_START}" CLOCK_START_BOOT="${CLOCK_START_BOOT}"
     CLOCK_MESH="${CMAKE_SOURCE_DIR}/facts/data/rod-mesh.json" CLOCK_SCREENSHOTS="${CMAKE_SOURCE_DIR}/out/screenshots"
     CLOCK_FONT="${CLOCK_DUMPS}/FNTOSD" CLOCK_PROGRAM="${CLOCK_DUMPS}/hddosd.elf")
+endif()
+if(CLOCK_BUILD_TESTS)
 target_link_libraries(ParityTool PRIVATE ClockRender ClockSceneNative SceneInputs)
+endif()
 
 # The clock's assets from the console's own resource files (src/assets: no Vulkan), and their decoded cache.
 add_library(ClockAssets STATIC src/assets/Bytes.cpp src/assets/Expand.cpp src/assets/Romdir.cpp src/assets/ElfImage.cpp src/assets/ImageCipher.cpp
     src/assets/ClockTextures.cpp src/assets/Resources.cpp src/assets/AssetPack.cpp src/assets/Program.cpp)
 target_include_directories(ClockAssets PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+if(NOT CLOCK_BUILD_TESTS)
 target_sources(CrystalClock PRIVATE src/app/ClockAssets.cpp)
 target_link_libraries(CrystalClock PRIVATE ClockAssets)
 target_compile_definitions(CrystalClock PRIVATE CLOCK_RESOURCES="${CLOCK_DUMPS}")
+endif()
 # The ROM 2.30 BIOS image the tests extract from (References/bios/megadump in the main checkout).
 set(CLOCK_BIOS ${CLOCK_REFERENCES}/bios/megadump/ps2-0230a-20080220.bin CACHE FILEPATH "A PS2 BIOS ROM image, ROM 2.30 (0230A, 2008-02-20)")
 find_program(CLOCK_NODE node)
+if(CLOCK_BUILD_TESTS)
 add_executable(AssetsTest tests/assets/AssetsTest.cpp)
 target_link_libraries(AssetsTest PRIVATE ClockAssets ClockStb ClockSceneNative nlohmann_json::nlohmann_json)
 add_executable(AssetFrameTest tests/render/AssetFrameTest.cpp src/app/ClockAssets.cpp)
@@ -387,21 +412,27 @@ if(EXISTS ${CLOCK_DUMPS}/TEXIMAGE AND EXISTS ${CLOCK_DUMPS}/hddosd.elf AND EXIST
         add_test(NAME AssetsTextureTest COMMAND AssetsTest textures ${ASSETS_MODEL} ${CLOCK_DUMPS} ${CLOCK_BIOS} ${CLOCK_TEXTURES}
             ${CMAKE_SOURCE_DIR}/facts/data/rod-mesh.json ${ASSETS_SCRATCH}/textures)
         set_tests_properties(AssetsPortTest AssetsTextureTest PROPERTIES FIXTURES_REQUIRED AssetsModel)
-        add_test(NAME AssetFrameTest COMMAND AssetFrameTest ${CMAKE_SOURCE_DIR}/bin/shaders ${CLOCK_START} ${CMAKE_SOURCE_DIR}/facts/data/rod-mesh.json ${CLOCK_TEXTURES}
+        add_test(NAME AssetFrameTest COMMAND AssetFrameTest ${CLOCK_BIN_DIR}/shaders ${CLOCK_START} ${CMAKE_SOURCE_DIR}/facts/data/rod-mesh.json ${CLOCK_TEXTURES}
             ${CLOCK_DUMPS}/FNTOSD ${CLOCK_DUMPS}/hddosd.elf ${CLOCK_DUMPS} ${ASSETS_SCRATCH}/frame)
     endif()
     add_test(NAME AssetsPackTest COMMAND AssetsTest pack ${CLOCK_DUMPS} ${CLOCK_BIOS} ${ASSETS_SCRATCH}/pack)
+endif()
 endif()
 
 add_library(ClockInput STATIC src/app/Input.cpp src/app/Screens.cpp)
 target_include_directories(ClockInput PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(ClockInput PUBLIC SDL3::SDL3 ClockScene)
+if(CLOCK_BUILD_TESTS)
 add_executable(ScreensTest tests/app/ScreensTest.cpp)
 target_link_libraries(ScreensTest PRIVATE ClockInput)
 add_test(NAME ScreensTest COMMAND ScreensTest)
+endif()
+if(NOT CLOCK_BUILD_TESTS)
 target_link_libraries(CrystalClock PRIVATE ClockInput)
 target_compile_definitions(CrystalClock PRIVATE CLOCK_MENUS_START="${CMAKE_SOURCE_DIR}/resources/menus/start-menu.json"
     CLOCK_CLOCK_START="${CMAKE_SOURCE_DIR}/resources/menus/start-clock.json" CLOCK_CUBE_MESH="${CMAKE_SOURCE_DIR}/References/model/cube-mesh.json")
+endif()
+if(CLOCK_BUILD_TESTS)
 add_executable(InputTest tests/app/InputTest.cpp)
 target_link_libraries(InputTest PRIVATE ClockInput nlohmann_json::nlohmann_json)
 get_filename_component(ENTER_SCENE ${CLOCK_FIXTURE}/../../hddosd-110U-whole3-enter/scene.json ABSOLUTE)
@@ -410,10 +441,14 @@ if(EXISTS ${ENTER_SCENE})
 else()
     add_test(NAME InputTest COMMAND InputTest)
 endif()
+endif()
 
 
 target_sources(ClockScene PRIVATE src/scene/ClockDate.cpp src/scene/Menus.cpp)
 target_sources(ClockSceneNative PRIVATE src/scene/ClockDate.cpp src/scene/Menus.cpp)
+target_sources(ClockScene PRIVATE src/scene/Cubes.cpp)
+target_sources(ClockSceneNative PRIVATE src/scene/Cubes.cpp)
+if(CLOCK_BUILD_TESTS)
 add_executable(MenusTest tests/scene/MenusTest.cpp)
 target_link_libraries(MenusTest PRIVATE StageCompare)
 if(MENU_SCENES)
@@ -428,8 +463,6 @@ if(MENU_SCENES)
     set_tests_properties(MenusTest MenusTestFull PROPERTIES TIMEOUT 3600)
 endif()
 
-target_sources(ClockScene PRIVATE src/scene/Cubes.cpp)
-target_sources(ClockSceneNative PRIVATE src/scene/Cubes.cpp)
 add_executable(CubesTest tests/scene/CubesTest.cpp)
 target_link_libraries(CubesTest PRIVATE StageCompare)
 if(MENU_SCENES)
@@ -453,7 +486,9 @@ if(MENU_TEXT_SCENES AND EXISTS ${CLOCK_DUMPS}/FNTOSD)
     add_test(NAME MenuTextTest COMMAND MenuTextTest ${CLOCK_DUMPS}/FNTOSD ${CLOCK_DUMPS}/hddosd.elf ${CMAKE_SOURCE_DIR}/facts/data/rod-mesh.json ${MENU_TEXT_SCENES})
     set_tests_properties(MenuTextTest PROPERTIES TIMEOUT 3600)
 endif()
+endif()
 
+if(CLOCK_BUILD_TESTS)
 # opening: integration
 set(OPENING_FIXTURES ${FIXTURE_ROOT} CACHE PATH "The opening fixtures (opening.json, passes.json): the main checkout References/fixtures")
 set(OPENING_TEXTURES ${CLOCK_REFERENCES}/textures/opening CACHE PATH "The opening textures extracted from GS memory (git-ignored)")
@@ -504,9 +539,11 @@ target_link_libraries(ClockEntryTest PRIVATE OpeningTestSupport)
 if(EXISTS ${ENTRY_SCENE})
     add_test(NAME ClockEntryTest COMMAND ClockEntryTest ${ENTRY_SCENE} ${CMAKE_CURRENT_SOURCE_DIR}/facts/data/rod-mesh.json)
 endif()
+endif()
 add_library(ClockScreen STATIC src/app/ClockScreen.cpp)
 target_include_directories(ClockScreen PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(ClockScreen PUBLIC ClockSceneNative SceneInputs)
+if(CLOCK_BUILD_TESTS)
 add_executable(ClockScreenTest tests/scene/opening/ClockScreenTest.cpp)
 target_link_libraries(ClockScreenTest PRIVATE ClockScreen)
 add_test(NAME ClockScreenTest COMMAND ClockScreenTest ${CMAKE_CURRENT_SOURCE_DIR}/resources/clock/start-boot.json ${CMAKE_CURRENT_SOURCE_DIR}/facts/data/rod-mesh.json)
@@ -598,9 +635,9 @@ endif()
 add_executable(NativeOpeningTest tests/render/NativeOpeningTest.cpp)
 target_link_libraries(NativeOpeningTest PRIVATE ClockRender ClockStb)
 if(EXISTS ${OPENING_TEXTURES}/tex6-256x256.png)
-    add_test(NAME NativeOpeningTest COMMAND NativeOpeningTest ${CMAKE_SOURCE_DIR}/bin/shaders ${OPENING_TEXTURES})
+    add_test(NAME NativeOpeningTest COMMAND NativeOpeningTest ${CLOCK_BIN_DIR}/shaders ${OPENING_TEXTURES})
 else()
-    add_test(NAME NativeOpeningTest COMMAND NativeOpeningTest ${CMAKE_SOURCE_DIR}/bin/shaders)
+    add_test(NAME NativeOpeningTest COMMAND NativeOpeningTest ${CLOCK_BIN_DIR}/shaders)
 endif()
 
 # opening: parity
@@ -626,14 +663,14 @@ find_program(NODE_EXECUTABLE node)
 foreach(COUNTER 51 54)
     set(CAUSES ${CMAKE_SOURCE_DIR}/tools/ParityTool/budgets/hddosd-110U-opening-full-c${COUNTER}.causes.json)
     if(NODE_EXECUTABLE AND EXISTS ${CAUSES} AND TARGET ParityTool AND EXISTS ${FIXTURE_ROOT}/hddosd-110U-opening-full-c${COUNTER}/f0/frame.json)
-        add_test(NAME BudgetCauseOpening${COUNTER} COMMAND ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/parity/budget_cause.mjs ${CMAKE_SOURCE_DIR}/bin/ParityTool.exe ${CMAKE_SOURCE_DIR}/bin/shaders
+        add_test(NAME BudgetCauseOpening${COUNTER} COMMAND ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/parity/budget_cause.mjs ${CLOCK_BIN_DIR}/ParityTool.exe ${CLOCK_BIN_DIR}/shaders
             ${FIXTURE_ROOT}/hddosd-110U-opening-full-c${COUNTER}/f0 ${CMAKE_SOURCE_DIR}/tools/ParityTool/budgets/hddosd-110U-opening-full-c${COUNTER}.json ${CAUSES} --check)
     endif()
 endforeach()
 # Pending: an expected failure that names an unexplained difference, so that it cannot be forgotten (ParityOpening100 waits for the oracle).
 set(LATE3 ${FIXTURE_ROOT}/hddosd-110U-opening2-ee-late-f3/f0)
 if(EXISTS ${LATE3}/frame.json)
-    add_test(NAME PendingTowersLate3UnexplainedLastRow COMMAND ParityTool ${LATE3} ${CMAKE_BINARY_DIR}/parity-report/opening2-ee-late-f3 ${CMAKE_SOURCE_DIR}/bin/shaders
+    add_test(NAME PendingTowersLate3UnexplainedLastRow COMMAND ParityTool ${LATE3} ${CMAKE_BINARY_DIR}/parity-report/opening2-ee-late-f3 ${CLOCK_BIN_DIR}/shaders
         ${CMAKE_SOURCE_DIR}/tools/ParityTool/budgets/pending/hddosd-110U-opening2-ee-late-f3.json)
     set_tests_properties(PendingTowersLate3UnexplainedLastRow PROPERTIES WILL_FAIL TRUE LABELS pending)
     message(STATUS "opening parity PENDING (expected failure): PendingTowersLate3UnexplainedLastRow - draw-104 of opening2-ee-late-f3, 632 unexplained pixels on row 223 of a scaled copy sprite")
@@ -650,7 +687,9 @@ else()
     message(STATUS "opening parity gates inactive: no fixture under ${FIXTURE_ROOT}")
 endif()
 
+endif()
 # opening: assembly
+if(CLOCK_BUILD_TESTS)
 add_library(OpeningScene STATIC src/scene/opening/Timeline.cpp src/scene/opening/Cubes.cpp src/scene/opening/Fog.cpp src/scene/opening/Lights.cpp src/scene/opening/Flat.cpp
     src/scene/opening/Handoff.cpp src/scene/opening/Opening.cpp)
 target_include_directories(OpeningScene PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
@@ -659,6 +698,7 @@ if(MSVC)
     target_compile_options(OpeningScene PRIVATE /fp:strict)
 else()
     target_compile_options(OpeningScene PRIVATE -ffp-contract=off -fno-fast-math)
+endif()
 endif()
 # The app's opening: the same sources with NativeArithmetic only, linked into CrystalClock.
 add_library(OpeningSceneNative STATIC src/scene/opening/Timeline.cpp src/scene/opening/Cubes.cpp src/scene/opening/Fog.cpp src/scene/opening/Lights.cpp src/scene/opening/Flat.cpp
@@ -673,7 +713,10 @@ else()
 endif()
 add_library(BootScreens STATIC src/app/OpeningScreen.cpp src/app/BootChain.cpp)
 target_link_libraries(BootScreens PUBLIC OpeningSceneNative ClockScreen)
+if(NOT CLOCK_BUILD_TESTS)
 target_link_libraries(CrystalClock PRIVATE BootScreens)
+endif()
+if(CLOCK_BUILD_TESTS)
 add_executable(BootChainTest tests/app/BootChainTest.cpp)
 target_link_libraries(BootChainTest PRIVATE BootScreens)
 add_test(NAME BootChainTest COMMAND BootChainTest ${CMAKE_CURRENT_SOURCE_DIR}/resources/clock/start-boot.json ${CMAKE_CURRENT_SOURCE_DIR}/facts/data/rod-mesh.json ${CLOCK_DUMPS}/hddosd.elf)
@@ -690,4 +733,23 @@ if(EXISTS ${TOWERS_WHOLE}/opening.json AND EXISTS ${CLOCK_DUMPS}/hddosd.elf AND 
     add_test(NAME OpeningCarriedTowersTest COMMAND OpeningCarriedTest ${CLOCK_DUMPS}/hddosd.elf ${TOWERS_WHOLE}/opening.json)
     add_test(NAME OpeningGateTowersTest COMMAND OpeningGateTest ${CLOCK_DUMPS}/hddosd.elf ${TOWERS_WHOLE}/opening.json ${TOWERS_WHOLE}/passes.json -2 saved)
     set_tests_properties(OpeningCarriedTowersTest OpeningGateTowersTest PROPERTIES TIMEOUT 3600)
+endif()
+endif()
+
+option(CLOCK_TEST_PCH "Precompiled headers for the tests tree (measured faster; the app tree gains nothing)" ON)
+if(CLOCK_BUILD_TESTS AND CLOCK_TEST_PCH)
+    set(CLOCK_PCH_STD <algorithm> <array> <cmath> <cstdint> <cstdio> <cstring> <filesystem> <fstream> <map> <memory> <optional> <span> <stdexcept> <string> <string_view> <utility> <vector>)
+    foreach(TARGET_NAME ClockScene ClockSceneNative OpeningScene OpeningSceneNative ClockAssets)
+        target_precompile_headers(${TARGET_NAME} PRIVATE ${CLOCK_PCH_STD})
+    endforeach()
+    target_precompile_headers(ClockRender PRIVATE ${CLOCK_PCH_STD} <vulkan/vulkan.h> <SDL3/SDL.h> <VkBootstrap.h>)
+    target_precompile_headers(ClockParity PRIVATE ${CLOCK_PCH_STD} <nlohmann/json.hpp>)
+    target_precompile_headers(SceneTestSupport PRIVATE ${CLOCK_PCH_STD} <nlohmann/json.hpp>)
+    get_directory_property(CLOCK_ALL_TARGETS BUILDSYSTEM_TARGETS)
+    foreach(TARGET_NAME ${CLOCK_ALL_TARGETS})
+        get_target_property(TARGET_TYPE ${TARGET_NAME} TYPE)
+        if(TARGET_TYPE STREQUAL "EXECUTABLE")
+            target_precompile_headers(${TARGET_NAME} REUSE_FROM SceneTestSupport)
+        endif()
+    endforeach()
 endif()
