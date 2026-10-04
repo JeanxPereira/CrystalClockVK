@@ -26,7 +26,7 @@ int stages(const std::string& path, const scene::Menus& menus) {
     scene::ListFade fade = start.contains("listFade") ? scene::listFade(start.at("listFade")) : scene::ListFade{};
     for (const json& frame : scene.at("frames")) {
         const std::string at = path + " frame " + std::to_string(frame.at("index").get<int>());
-        const scene::MenuExternals ext = scene::menuExternals(frame.at("input"));
+        scene::MenuExternals ext = scene::menuExternals(frame.at("input"));
         const json& s = frame.at("expect").at("stages");
         std::vector<std::string> notes;
         if (!frame.at("between").is_null()) {
@@ -59,7 +59,7 @@ int stages(const std::string& path, const scene::Menus& menus) {
             }
             auto world = p.world();
             notes.clear();
-            menus.step(world, ext, notes);
+            menus.step(world, p.externals, notes);
             if (report(at + " menus", stageDifferences(p, s.at("menus").at("after")))) return 1;
             if (notes.size() != s.at("menus").at("notes").size()) { std::fprintf(stderr, "%s: %zu notes, the model %zu\n", at.c_str(), notes.size(), s.at("menus").at("notes").size()); return 1; }
             fade = p.menus.listFade;
@@ -84,7 +84,7 @@ int browserSuppressed(const std::string& path) {
     for (const json& frame : scene.at("frames")) {
         auto world = p.world();
         std::vector<std::string> notes;
-        const scene::MenuExternals ext = scene::menuExternals(frame.at("input"));
+        scene::MenuExternals ext = scene::menuExternals(frame.at("input"));
         if (frame.at("index").get<int>() > 0) scene::Menus::between(world, ext, notes);
         app.step(world, ext, notes);
         if (p.clock.mode == 3 || p.clock.scene.leaving != 0 || p.menus.screenCode == 9999 || p.menus.mainMenu.ramp.state == 3) {
@@ -94,6 +94,50 @@ int browserSuppressed(const std::string& path) {
         }
     }
     std::printf("%s: Browser not entered with the option off\n", path.c_str());
+    return 0;
+}
+
+int keptCode() {
+    for (int32_t code : {0x74, 100}) {
+        StagePieces p;
+        p.menus.screenCode = code;
+        p.menus.mainMenu.ramp = {50, 1, 1, 3};
+        scene::MenuExternals ext;
+        ext.disc = code;
+        auto world = p.world();
+        std::vector<std::string> notes;
+        scene::Menus::between(world, ext, notes);
+        const int32_t expected = code == 0x74 ? 0x74 : 9999;
+        if (p.menus.screenCode != expected || p.clock.scene.leaving != 1) {
+            std::fprintf(stderr, "between with disc %d: screen code %d, leaving %d\n", code, p.menus.screenCode, p.clock.scene.leaving);
+            return 1;
+        }
+    }
+    return 0;
+}
+
+int aspectConfirm() {
+    StagePieces p;
+    p.menus.page.entries = 0x002b2bf0;
+    p.menus.page.level = 1;
+    p.menus.page.ramp = {90, 90, 0, 2};
+    p.menus.entries[0].confirm = 0x00227d30;
+    p.clock.tail = 20;
+    p.items[0] = 1;
+    p.menus.configGate = 0;
+    scene::MenuExternals ext;
+    ext.pad.pressed = scene::pad::Cross;
+    ext.configDirty = std::array<int32_t, 3>{0, 0, 0};
+    ext.mechaconParam = std::array<uint32_t, 2>{0, 0};
+    auto world = p.world();
+    std::vector<std::string> notes;
+    scene::Menus().step(world, ext, notes);
+    if ((*ext.configDirty)[0] != 1 || p.menus.page.level != 2 || p.menus.configGate != 1) {
+        std::fprintf(stderr, "aspect confirm: dirty %d, level %d\n", (*ext.configDirty)[0], p.menus.page.level);
+        return 1;
+    }
+    scene::Menus::endOfFrame(world, ext);
+    if (p.items[0] != 1) { std::fprintf(stderr, "aspect confirm: item 0 reloaded to %d\n", p.items[0]); return 1; }
     return 0;
 }
 
@@ -111,6 +155,8 @@ int dates() {
 int main(int argc, char** argv) {
     return scenetest::run(argc, argv, [](int count, char** arguments) {
         if (int failed = dates()) return failed;
+        if (int failed = keptCode()) return failed;
+        if (int failed = aspectConfirm()) return failed;
         const scene::Menus model;
         for (int i = 1; i < count; ++i) {
             const std::string path = arguments[i];

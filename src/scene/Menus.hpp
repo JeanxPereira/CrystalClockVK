@@ -15,7 +15,7 @@ class Menus {
 public:
     explicit Menus(MenusOptions options = {}) : m_options(options) {}
     static void menuStep(MenuWorld& world, const MenuExternals& ext);
-    void step(MenuWorld& world, const MenuExternals& ext, std::vector<std::string>& notes) const;
+    void step(MenuWorld& world, MenuExternals& ext, std::vector<std::string>& notes) const;
     static void between(MenuWorld& world, const MenuExternals& ext, std::vector<std::string>& notes);
     static void endOfFrame(MenuWorld& world, const MenuExternals& ext);
     static void setMode(MenuWorld& world, int32_t mode);

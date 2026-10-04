@@ -16,7 +16,6 @@ constexpr uint32_t kEditor = 0x00227ad0, kAdjustString = 0x00227420, kItemString
 
 enum class Slot { Enter, Confirm, Cancel };
 
-// func_00239018 / func_00238FB8: the orbs' sprite ramp turns round where it is when moving.
 void spritesHide(MenuWorld& w) {
     Ramp& r = w.spriteFade;
     if (r.state == 2) Menus::hide(r);
@@ -28,7 +27,6 @@ void spritesShow(MenuWorld& w) {
     else if (r.state == 3) r.state = 1;
 }
 
-// func_0022F078 / func_0022F110: the rods' appearance ramp, every rod's length cleared.
 void appearance(MenuWorld& w, bool up) {
     Ramp& ramp = w.clock.appearance;
     if (ramp.state != (up ? 0 : 2)) return;
@@ -68,7 +66,6 @@ ConfigEntry& entryOf(MenuWorld& w) {
     return w.menus.entries[static_cast<size_t>(index)];
 }
 
-// func_002358F8: the time record from configuration items 6 to 0xB, milliseconds 0; not yet filled.
 void timeFromItems(MenuWorld& w) {
     w.clock.time.milliseconds = 0;
     w.clock.time.seconds = w.items[0xb];
@@ -77,7 +74,6 @@ void timeFromItems(MenuWorld& w) {
     w.clock.timeFilled = 0;
 }
 
-// func_00235848 then module_clock_set_anim_offset: the console's clock moved to the configured zone.
 void timeFromClock(MenuWorld& w, const MenuExternals& ext, std::vector<std::string>& notes) {
     if (!ext.rtcMirror || !ext.mechaconParam) {
         notes.push_back("the console clock is not in the capture: the time after a cancel is not modelled");
@@ -95,7 +91,6 @@ void timeFromClock(MenuWorld& w, const MenuExternals& ext, std::vector<std::stri
     w.clock.timeFilled = 0;
 }
 
-// func_00226E68: the first three fields in the order of the date format.
 void orderFields(MenuWorld& w, const MenuExternals& ext) {
     if (!ext.mechaconParam) return;
     struct Field {
@@ -111,7 +106,6 @@ void orderFields(MenuWorld& w, const MenuExternals& ext) {
     for (size_t k = 0; k < 3; ++k) w.menus.adjustFields[k] = {order[k]->item, order[k]->low, order[k]->high};
 }
 
-// func_00227488 on the items, and the fields' ranges written back.
 void checkDate(MenuWorld& w, const MenuExternals& ext, const ConfigEntry& entry) {
     if (!ext.mechaconParam) return;
     const std::array<int32_t, 6> now{w.items[6], w.items[7], w.items[8], w.items[9], w.items[10], w.items[11]};
@@ -125,7 +119,6 @@ void checkDate(MenuWorld& w, const MenuExternals& ext, const ConfigEntry& entry)
     }
 }
 
-// D_00226FD0: Clock Adjustment opens with the seconds at 0.
 void adjustmentOpens(MenuWorld& w, const MenuExternals& ext, const ConfigEntry& entry) {
     orderFields(w, ext);
     w.clock.scaleTarget = 0;
@@ -135,11 +128,13 @@ void adjustmentOpens(MenuWorld& w, const MenuExternals& ext, const ConfigEntry& 
     checkDate(w, ext, entry);
 }
 
-void callback(MenuWorld& w, const MenuExternals& ext, Slot slot, std::vector<std::string>& notes) {
+void callback(MenuWorld& w, MenuExternals& ext, Slot slot, std::vector<std::string>& notes) {
     ConfigEntry& entry = entryOf(w);
     const uint32_t address = slot == Slot::Enter ? entry.enter : slot == Slot::Confirm ? entry.confirm : entry.cancel;
     switch (address) {
-    case kAspectConfirm: break;
+    case kAspectConfirm:
+        if (ext.configDirty && w.items[0] != aspectOf(ext)) (*ext.configDirty)[0] = 1;
+        break;
     case kAdjustEnter: adjustmentOpens(w, ext, entry); break;
     case kAdjustConfirm:
         w.clock.scaleTarget = 1;
@@ -154,7 +149,6 @@ void callback(MenuWorld& w, const MenuExternals& ext, Slot slot, std::vector<std
     }
 }
 
-// D_00227AD0, every frame while Clock Adjustment is entered.
 void adjustmentFrame(MenuWorld& w, const MenuExternals& ext) {
     ConfigEntry& entry = entryOf(w);
     if (entry.frameCallback != kEditor) return;
@@ -187,11 +181,10 @@ void adjustmentFrame(MenuWorld& w, const MenuExternals& ext) {
     timeFromItems(w);
 }
 
-// func_002283C0: the entry's value index where its item sits in its value table.
 void valueIndex(ConfigEntry& entry, int32_t item) {
     constexpr int32_t values[3] = {0, 1, 2};
     const int32_t count = entry.valueCount;
-    if (item == values[entry.valueIndex] || count <= 0) return;
+    if (count <= 0 || (entry.valueIndex >= 0 && entry.valueIndex < 3 && item == values[entry.valueIndex])) return;
     entry.valueIndex = 0;
     for (int32_t n = 0; n < count; ++n)
         if (item == values[n]) {
@@ -206,7 +199,6 @@ void stringCallback(MenuWorld& w, const MenuExternals& ext) {
     else if (entry.stringCallback == kItemString && entry.item == 0) valueIndex(entry, w.items[0]);
 }
 
-// func_00230860: ask the cubes' list to move one place.
 void listMove(MenuWorld& w, int32_t direction) {
     CubeList& list = w.cubes.list;
     const bool pal = w.menus.videoMode == 2;
@@ -222,7 +214,6 @@ void listMove(MenuWorld& w, int32_t direction) {
 
 int32_t clampTo(int32_t x, int32_t tail) { return x < 0 ? 0 : std::min(x, tail); }
 
-// func_00230E10: the list's alpha from the page ramp and the menu ramp.
 int32_t listAlpha(MenuWorld& w) {
     const int32_t tail = w.clock.tail;
     if (tail == 0) throw std::runtime_error("the tail length is zero");
@@ -230,14 +221,12 @@ int32_t listAlpha(MenuWorld& w) {
     return static_cast<int32_t>((int64_t(a) * clampTo(tail - w.clock.menuRamp.counter, tail)) / tail);
 }
 
-// func_00230C28: the menu ramp's part above the body, out of 128.
 int32_t menuAlpha(MenuWorld& w) {
     const int32_t tail = w.clock.tail;
     if (tail == 0) throw std::runtime_error("the tail length is zero");
     return (clampTo(w.clock.menuRamp.counter - w.menus.body, tail) << 7) / tail;
 }
 
-// HDD: the cubes' ramp up.
 void cubesUp(MenuWorld& w) { Menus::show(w.cubes.ramp); }
 
 void crossfadeStart(ListFade& fade, int32_t selected) {
@@ -246,8 +235,7 @@ void crossfadeStart(ListFade& fade, int32_t selected) {
     fade.first = 0;
 }
 
-// func_002316B8: the list itself.
-void listInput(MenuWorld& w, const MenuExternals& ext, std::vector<std::string>& notes) {
+void listInput(MenuWorld& w, MenuExternals& ext, std::vector<std::string>& notes) {
     ConfigPage& page = w.menus.page;
     const uint32_t pressed = ext.pad.pressed;
     const int32_t count = page.count;
@@ -274,8 +262,7 @@ void listInput(MenuWorld& w, const MenuExternals& ext, std::vector<std::string>&
     }
 }
 
-// func_00231B38: inside an entry, confirm or cancel.
-void entryInput(MenuWorld& w, const MenuExternals& ext, std::vector<std::string>& notes) {
+void entryInput(MenuWorld& w, MenuExternals& ext, std::vector<std::string>& notes) {
     ConfigPage& page = w.menus.page;
     const uint32_t pressed = ext.pad.pressed;
     if (pressed & pad::Cross) {
@@ -295,8 +282,7 @@ void entryInput(MenuWorld& w, const MenuExternals& ext, std::vector<std::string>
     }
 }
 
-// module_clock_231E48: the page's ramp, its schedule (func_00230FD8) and its input (func_00231C50).
-void configPage(MenuWorld& w, const MenuExternals& ext, std::vector<std::string>& notes) {
+void configPage(MenuWorld& w, MenuExternals& ext, std::vector<std::string>& notes) {
     ConfigPage& page = w.menus.page;
     Ramp& ramp = page.ramp;
     tickRamp(ramp);
@@ -345,14 +331,12 @@ void configPage(MenuWorld& w, const MenuExternals& ext, std::vector<std::string>
     }
 }
 
-// func_00232020: no other page in the way.
 bool nothingElse(const MenuWorld& w) {
     const MenusState& m = w.menus;
     if (m.page.ramp.state != 0 || m.versionRamp.state != 0 || m.dialogRamp.state != 0 || m.firstRunRamp.state != 0) return false;
     return m.pagePointers[4] == 0;
 }
 
-// StartSysConfig.
 void startSystemConfiguration(MenuWorld& w) {
     Ramp& ramp = w.menus.page.ramp;
     if (ramp.state != 0) return;
@@ -363,7 +347,6 @@ void startSystemConfiguration(MenuWorld& w) {
     appearance(w, true);
 }
 
-// func_00232408: the main menu's ramp, its appearing and leaving, its input.
 void mainMenu(MenuWorld& w, const MenuExternals& ext, std::vector<std::string>& notes, bool browserEnters) {
     MainMenu& menu = w.menus.mainMenu;
     Ramp& ramp = menu.ramp;
@@ -444,7 +427,7 @@ void Menus::menuStep(MenuWorld& w, const MenuExternals& ext) {
     }
 }
 
-void Menus::step(MenuWorld& w, const MenuExternals& ext, std::vector<std::string>& notes) const {
+void Menus::step(MenuWorld& w, MenuExternals& ext, std::vector<std::string>& notes) const {
     if (w.menus.versionRamp.state != 0) notes.push_back("versionRamp is not hidden: that page is not modelled");
     if (w.menus.dialogRamp.state != 0) notes.push_back("dialogRamp is not hidden: that page is not modelled");
     if (w.menus.firstRunRamp.state != 0) notes.push_back("firstRunRamp is not hidden: that page is not modelled");

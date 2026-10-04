@@ -15,7 +15,6 @@ int32_t monthLength(int32_t row, int32_t month) {
     return kMonths[row][month];
 }
 
-// func_00214728 (HDD OSD 1.10U): moved by the configured zone and an hour of summer time.
 int64_t zoned(int64_t seconds, uint32_t settings) {
     const int32_t offset = static_cast<int32_t>(settings << 12) >> 21;
     const int32_t summer = static_cast<int32_t>((settings >> 29) & 1);
@@ -23,7 +22,6 @@ int64_t zoned(int64_t seconds, uint32_t settings) {
     return summer ? t + 3600 : t;
 }
 
-// func_002357D0
 int32_t daysIn(int32_t y, int32_t month) {
     if (month == 2) return y % 400 == 0 ? 29 : y % 100 == 0 ? 28 : (y & 3) == 0 ? 29 : 28;
     return monthLength(0, month - 1);
@@ -31,7 +29,6 @@ int32_t daysIn(int32_t y, int32_t month) {
 
 }
 
-// func_002149D8
 int64_t secondsOf(int32_t y, int32_t mo, int32_t d, int32_t h, int32_t mi, int32_t s) {
     const int32_t years = y - 1600;
     int32_t days = d - 1;
@@ -42,7 +39,6 @@ int64_t secondsOf(int32_t y, int32_t mo, int32_t d, int32_t h, int32_t mi, int32
     return ((int64_t(days) * 24 + h) * 60 + mi) * 60 + s;
 }
 
-// some_sort_of_lut_calc
 std::array<int32_t, 6> dateOf(int64_t seconds) {
     int64_t t = seconds;
     const int32_t s = static_cast<int32_t>(t % 60);
@@ -87,7 +83,6 @@ std::array<int32_t, 6> dateOf(int64_t seconds) {
     return {y, m + 1, static_cast<int32_t>(t) + 1, h, mi, s};
 }
 
-// func_00227488
 DateCheck dateCheck(const std::array<int32_t, 6>& items, uint32_t settings) {
     const auto lo = dateOf(zoned(0x2f0605980, settings));
     const auto hi = dateOf(zoned(0x3ac796cff, settings));
