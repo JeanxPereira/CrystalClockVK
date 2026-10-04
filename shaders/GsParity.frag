@@ -10,8 +10,9 @@ layout(set = 0, binding = 2) uniform usampler2D textureImage;
 
 // scissor: x0 y0 x1 y1 (inclusive)        blend: a b c d (terms 0 source 1 destination 2 zero; c 0 source alpha 1 destination alpha 2 fixed)
 // misc: blend on, fixed, depth test (0 never 1 always 2 >= 3 >), depth write
-// tex: on, coordinates (0 texel 1 projective 2 sprite steps), filter (0 nearest 1 bilinear), alpha (0 texel 1 constant)
-// texSize: width, height, constant alpha, zero when black      address: mode (0 repeat 1 clamp 2 region clamp 3 region repeat), min, max
+// tex: on (bit 0) and the mip level (from bit 8), coordinates (0 texel 1 projective 2 sprite steps), filter (0 nearest 1 bilinear), alpha (0 texel 1 constant 2 sixteen-bit)
+// texSize: width, height, constant alpha (TA0), zero when black (AEM)      address: mode (0 repeat 1 clamp 2 region clamp 3 region repeat), min, max
+// addressU.w: pass flags (bit 0 Z24, bit 1 PABE, bit 2 FBA, bit 3 clamp the source depth to 24 bits)      addressV.w: TA1, the alpha of a sixteen-bit texel with bit 15 set
 // flags: antialias (lines and triangles), target width, target height, rows walked by the GS rasterizer (triangles, AA1 lines)
 layout(push_constant) uniform DrawState {
     ivec4 scissor; ivec4 blend; ivec4 misc; ivec4 tex; ivec4 texSize; ivec4 addressU; ivec4 addressV; ivec4 flags;
@@ -20,7 +21,7 @@ layout(push_constant) uniform DrawState {
 // The oracle's scanline steps pixels in blocks of this width (SSE4.1 build: 4); set by the renderer.
 layout(constant_id = 0) const int BlockWidth = 4;
 
-layout(location = 0) noperspective in vec2 inDepth;
+layout(location = 0) flat in vec2 inDepth;
 layout(location = 1) noperspective in vec4 inColour;
 layout(location = 2) noperspective in vec3 inTexture;
 layout(location = 3) flat in vec4 inStepped;
@@ -44,6 +45,7 @@ ivec4 texel(ivec2 at) {
     ivec2 p = ivec2(address(at.x, state.addressU, state.texSize.x), address(at.y, state.addressV, state.texSize.y));
     ivec4 c = ivec4(texelFetch(textureImage, clamp(p, ivec2(0), textureSize(textureImage, 0) - 1), 0));
     if (state.tex.w == 1) c.a = (state.texSize.w == 1 && c.rgb == ivec3(0)) ? 0 : state.texSize.z;
+    else if (state.tex.w == 2) c.a = (state.texSize.w == 1 && c.rgb == ivec3(0)) ? 0 : (c.a != 0 ? state.addressV.w : state.texSize.z);
     return c;
 }
 
@@ -170,7 +172,7 @@ float divideFloat(float a, float b) {
 
 ivec4 signed16(ivec4 v) { return v - (ivec4(greaterThanEqual(v, ivec4(0x8000))) << 16); }
 
-ivec3 term(int which, ivec3 source, ivec3 destination) { return which == 0 ? source : which == 1 ? destination : ivec3(0); }
+ivec4 term(int which, ivec4 source, ivec4 destination) { return which == 0 ? source : which == 1 ? destination : ivec4(0); }
 
 void main() {
     ivec2 pixel = ivec2(gl_FragCoord.xy);
@@ -203,24 +205,30 @@ void main() {
         }
         shade = signed16(colour16);
 
-        if (state.tex.x == 1) {
+        if ((state.tex.x & 1) == 1) {
+            const int level = state.tex.x >> 8;
             if (state.tex.y == 0) {
                 precise vec2 laneTexture = inStepTexture.xy * lane;
                 precise vec2 blockTexture = inStepTexture.xy * float(BlockWidth);
                 uv = ivec2(inScanTexture.xy) + ivec2(laneTexture) + blocks * ivec2(blockTexture);
+                if (level > 0) {
+                    uv >>= level;
+                    if (state.tex.z == 1) uv -= 0x8000;
+                }
             } else {
                 precise vec3 laneTexture = inStepTexture.xyz * lane;
                 precise vec3 blockTexture = inStepTexture.xyz * float(BlockWidth);
                 precise vec3 stq = inScanTexture.xyz + laneTexture;
                 for (int i = 0; i < blocks; i++) stq += blockTexture;
                 uv = ivec2(int(divideFloat(stq.x, stq.z)), int(divideFloat(stq.y, stq.z)));
+                uv >>= level;
                 if (state.tex.z == 1) uv -= 0x8000;
             }
         }
     } else {
         shade = ivec4(inColour * 128.0);
-        depth = uint(inDepth.x * 4096.0 + inDepth.y);
-        if (state.tex.x == 1) {
+        depth = uint(inDepth.x) * 4096u + uint(inDepth.y);
+        if ((state.tex.x & 1) == 1) {
             if (state.tex.y == 2) {
                 uv = steppedCoordinate(pixel);
             } else {
@@ -232,25 +240,34 @@ void main() {
     }
 
     ivec4 colour = min((shade & 0xffff) >> 7, ivec4(255));
-    if (state.tex.x == 1) colour = clamp((sampleTexture(uv) * 4 * shade) >> 16, ivec4(0), ivec4(255));
+    if ((state.tex.x & 1) == 1) colour = clamp((sampleTexture(uv) * 4 * shade) >> 16, ivec4(0), ivec4(255));
     // AA1 replaces the source alpha: 0x80 inside, the coverage on an edge pixel; the blend then uses it and it is what is written.
     if (state.flags.x == 1) colour.a = inEdge > 0 ? inEdge - 1 : 0x80;
 
+    const bool z24 = (state.addressU.w & 1) != 0, pabe = (state.addressU.w & 2) != 0, fba = (state.addressU.w & 4) != 0, zclamp = (state.addressU.w & 8) != 0;
+    // Z24, the oracle's rule (PCSX2's software renderer, not measured on hardware; its zoverflow case is not modelled): the source depth is clamped (not wrapped) to 24 bits when the draw asks for it, the buffer's depth is its low 24 bits, and a write keeps the upper byte.
+    if (zclamp) depth = min(depth, 0xffffffu);
+
     beginInvocationInterlockARB();
     uint stored = imageLoad(depthImage, pixel).r;
-    bool visible = state.misc.z == 1 || (state.misc.z == 2 && depth >= stored) || (state.misc.z == 3 && depth > stored);
+    uint compared = z24 ? stored & 0xffffffu : stored;
+    bool visible = state.misc.z == 1 || (state.misc.z == 2 && depth >= compared) || (state.misc.z == 3 && depth > compared);
     if (visible) {
         ivec4 result = colour;
-        if (state.misc.x == 1) {
+        if (state.misc.x == 1 && !(pabe && (colour.a & 0x80) == 0)) {
             ivec4 destination = ivec4(imageLoad(targetImage, pixel));
             int factor = state.blend.z == 0 ? colour.a : state.blend.z == 1 ? destination.a : state.misc.y;
-            ivec3 a = term(state.blend.x, colour.rgb, destination.rgb);
-            ivec3 b = term(state.blend.y, colour.rgb, destination.rgb);
-            ivec3 d = term(state.blend.w, colour.rgb, destination.rgb);
-            result.rgb = clamp((((a - b) * factor) >> 7) + d, ivec3(0), ivec3(255));
+            ivec4 a = term(state.blend.x, colour, destination);
+            ivec4 b = term(state.blend.y, colour, destination);
+            ivec4 d = term(state.blend.w, colour, destination);
+            ivec4 blended = clamp((((a - b) * factor) >> 7) + d, ivec4(0), ivec4(255));
+            result.rgb = blended.rgb;
+            // PABE: a pixel that blends takes the blended alpha too; without it the source alpha is kept.
+            if (pabe) result.a = blended.a;
         }
+        if (fba) result.a |= 0x80;
         imageStore(targetImage, pixel, uvec4(result));
-        if (state.misc.w == 1 && inEdge == 0) imageStore(depthImage, pixel, uvec4(depth, 0u, 0u, 0u));
+        if (state.misc.w == 1 && inEdge == 0) imageStore(depthImage, pixel, uvec4(z24 ? (stored & 0xff000000u) | (depth & 0xffffffu) : depth, 0u, 0u, 0u));
     }
     endInvocationInterlockARB();
 }
