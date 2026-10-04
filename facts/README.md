@@ -1,7 +1,7 @@
 # Facts
 
-Pages in this directory are the only notes in this repository meant to be relied on. Everything
-under `docs/`, `context/` and the top-level `MEMORY.md` predates them and mixes builds.
+Pages in this directory are the only notes in this repository meant to be relied on. `docs/`, `context/` and the top-level `MEMORY.md`, which predated these pages and
+mixed builds, were removed on 2026-10-03.
 
 Rules for a page here:
 

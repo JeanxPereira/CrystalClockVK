@@ -24,3 +24,6 @@ compile_commands.json
 # Logs
 *.log
 .superpowers/
+
+# Screenshots and other run output
+out/

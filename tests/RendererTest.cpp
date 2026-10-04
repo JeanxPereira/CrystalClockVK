@@ -1,6 +1,6 @@
 #include "Check.hpp"
 #include "core/HeadlessContext.hpp"
-#include "renderer/GsParityRenderer.hpp"
+#include "parity/GsParityRenderer.hpp"
 #include <bit>
 #include <tuple>
 

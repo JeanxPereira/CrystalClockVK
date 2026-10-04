@@ -1,12 +1,18 @@
 #include "core/HeadlessContext.hpp"
 #include "parity/Compare.hpp"
 #include "parity/Fixture.hpp"
-#include "renderer/GsParityRenderer.hpp"
+#include "parity/FromScene.hpp"
+#include "parity/GsParityRenderer.hpp"
+#include "render/Device.hpp"
+#include "render/NativeRenderer.hpp"
+#include "scene/Clock.hpp"
+#include "scene/SceneInputs.hpp"
 #include <nlohmann/json.hpp>
 #include <algorithm>
 #include <cstdio>
 #include <fstream>
 #include <map>
+#include <set>
 #include <stdexcept>
 #include <tuple>
 #include <vector>
@@ -76,10 +82,67 @@ void observe(std::vector<Observed>& list, const std::string& scope, const std::s
     for (const auto& p : pixels) list.push_back({scope, target, p.x, p.y, p.delta});
 }
 
+// A distance, not a gate: Clock<NativeArithmetic> frame 0 drawn by the native renderer at 640 x 224, without and
+// with MSAA 4x, against the oracle's buffers at the end of the frame (the text included, which the scene does not
+// draw). Every target is overwritten whole early in the frame (clear, copies), so no start buffer is needed.
+// Colour and alpha are measured apart.
+int nativeReport(const std::filesystem::path& fixtureDirectory, const std::filesystem::path& shaders, const std::filesystem::path& mesh, const std::filesystem::path& textures, const std::filesystem::path& out) {
+    const parity::Fixture fixture = parity::loadFixture(fixtureDirectory);
+    const nlohmann::json input = scene::firstInput((fixtureDirectory / ".." / "scene.json").string());
+    scene::Clock<scene::NativeArithmetic> clock(scene::clockInputs(input, scene::loadRodMesh(mesh)));
+    const scene::Frame frame = clock.frame(scene::frameInputs(input));
+    const parity::GsFrameLayout layout = parity::clockLayout(frame.width, frame.height, frame.displayIndex);
+
+    std::map<std::string, parity::Image> oracle = fixture.targetStart;
+    for (size_t i = 0; i < fixture.frame.passes.size(); i++) paste(oracle.at(fixture.frame.passes[i].target), fixture.oracleColour(i));
+
+    render::Device device(nullptr, {true});
+    render::NativeRenderer renderer(device, shaders);
+    renderer.loadClockTextures(textures);
+    const std::string capture = std::filesystem::absolute(fixtureDirectory).parent_path().filename().string();
+    std::printf("native frame 0 of %s: %zu passes at %dx%d (text not drawn)\n", capture.c_str(), frame.passes.size(), frame.width, frame.height);
+    std::printf("%-5s %-17s %-7s %22s %22s %8s %22s %8s\n", "MSAA", "target", "id", "colour differing", "by 16 or more", "largest", "alpha differing", "largest");
+    static const char* names[] = {"Display", "RefractionSource", "Work"};
+    for (const uint32_t samples : {1u, 4u}) {
+        renderer.configure({uint32_t(frame.width), uint32_t(frame.height), samples});
+        renderer.draw(frame);
+        for (size_t t = 0; t < 3; t++) {
+            const std::string& id = layout.targets[t];
+            const parity::Image& want = oracle.at(id);
+            const parity::Image ours{want.width, want.height, renderer.readTarget(scene::TargetName(t))};
+            parity::Image oursColour = ours, wantColour = want, oursAlpha = ours, wantAlpha = want;
+            for (size_t i = 0; i < ours.rgba.size(); i += 4) {
+                oursColour.rgba[i + 3] = wantColour.rgba[i + 3] = 0;
+                for (size_t c = 0; c < 3; c++) oursAlpha.rgba[i + c] = wantAlpha.rgba[i + c] = 0;
+            }
+            if (!out.empty()) {
+                std::filesystem::create_directories(out);
+                writeRaw(out / ("native-" + id + "-msaa" + std::to_string(samples) + ".ours.rgba"), ours.rgba);
+                writeRaw(out / ("native-" + id + ".oracle.rgba"), want.rgba);
+            }
+            const parity::Difference colour = parity::compare(oursColour, wantColour), alpha = parity::compare(oursAlpha, wantAlpha);
+            const auto share = [](uint64_t n, uint64_t of) { return 100.0 * double(n) / double(of); };
+            std::printf("%-5s %-17s %-7s %9llu (%7.3f%%) %9llu (%7.3f%%) %8u %9llu (%7.3f%%) %8u\n", (std::to_string(samples) + "x").c_str(), names[t], id.c_str(),
+                        (unsigned long long)colour.differing, share(colour.differing, colour.pixels), (unsigned long long)colour.buckets[4], share(colour.buckets[4], colour.pixels),
+                        colour.largest, (unsigned long long)alpha.differing, share(alpha.differing, alpha.pixels), alpha.largest);
+        }
+    }
+    std::printf("validation errors: %u\n", device.validationErrors());
+    return 0;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
-    if (argc != 4 && argc != 5) { std::fprintf(stderr, "usage: ParityTool <fixture dir> <out dir> <shader dir> [budgets.json]\n"); return 1; }
+    if ((argc == 6 || argc == 7) && std::string(argv[1]) == "--native") {
+        try {
+            return nativeReport(argv[2], argv[3], argv[4], argv[5], argc == 7 ? argv[6] : "");
+        } catch (const std::exception& error) {
+            std::fprintf(stderr, "ParityTool: %s\n", error.what());
+            return 1;
+        }
+    }
+    if (argc != 4 && argc != 5) { std::fprintf(stderr, "usage: ParityTool <fixture dir> <out dir> <shader dir> [budgets.json]\n       ParityTool --native <fixture dir> <shader dir> <rod-mesh.json> <textures dir> [out dir]\n"); return 1; }
     try {
         const parity::Fixture fixture = parity::loadFixture(argv[1]);
         const std::filesystem::path out = argv[2];
@@ -206,7 +269,10 @@ int main(int argc, char** argv) {
             if (!in) throw std::runtime_error(std::string("no budget at ") + argv[4]);
             const nlohmann::json budget = nlohmann::json::parse(in);
             std::map<std::tuple<std::string, std::string, uint32_t, uint32_t>, uint32_t> allowed;
-            for (const auto& e : budget.at("differences")) allowed[{e.at("scope").get<std::string>(), e.at("target").get<std::string>(), e.at("x").get<uint32_t>(), e.at("y").get<uint32_t>()}] = e.at("delta").get<uint32_t>();
+            for (const auto& e : budget.at("differences")) {
+                const auto key = std::make_tuple(e.at("scope").get<std::string>(), e.at("target").get<std::string>(), e.at("x").get<uint32_t>(), e.at("y").get<uint32_t>());
+                if (!allowed.emplace(key, e.at("delta").get<uint32_t>()).second) throw std::runtime_error("duplicate budget entry");
+            }
             uint32_t breaches = 0;
             for (const auto& o : observed) {
                 const auto found = allowed.find({o.scope, o.target, o.x, o.y});
@@ -216,7 +282,18 @@ int main(int argc, char** argv) {
                 } else if (o.delta > found->second) {
                     std::printf("larger difference: %s %s (%u,%u) delta %u, budget %u\n", o.scope.c_str(), o.target.c_str(), o.x, o.y, o.delta, found->second);
                     breaches++;
+                } else if (o.delta < found->second) {
+                    std::printf("tighten: %s %s (%u,%u) delta %u, budget %u\n", o.scope.c_str(), o.target.c_str(), o.x, o.y, o.delta, found->second);
+                    breaches++;
                 }
+            }
+            std::set<std::tuple<std::string, std::string, uint32_t, uint32_t>> seen;
+            for (const auto& o : observed) seen.insert({o.scope, o.target, o.x, o.y});
+            for (const auto& entry : allowed) {
+                const auto& key = entry.first;
+                if (seen.count(key)) continue;
+                std::printf("stale budget entry: %s %s (%u,%u)\n", std::get<0>(key).c_str(), std::get<1>(key).c_str(), std::get<2>(key), std::get<3>(key));
+                breaches++;
             }
             if (context.validationErrors()) { std::printf("validation errors: %u\n", context.validationErrors()); breaches++; }
             std::printf("budget: %zu differing pixels observed, %zu budgeted, %u breaches\n", observed.size(), allowed.size(), breaches);
