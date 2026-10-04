@@ -1,64 +1,57 @@
 # CrystalClockVK — PS2 OSDSYS Crystal Clock, native Vulkan
 
 ## Project Overview
-Native C++23 / Vulkan 1.4 reimplementation of the PlayStation 2 OSDSYS Crystal Clock. The code is written from what `facts/` verified, not ported from the original. `facts/` is the truth; the GS parity rule is a measuring instrument (the native frame is compared with the GS oracle), not the product.
-Design: `docs/superpowers/specs/2026-10-03-native-clock-design.md`. Plan: `docs/superpowers/plans/2026-10-03-native-clock.md` (done, merged 2026-10-03). Assets (`src/assets`: the clock's data read from the console's raw files, cached in a local `assets.bin`) merged 2026-10-04. Menus (main menu, System Configuration, Version, live keyboard/gamepad navigation) and the boot opening merged 2026-10-04: `CrystalClock --boot` plays the opening and lands on the main menu; no flag starts at the main menu, `--clock` at the clock. Open fronts in `D:/CodingProjects/CrystalClockVK-wt/`: `sound` (`feat/native-sound`). Branch `feat/icon-lab` (IconLab) is kept unmerged. Watson traces are gzip (`.trace.jsonl.gz`); read them through `References/lib/trace.mjs`. Read `facts/README.md` first.
+Native C++23 / Vulkan 1.4 reimplementation of the PlayStation 2 OSDSYS Crystal Clock: the clock, the menus and the opening, running in an SDL3 window on local time at 59.94 Hz. This branch (`main`) holds only the app. Research and proof (the verified `facts/`, `References/` scripts and model, the tests, the GS parity rule and its tools, the design docs, the agents and skills) live on the long-lived branch `lab`, checked out at `D:/CodingProjects/CrystalClockVK-wt/lab`.
+
+The main checkout keeps its untracked `References/`, `facts/`, `tests/` and the rest as the data home (dumps, BIOS, fixtures, captures). They are git-ignored here. Never delete them. The lab worktree reads data from here through `CLOCK_REFERENCES`.
 
 ## Layers
 | Layer | Role |
 |---|---|
-| `scene/` | Plain C++, templated on `Arithmetic` (`EeArithmetic` exact in tests, `NativeArithmetic` in the app). State, camera, rods, orbs, frame head, text, `Clock<A>` assembling one `scene::Frame`. No Vulkan |
+| `scene/` | Plain C++, templated on `Arithmetic` (`EeArithmetic` exact, `NativeArithmetic` in the app). State, camera, rods, orbs, frame head, text, menus, cubes, the opening. One `scene::Frame` per frame. No Vulkan |
 | `render/` | `Device` (instance, device, queues, VMA, swapchain) and `NativeRenderer` (executes a `scene::Frame`: hardware blend, MSAA, any resolution) |
 | `assets/` | Plain C++, no Vulkan: the console's raw resource files decoded (ROMDIR, HDD container decrypt, Expand, `func_002344F8`), the BIOS extractor, the `assets.bin` cache |
-| `app/` | `CrystalClock`: SDL3 window, local time, 59.94 Hz logic, ImGui debug panel; starts from `resources/clock/start.json` |
-| `parity/` | The measuring rule: fixture loader, GS frame types, `GsParityRenderer`, `FromScene` (pure unit conversion), comparison |
+| `app/` | `CrystalClock`: SDL3 window, local time, logic, ImGui debug panel, screens, boot chain |
+| `core/` | VMA and stb_image units, the headless GPU context |
 
-Support: `tools/ParityTool` (isolated and chained comparison against budgets; `--native` distance report), `tools/parity/` (fixture generation), `tools/scene/` (scene fixture exporter, start state), `tests/`.
+Also: `shaders/` (GLSL, compiled to SPIR-V by `glslc`), `resources/` (start states, JSON), `3rdparty/` (ImGui submodule, stb).
 
-Data: Sony data (textures, font, ELF, dumps, cipher tables) is never committed. The app decodes the console's raw resource files at start-up (`src/assets/`: ROMDIR, HDD container decrypt with the tables read from the user's `hddosd.elf`, Expand, `func_002344F8`); `--bios` extracts them from a ROM, `--resources` names the folder, and a decoded cache `assets.bin` lives in `%LOCALAPPDATA%/CrystalClockVK` (`--assets`). Tests read the files by configurable absolute paths (`CLOCK_REFERENCES`, `CLOCK_DUMPS`, `CLOCK_BIOS`, `CLOCK_SCENE`). No junctions or symlinks into `References/` from worktrees.
+## Data rule
+Sony data (textures, font, ELF, meshes, dumps, cipher tables) is never committed. The app decodes the console's raw resource files at start-up: `--bios rom.bin` extracts them from a ROM, `--resources dir` names a folder (TEXIMAGE, FNTOSD, hddosd.elf), the decoded cache is `%LOCALAPPDATA%/CrystalClockVK/assets.bin` (`--assets`). Loose files (`--textures`, `--font`, `--program`, `--mesh`, `--cube-mesh`, `--opening-textures`) are used only when named on the command line. With nothing decoded and no flags, the app prints what is missing and exits with code 1.
 
-## Build
-- CMake 4.2+, C++23, Windows only (AMD RDNA2 baseline, Vulkan 1.4, glslc from the Vulkan SDK). Ninja Multi-Config, the Ninja bundled with Visual Studio 18.
-- Two isolated trees: `app` (`build/app`, `CLOCK_BUILD_TESTS=OFF`: CrystalClock and its libs, output `bin/`) and `tests` (`build/tests`, `CLOCK_BUILD_TESTS=ON`: test executables, ParityTool, parity gates, output `build/tests/bin/`). Editing the app never rebuilds tests, and the reverse.
-- `tools/build.ps1 <configure|build|test> <preset>` enters the VS dev shell and runs cmake/ctest: `tools/build.ps1 configure app`, `tools/build.ps1 build app-debug`, `tools/build.ps1 configure tests -DCLOCK_FIXTURE=...`, `tools/build.ps1 build tests-debug`, `tools/build.ps1 test tests-debug`. Presets: `app`/`tests`, build `app-debug|app-release|tests-debug|tests-release`, test `tests-debug|tests-release`. `windows-vs` and `windows-vs-tests` keep the Visual Studio generator for the IDE.
-- Dependency sources (SDL3, VMA, vk-bootstrap, GLM, nlohmann/json) are cloned once into `CLOCK_DEPS_DIR` (`build/_deps`) and shared by both trees; Dear ImGui is a submodule in `3rdparty/imgui`.
-- Speed: `CMAKE_CXX_SCAN_FOR_MODULES` is OFF (no modules; the scan step costs a pass per file under Ninja); the tests tree uses precompiled headers (`CLOCK_TEST_PCH`, one shared PCH reused by every test executable; the app tree gained nothing from them); no compiler cache (the installed ccache 4.9.1 is older than 4.10). `/fp:strict` on the scene libs is untouched.
-- Fixtures are generated by `tools/parity/make_fixture.mjs` into `References/fixtures/<capture>/f0` (git-ignored). `-DCLOCK_FIXTURE=<path>` (also `CLOCK_REFERENCES`, `CLOCK_DUMPS`, `CLOCK_SCENE`, `CLOCK_BIOS`, `CLOCK_HDDOSD_ELF`) points the tests configure at another checkout's data. Configure prints `parity gates active: ...` or `parity gates inactive: ...`.
-- `tools/build.ps1 test tests-debug` runs the unit tests and every parity gate whose fixture exists (Debug: the fast set; `tests-release` adds the `*Full` and Release-only tests). Budgets in `tools/ParityTool/budgets/` are exact both ways: an unlisted difference, a larger one, a stale entry and a loose delta all fail.
-- CI (`.github/workflows/build.yml`): Windows, `app` preset with Ninja, no ctest (fixtures are not in CI).
+## Build and run
+- CMake 4.2+, C++23, Windows only (Vulkan 1.4, `glslc` from the Vulkan SDK, Visual Studio 2026 with Ninja).
+- `tools/build.ps1 configure app`, then `tools/build.ps1 build app-debug` (or `app-release`). Binary: `bin/CrystalClock.exe`.
+- Check: `bin/CrystalClock.exe --boot --soak 10` must report 0 validation errors.
+- One `CMakeLists.txt` serves both branches. The root hooks `tests/CMakeLists.txt` in only when `-DCLOCK_BUILD_TESTS=ON` and the file exists (lab).
+- CI (`.github/workflows/build.yml`): Windows app build only.
 
-## Source of truth and method
-- **`facts/` is the only trusted store** (`facts/README.md` first; `facts/verification.md` is the verifier × build matrix). Nothing outside `facts/` and its verifiers is fact: never cite old notes.
-- **Two builds**: HDD OSD 1.10U (canon, `hddosd.elf`, SHA-1 `e932f350…`) and ROM 2.30 (second witness). Every address names its build.
-- **A fact is a verifier passing**: a script in `References/scripts/` recomputes a function's output from probed inputs, bit for bit, on both builds, survives mutation (`mutate.mjs`) and is in the regression suite (`run_all.mjs`). Skills: `measure` (the method), `capture` (the emulator), `facts-page` (writing a page), `campaign` (many items), `commit`.
-- **Instruments**: Watson (`D:\CodingProjects\Watson`, MCP `watson_*`: an instrumented PCSX2 with probes, fast captures, GS traces and GS memory reads); HDD OSD disassembly in `D:\CodingProjects\CrystalOSD\asm\`; Ghidra/IDA MCP when the disassembly is not enough.
-- **Agents** (`.claude/agents/`, mid tier by default): `re-scout` (one question, read-only), `verifier-writer` (one verifier), `re-refuter` (adversarial check of a claim or a page), `doc-writer` (one facts page). Prefer them, briefed by file path, over forks of the session.
-- **Hooks**: the git rules are refused at the call (`tools/hooks/guard-git.py`); every edit to `facts/` is linted (`tools/hooks/lint-facts.py`).
-- A difference with no known cause is a failure, never a tolerance.
-- **US Patent 6,693,606 (`docs/clock_patent/US6693606.pdf`)**: the intent of the effect; it holds no numbers.
+## Lab branch
+- Worktree: `D:/CodingProjects/CrystalClockVK-wt/lab`. Tests: `tools/build.ps1 configure tests -DCLOCK_REFERENCES=D:/CodingProjects/CrystalClockVK/References -DCLOCK_DUMPS=<References/dumps/hddosd-host>`, then `build tests-debug`, `test tests-debug`.
+- Lab takes main with `git merge main`. Main never takes lab.
+- Method, facts, verifiers, agents and the research CLAUDE.md are on lab.
 
 ## Commit Convention
 Format: `Type(Scope): Short imperative description`
 
-**Types** (PascalCase): `Fix`, `Feat`, `Refactor`, `Perf`, `Build`, `Docs`, `GS` (PS2 GS/VU0 reverse-engineering changes).
-**Scopes** (PascalCase, match directory/module): `Core`, `Renderer`, `Scene`, `App`, `Parity`, `GS`, `Shaders`, `CI`, `Project`.
+**Types** (PascalCase): `Fix`, `Feat`, `Refactor`, `Perf`, `Build`, `Docs`.
+**Scopes** (PascalCase, match directory/module): `Core`, `Renderer`, `Scene`, `App`, `Assets`, `Shaders`, `CI`, `Project`.
 
 **Rules**:
 - Max 72 chars in subject line
 - Imperative mood ("Fix" not "Fixed")
 - Body optional, separated by blank line, explains *why* not *what*
-
-## Rendering
-The GS work of every frame is in `facts/clock-frame.md`, `facts/clock-rod-draw.md` and `facts/clock-gs-state.md`.
+- Never push without being asked.
 
 ## Code Directives
 - **English Only**: the codebase and all text.
-- **Zero Comments**: only where GS reverse-engineered arithmetic needs one.
-- PascalCase file and type names; lean explicit wrappers; `scene/` and `parity/` testable without a window.
+- **Zero Comments**: only where reverse-engineered arithmetic needs one.
+- PascalCase file and type names; lean explicit wrappers; `scene/` and `assets/` testable without a window.
+- The app must build and run without `References/` or `facts/`.
 
 ## Claude Directives
 - Use short, 3-6 word sentences.
 - No filter, preamble, or pleasantries.
-- Run tools first, show the result, then stop. DO not narrate.
-- Drop articles(“Me fix code” not “will fix the code”).
-- Mantain CLAUDE.md and the auto-memory MEMORY.md updated
+- Run tools first, show the result, then stop. Do not narrate.
+- Drop articles ("Me fix code", not "will fix the code").
+- Keep CLAUDE.md and the auto-memory MEMORY.md updated.

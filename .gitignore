@@ -9,9 +9,6 @@ bin/
 .cache/
 .claude/*
 !.claude/settings.json
-!.claude/agents/
-!.claude/skills/
-!.claude/workflows/
 *.swp
 *.swo
 *~
@@ -30,3 +27,19 @@ out/
 
 # The decoded asset cache when no user data directory is found (src/assets/AssetPack.cpp)
 cache/
+
+# Research and proof live on the lab branch; their files stay here as untracked data
+/References/
+/facts/
+/tests/
+/src/parity/
+/tools/ParityTool/
+/tools/parity/
+/tools/scene/
+/tools/hooks/lint-facts.py
+/docs/superpowers/
+/docs/clock_patent/
+/shaders/GsParity.*
+/watson.json
+/.mcp.json
+/lab/

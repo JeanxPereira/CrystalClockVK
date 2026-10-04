@@ -44,7 +44,7 @@ data is in this repository.
 | Native renderer | Vulkan 1.4, dynamic rendering, push descriptors; three targets (display, refraction source, work); fixed-function blending; MSAA off, 2x, 4x, 8x |
 | Live window | SDL3 window on local time, logic at a fixed 59.94 Hz, 640x448, window size, x2 or x4, a 4:3 picture or square pixels |
 | Debug panel | Dear ImGui: resolution, MSAA, pause, step one frame, set the time, show any target, screenshot |
-| Measuring rule | `GsParityRenderer` and `ParityTool`: the scene converted to GS draws and compared with PCSX2's software renderer against exact budgets |
+| Measuring rule | On the `lab` branch: `GsParityRenderer` and `ParityTool`, the scene converted to GS draws and compared with PCSX2's software renderer against exact budgets |
 
 ## Screenshots
 
@@ -83,18 +83,18 @@ data is in this repository.
 
 ## The method
 
-A value enters the code only once it is a fact, and a fact is a verifier passing.
+The research lives on the `lab` branch (`facts/`, `References/`, the tests, the parity tools). A value enters the code only once it is a fact, and a fact is a verifier passing.
 
 | Step | What happens |
 |---|---|
 | Measure | Watson, an instrumented PCSX2, records probes at a function's entry, fast captures, GS traces and GS memory reads, on both builds |
 | Read | The function that computes the value is read in the HDD OSD disassembly, so the page records the rule that produces a number and not only the number |
-| Verify | A script in `References/scripts/` recomputes the function's output from the probed inputs and compares it bit for bit |
+| Verify | A script in `References/scripts/` (lab) recomputes the function's output from the probed inputs and compares it bit for bit |
 | Mutate | `mutate.mjs` changes one constant, operator or comparison at a time; a verifier that still passes a mutant is not a test |
 | Regress | `run_all.mjs` runs every verifier on every capture, build and video mode: 849 of 849 entries pass |
-| Write | The result becomes a page in [`facts/`](facts/README.md), which names its build, its script and its capture |
+| Write | The result becomes a page in `facts/` (lab), which names its build, its script and its capture |
 
-`References/model/clock_frame.mjs` assembles those verified functions into a model that produces every packet of
+`References/model/clock_frame.mjs` (lab) assembles those verified functions into a model that produces every packet of
 a clock frame. The native scene is ported from that model, and its tests compare it with state and passes
 exported from real captures.
 
@@ -151,10 +151,9 @@ flowchart LR
 | Scene | `src/scene/` | Plain C++. The clock's state, camera, placement, rods, orbs, frame head and text, each part with the facts page it ports. Builds one `scene::Frame`; testable without a window |
 | Render | `src/render/` | `Device` (instance, device, queues, VMA, swapchain) and `NativeRenderer`, which executes a `scene::Frame` |
 | App | `src/app/` | The SDL3 window, real time, the frame loop and the ImGui debug panel |
-| Parity | `src/parity/` | The measuring rule only: GS frame types, `fromScene`, `GsParityRenderer`, fixture loader, comparison |
+| Assets | `src/assets/` | Plain C++, no Vulkan. The console's raw resource files decoded (ROMDIR, HDD container decrypt, Expand), the BIOS extractor and the `assets.bin` cache |
 
-Support lives in `tools/`: `ParityTool` (isolated and chained comparison against budgets), `tools/parity/`
-(fixture generation) and `tools/scene/` (the scene exporter and the start state).
+The measuring rule (`src/parity/`, `ParityTool`, the fixtures and the tests) is on the `lab` branch.
 
 ## Build
 
@@ -170,8 +169,7 @@ toolsuild.ps1 build app-release
 ```
 
 `toolsuild.ps1` enters the Visual Studio developer shell and uses the Ninja that ships with it. The executables
-land in `bin/`. The tests are a separate tree (`toolsuild.ps1 configure tests`, `build tests-debug`,
-`test tests-debug`), so editing the app does not rebuild them. `windows-vs` is the Visual Studio generator preset
+land in `bin/`. The tests are not on this branch: they live on `lab`. `windows-vs` is the Visual Studio generator preset
 for the IDE. CI builds the app on every push to `main`.
 
 ### Your own data
@@ -191,22 +189,14 @@ bin\CrystalClock.exe --resources <folder>
 The first run decodes the files and writes a cache, `%LOCALAPPDATA%\CrystalClockVK\assets.bin` (`--assets`
 moves it); later runs read the cache while the files' hashes are unchanged. `--bios` extracts into
 `%LOCALAPPDATA%\CrystalClockVK\resources` unless `--resources` names a folder; when a file there holds other
-bytes it writes nothing. With no flag the app uses that folder when it holds a `TEXIMAGE`, else the configured
-`CLOCK_DUMPS` folder. A folder that cannot be decoded falls back to the cache, and with no cache to the loose
-files (`--textures`, `--font`, `--program`, `--mesh` defaults), each with a warning; the cache is also decoded
-again when the decoder changes.
+bytes it writes nothing. With no flag the app uses that folder, else the cache. With neither, it says what is
+missing (`--bios rom.bin` or `--resources dir`) and exits; the cache is decoded again when the decoder changes.
 
 The text needs `FNTOSD` and HDD OSD 1.10U's `hddosd.elf` (the original or the host copy; any other ELF is
-recognised and not read): a BIOS gives the textures only, and the clock then runs without text and with the
-committed `facts/data/rod-mesh.json`. Once files are decoded, a loose file is used only when its flag is given.
-At start-up the app prints where the textures, the mesh and the text come from. The decryption tables and key
+recognised and not read): a BIOS gives the textures only, which is not enough to start: the meshes come from
+the program. Loose files are used only when their flag is given (`--textures`, `--font`, `--program`, `--mesh`,
+`--cube-mesh`). At start-up the app prints where the textures, the mesh and the text come from. The decryption tables and key
 words are read from your `hddosd.elf`.
-
-The tests read your files by configurable absolute paths: `-DCLOCK_DUMPS=<folder>` (HDD OSD resource files),
-`-DCLOCK_BIOS=<rom.bin>` (ROM 2.30, `0230A` of 2008-02-20), `-DCLOCK_REFERENCES=<dir>` (`textures/`, the PNGs
-`References/scripts/extract_textures.mjs` writes from a GS dump, against which the decoded textures are compared,
-and `fixtures/`), `-DCLOCK_HDDOSD_ELF=<hddosd.elf>` (the original ELF, for the program check). A test whose file is
-missing is not registered; `AssetsRobustTest` (synthetic, truncated and corrupted inputs) needs no file and always runs.
 
 ## Running
 
@@ -227,27 +217,14 @@ first seconds the rods sweep from the captured hour to yours.
 | `--resources <dir>` | The folder of raw OSD resource files to decode |
 | `--bios <rom.bin>` | Extracts the BIOS's resource files into the resource folder first |
 | `--assets <assets.bin>` | Where the decoded cache is read and written |
-| `--textures`, `--font`, `--program`, `--mesh`, `--shaders` | The loose files used when no resource file or cache is found |
+| `--textures`, `--font`, `--program`, `--mesh`, `--cube-mesh`, `--shaders` | Loose files, used only when named |
 | `--screenshots <dir>` | Where the panel's screenshot button writes; `out/screenshots` by default |
 
 ## Tests
 
-```powershell
-ctest --test-dir build -C Release --output-on-failure
-```
-
-| Level | Compares | Against | Criterion |
-|---|---|---|---|
-| Logic | the scene's state, frame by frame, under `EeArithmetic` | state exported from captures by the JS model | bit for bit |
-| Geometry | every pass of 24 carried frames: state, every vertex, the 100 strings and the font state | the GS dump of the same frames | equal: 4 628 passes |
-| Pixels | the scene through `fromScene` and `GsParityRenderer` | PCSX2's software renderer | the budget: 8 pixels, cause named |
-| Native | `NativeRenderer`: blending, sampling, copies, MSAA, real frames | expected values in bytes | 0 validation errors |
-| Eye | the window | the PS2 | Jean's verdict |
-
-The suite holds 18 tests. Those that need captures or your data register only when the files exist, and
-configure says which parity gates are active. Budgets in `tools/ParityTool/budgets/` are exact both ways: an
-unlisted difference, a larger one or a stale entry all fail. A difference with no known cause is a failure,
-never a tolerance.
+The tests, the parity gates and `ParityTool` are on the `lab` branch (worktree `D:/CodingProjects/CrystalClockVK-wt/lab`).
+It shares this tree's `CMakeLists.txt`: `tests/CMakeLists.txt` is hooked in when present and `-DCLOCK_BUILD_TESTS=ON`
+(preset `tests`). A difference with no known cause is a failure, never a tolerance.
 
 ## Roadmap
 
@@ -261,21 +238,11 @@ never a tolerance.
 | Improvements beyond resolution and MSAA, each a switch over the faithful base | Planned |
 | macOS | Planned |
 
-What is verified and what is still open is kept, line by line, in [`facts/README.md`](facts/README.md) and
-[`facts/verification.md`](facts/verification.md).
+What is verified and what is still open is kept, line by line, in `facts/README.md` and `facts/verification.md` on the `lab` branch.
 
 ## Documents
 
-| | |
-|---|---|
-| What the OSD does, verified, and what is left: start here | [`facts/README.md`](facts/README.md) |
-| Every verifier and its result on each build | [`facts/verification.md`](facts/verification.md) |
-| A clock frame end to end | [`facts/clock-frame.md`](facts/clock-frame.md) |
-| The rod's drawing, pass by pass | [`facts/clock-rod-draw.md`](facts/clock-rod-draw.md) |
-| The GS state helpers | [`facts/clock-gs-state.md`](facts/clock-gs-state.md) |
-| The font and the clock's strings | [`facts/text.md`](facts/text.md) |
-| The native clock's design | [`docs/superpowers/specs/2026-10-03-native-clock-design.md`](docs/superpowers/specs/2026-10-03-native-clock-design.md) |
-| The patent | [`docs/clock_patent/`](docs/clock_patent) |
+The facts pages, the verifiers, the design documents and the patent are on the `lab` branch: `facts/README.md` is the place to start.
 
 ## Dependencies
 
