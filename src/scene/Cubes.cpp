@@ -225,7 +225,7 @@ std::vector<CubeDraw> Cubes<A>::frame(CubeState& c, HeadState& head, const Clock
     }
     CubeDraw clear;
     clear.send = CubeSend::LayerClear;
-    clear.label = "cube layer: clear";
+    clear.label = "draw to a work buffer";
     clear.clear = c.layerClear;
     out.push_back(std::move(clear));
     for (int32_t slot = 0; slot < 6; ++slot) {

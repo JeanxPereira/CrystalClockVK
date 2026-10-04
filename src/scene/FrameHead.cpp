@@ -16,7 +16,8 @@ struct Origin {
     float x, y;
 };
 
-Origin originOf(const HeadInputs& in) { return {static_cast<float>(0x800 - (in.width >> 1)), static_cast<float>(0x800 - (in.height >> 1))}; }
+Origin originOf(int32_t width, int32_t height) { return {static_cast<float>(0x800 - (width >> 1)), static_cast<float>(0x800 - (height >> 1))}; }
+Origin originOf(const HeadInputs& in) { return originOf(in.width, in.height); }
 
 // One vertex from the registers the OSD wrote: RGBAQ, ST or UV, XYZF2.
 HeadVertex vertexOf(const Origin& origin, uint64_t rgbaq, uint64_t coordinate, Coordinates kind, uint64_t xyz) {
@@ -200,7 +201,7 @@ HeadDraw headRectangle(const Rect& r, int32_t width, int32_t height, Part part) 
     HeadDraw d;
     d.part = part;
     setPrim(d, prim);
-    const Origin origin{static_cast<float>(0x800 - (width >> 1)), static_cast<float>(0x800 - (height >> 1))};
+    const Origin origin = originOf(width, height);
     d.vertices.push_back(vertexOf(origin, rgbaq, uv0, Coordinates::Uv, xyz0));
     d.vertices.push_back(vertexOf(origin, rgbaq, uv1, Coordinates::Uv, xyz1));
     return d;

@@ -21,7 +21,6 @@ std::vector<Vec4> vectors(const nlohmann::json& part) {
     return out;
 }
 
-constexpr float kNineTenths = 0.9f;
 constexpr float kRodsShownAbove = 0.05f;
 
 struct Set {
@@ -161,8 +160,8 @@ RodsFrame Rods<A>::frame(const RodsInput& input, const Mat4& view, const Mat4& s
         if (rod.record.sy < 0) continue;
         rod.drawn = true;
         rod.whole = transform(rod.record, view, screen, m_mesh);
-        rod.cx = A::mul(rod.whole.cx, kNineTenths);
-        rod.cy = A::mul(rod.whole.cy, kNineTenths);
+        rod.cx = A::mul(rod.whole.cx, E::kNineTenths);
+        rod.cy = A::mul(rod.whole.cy, E::kNineTenths);
         if (rod.t > 0) {
             const float s = rod.record.sy;
             RodRecord a = rod.record, b = rod.record;
