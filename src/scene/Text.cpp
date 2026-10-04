@@ -90,6 +90,9 @@ template <class A>
 Text<A>::Text(std::shared_ptr<const Font> font, std::shared_ptr<const ProgramImage> program, const TextInputs& inputs)
     : m_fontFile(std::move(font)), m_program(std::move(program)), m_cache(inputs.cache), m_font(inputs.font), m_ramps(inputs.ramps), m_settings(inputs.settings) {
     if (!m_fontFile || !m_program) throw std::runtime_error("text: no font or program");
+    // The library's context is read from the capture (scene.json's input.font); without it there is no cache to draw from.
+    if (m_cache.list.empty() || m_cache.cells <= 0 || m_cache.cellW <= 0 || m_cache.cellH <= 0)
+        throw std::runtime_error("text: the glyph cache is empty (the input has no font context); build the clock without text");
     m_libraryColour = m_font.colour;
     m_cells.assign(static_cast<size_t>(m_cache.cells), 0);
     for (const FontCacheEntry& e : m_cache.list)
@@ -206,10 +209,14 @@ float Text<A>::putString(const std::string& text, bool measuring, TextFrame& out
             }
         }
         Character c{code, {pen[0], pen[1], 0, 0}, colour, s.matrix, fresh};
-        const float penX = putCharacter(c, measuring, out);
-        drew = true;
-        lastPen = penX;
-        m_libraryColour = colour;
+        const std::optional<float> moved = putCharacter(c, measuring, out);
+        // A character the library gives up leaves its pen where it was (the model has no pen for it; not captured).
+        const float penX = moved.value_or(pen[0]);
+        if (moved) {
+            drew = true;
+            lastPen = penX;
+            m_libraryColour = colour;
+        }
         pen[0] = fixedAfter ? after : penX;
         fresh = false;
     };
@@ -279,7 +286,7 @@ float Text<A>::putString(const std::string& text, bool measuring, TextFrame& out
 // the head of the list (taking the cell of the least recently used entry passed when it has none), its picture is
 // uploaded when it is not loaded, and the twelve-vertex fan is placed (facts/text.md sections 2 and 3).
 template <class A>
-float Text<A>::putCharacter(const Character& c, bool measuring, TextFrame& out) {
+std::optional<float> Text<A>::putCharacter(const Character& c, bool measuring, TextFrame& out) {
     const Font& font = *m_fontFile;
     std::vector<FontCacheEntry>& list = m_cache.list;
     size_t at = 0;
@@ -307,7 +314,9 @@ float Text<A>::putCharacter(const Character& c, bool measuring, TextFrame& out) 
     }
     list.erase(list.begin() + static_cast<std::ptrdiff_t>(at));
     list.insert(list.begin(), entry);
-    if (!found || entry.block == 0) throw std::runtime_error("text: the character " + std::to_string(c.code) + " has no glyph (the library gives it up)");
+    // _scePFont_Putc (0x00291958..0x0029197C, 0x00291980): the entry keeps the code with no block, and the character is
+    // given up (-2) with nothing drawn.
+    if (!found || entry.block == 0) return std::nullopt;
     const Glyph& glyph = *found;
     const FontBlock& block = *glyph.block;
 
@@ -318,6 +327,8 @@ float Text<A>::putCharacter(const Character& c, bool measuring, TextFrame& out) 
                 if ((block.flags & 7) != 0) throw std::runtime_error("text: a block that is not 4 bits a pixel: its cache is not modelled");
                 const int32_t cellW = (block.width + 2 + 7) & ~7, cellH = (block.height + 2 + 3) & ~3;
                 if (!(m_cache.format == 0x14 && m_cache.cellW == cellW && m_cache.cellH == cellH)) {
+                    for (const bool drawn : m_drawn)
+                        if (drawn) throw std::runtime_error("text: the cache is laid out again after a glyph of this frame was drawn from it");
                     const int32_t pages = static_cast<int32_t>((m_cache.memory + 0x7ff) >> 11);
                     int32_t across = A::toInt(A::sqrt(static_cast<float>(pages)));
                     while (pages % across != 0) across -= 1;
@@ -339,8 +350,8 @@ float Text<A>::putCharacter(const Character& c, bool measuring, TextFrame& out) 
                 m_cache.setUp = 1;
                 m_cache.block = block.at;
             }
-            // _scePFontUpdateTex: the picture into the entry's cell.
-            const size_t cell = static_cast<size_t>(entry.cell);
+            // _scePFontUpdateTex: the picture into the entry's cell, the one the lay-out dealt the head of the list.
+            const size_t cell = static_cast<size_t>(list[0].cell);
             if (m_drawn.at(cell)) throw std::runtime_error("text: a cell drawn in this frame is given another glyph in the same frame");
             m_cells.at(cell) = c.code;
             list[0].loaded = 1;
@@ -372,8 +383,9 @@ float Text<A>::putCharacter(const Character& c, bool measuring, TextFrame& out) 
     if (measuring) return penX;
 
     const int32_t columns = m_cache.width / m_cache.cellW;
-    const int32_t cellX = (entry.cell % columns) * m_cache.cellW, cellY = (entry.cell / columns) * m_cache.cellH;
-    m_drawn.at(static_cast<size_t>(entry.cell)) = true;
+    const int32_t cell = list[0].cell;
+    const int32_t cellX = (cell % columns) * m_cache.cellW, cellY = (cell / columns) * m_cache.cellH;
+    m_drawn.at(static_cast<size_t>(cell)) = true;
     const int32_t s0 = cellX + 1, t0 = cellY + 1;
     const int32_t sPen = originX + s0, tBase = baseline + t0;
     const int32_t sLeft = left - 1 + sPen, sRight = right + 1 + sPen, sAdvance = advance + sPen, tTop = -(top + 1) + tBase, tBottom = -(bottom - 1) + tBase;
@@ -570,6 +582,24 @@ TextFrame Text<A>::frame(const TextFrameInputs& in) {
         }
     }
 
+    finish(out);
+    return out;
+}
+
+template <class A>
+TextFrame Text<A>::drawString(const std::string& text, int32_t width, int32_t height) {
+    m_width = width;
+    m_height = height;
+    m_drawn.assign(m_cells.size(), false);
+    TextFrame out;
+    putString(text, false, out);
+    finish(out);
+    return out;
+}
+
+// The cache as GS memory holds it once the frame's text is drawn.
+template <class A>
+void Text<A>::finish(TextFrame& out) const {
     out.glyphs.address = m_cache.texture;
     out.glyphs.cellWidth = m_cache.cellW;
     out.glyphs.cellHeight = m_cache.cellH;
@@ -577,7 +607,6 @@ TextFrame Text<A>::frame(const TextFrameInputs& in) {
     out.glyphs.logWidth = m_cache.logW;
     out.glyphs.logHeight = m_cache.logH;
     out.glyphs.cells = m_cells;
-    return out;
 }
 
 std::vector<uint8_t> glyphCacheImage(const Font& font, const GlyphCache& cache) {
