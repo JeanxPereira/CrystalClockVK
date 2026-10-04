@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <cstring>
+#include <stdexcept>
 
 #include "scene/Arithmetic.hpp"
 #include "scene/opening/Vu0.hpp"
@@ -63,6 +64,7 @@ Towers<A>::Towers(const History& history, const ProgramImage& program) {
         for (int cell = 0; cell < 6; ++cell) {
             const int32_t column = program.integer(kCells + static_cast<uint32_t>(e) * 0x30 + cell * 8);
             const int32_t row = program.integer(kCells + static_cast<uint32_t>(e) * 0x30 + cell * 8 + 4);
+            if (column < 0 || column >= kTowerColumns || row < 0 || row >= kTowerRows) throw std::runtime_error("towers: a cell outside the grid");
             if (cell == entry.mainCell) {
                 const int index = entry.count < 14 ? entry.count : ((entry.count - 14) % 10) + 4;
                 t.sway[column][row] = sways[index];

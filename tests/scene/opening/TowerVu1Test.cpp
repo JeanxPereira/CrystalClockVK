@@ -14,7 +14,9 @@
 #include "OpeningFixture.hpp"
 #include "TowerCalls.hpp"
 #include "scene/Arithmetic.hpp"
+#include "scene/ProgramImage.hpp"
 #include "scene/opening/TowerVu1.hpp"
+#include "scene/opening/Towers.hpp"
 
 namespace {
 
@@ -23,30 +25,46 @@ using scene::EeArithmetic;
 using scene::NativeArithmetic;
 using Row = std::array<float, 10>;
 
-// The strips as triangles the way the GS draws them: vertex i of a strip completes a triangle when it is kicked.
-void expand(const TowerVertices& v, std::vector<Row>& out) {
-    for (int face = 0; face < 6; ++face)
-        for (int i = 2; i < 4; ++i) {
-            if (!v.kicked[face * 4 + i]) continue;
-            for (int k = i - 2; k <= i; ++k) {
-                const scene::Vertex& p = v.vertices[face * 4 + k];
-                out.push_back({p.x, p.y, static_cast<float>(p.z), float(p.r), float(p.g), float(p.b), float(p.a), p.u, p.v, p.q});
-            }
-        }
+Row rowOf(const scene::Vertex& p) { return {p.x, p.y, static_cast<float>(p.z), float(p.r), float(p.g), float(p.b), float(p.a), p.u, p.v, p.q}; }
+
+// The pass Towers::draw makes against the dump's description of the same draw.
+int passState(const scene::Pass& pass, const nlohmann::json& dump) {
+    const scene::Material& m = pass.material;
+    const nlohmann::json& tex = dump.at("texture");
+    CHECK(pass.topology == scene::PassTopology::Triangles && pass.target == scene::TargetName::Display);
+    CHECK(pass.edgeSmoothing == dump.at("antialias").get<bool>() && pass.halfLine);
+    CHECK(m.source == scene::SourceKind::Texture && m.texture == 6);
+    CHECK(tex.at("coordinates") == "Projective" && m.coordinates == scene::CoordinateKind::Projective);
+    CHECK(tex.at("addressU").at("mode") == "Repeat" && tex.at("addressV").at("mode") == "Repeat" && m.sampling == scene::Sampling::Repeat);
+    CHECK(tex.at("filter") == "Bilinear" && m.bilinear);
+    const nlohmann::json& blend = dump.at("blend");
+    CHECK(blend.at("a") == "Source" && blend.at("b") == "Destination" && blend.at("c") == "SourceAlpha" && blend.at("d") == "Destination");
+    CHECK(m.blend == scene::BlendOp::AlphaOver && m.blendConstant == blend.at("fixed").get<int>());
+    CHECK(dump.at("depth").at("test") == "GreaterEqual" && m.depthTest == scene::DepthTest::GreaterEqual);
+    CHECK(dump.at("depth").at("write").get<bool>() == m.depthWrite && m.gouraud && !m.perPixelAlpha);
+    return 0;
 }
 
 struct Tally {
     size_t calls = 0, chains = 0, vertices = 0, hidden = 0, frames = 0, triangles = 0;
 };
 
-int chainsOf(const std::string& openingPath, const std::string& passesPath, long expectedHidden, Tally& tally) {
+int chainsOf(const scene::ProgramImage& program, const std::string& openingPath, const std::string& passesPath, long expectedHidden, Tally& tally) {
     const openingtest::OpeningFixture fixture = openingtest::OpeningFixture::load(openingPath);
     const std::vector<openingtest::TowerCall> calls = openingtest::towerCalls(fixture);
-    CHECK(!calls.empty());
+    CHECK(!calls.empty() && fixture.externals().history);
+    const scene::opening::Towers<EeArithmetic> towers(*fixture.externals().history, program);
     std::vector<std::vector<Row>> expansions;
+    std::vector<scene::Pass> drawn(calls.size());
     size_t hidden = 0, vertices = 0;
     for (const openingtest::TowerCall& call : calls) {
         std::vector<Row> rows;
+        std::vector<scene::Pass> made;
+        towers.draw(static_cast<int32_t>(openingtest::wordAt(call.entry.mem.at(7), 0)), openingtest::matricesOf(call.entry2.mem.at(0)), openingtest::vecAt(call.entry.mem.at(6), 0), made);
+        if (!made.empty()) {
+            for (const scene::Vertex& v : made.front().vertices) rows.push_back(rowOf(v));
+            drawn[expansions.size()] = made.front();
+        }
         for (const openingtest::Bytes& bytes : call.chains) {
             const TowerChain chain = openingtest::chainOf(bytes);
             const TowerVertices ee = TowerVu1<EeArithmetic>::run(chain);
@@ -55,7 +73,6 @@ int chainsOf(const std::string& openingPath, const std::string& passesPath, long
                 ++vertices;
                 if (!kicked) ++hidden;
             }
-            expand(ee, rows);
             ++tally.chains;
         }
         expansions.push_back(std::move(rows));
@@ -94,6 +111,7 @@ int chainsOf(const std::string& openingPath, const std::string& passesPath, long
                     found = true;
                     next = c + 1;
                     tally.triangles += rows.size() / 3;
+                    if (int failed = passState(drawn[c], pass)) return failed;
                 }
             }
             if (!found) {
@@ -140,13 +158,14 @@ int entryTwentyOne(const std::string& openingPath) {
 
 int main(int argc, char** argv) {
     return scenetest::run(argc, argv, [](int count, char** arguments) {
-        if (count < 3) {
-            std::fprintf(stderr, "usage: TowerVu1Test (<opening.json> <passes.json> [--hidden=N])...\n");
+        if (count < 4) {
+            std::fprintf(stderr, "usage: TowerVu1Test <hddosd.elf> (<opening.json> <passes.json> [--hidden=N])...\n");
             return 2;
         }
         Tally tally;
         bool twentyOne = false;
-        for (int i = 1; i + 1 < count;) {
+        const scene::ProgramImage program = scene::ProgramImage::load(arguments[1]);
+        for (int i = 2; i + 1 < count;) {
             long hidden = -1;
             const std::string opening = arguments[i], passes = arguments[i + 1];
             i += 2;
@@ -155,7 +174,7 @@ int main(int argc, char** argv) {
                 std::fprintf(stderr, "missing %s or %s\n", opening.c_str(), passes.c_str());
                 return 1;
             }
-            if (int failed = chainsOf(opening, passes, hidden, tally)) return failed;
+            if (int failed = chainsOf(program, opening, passes, hidden, tally)) return failed;
             if (!twentyOne) {
                 if (int failed = entryTwentyOne(opening)) return failed;
                 twentyOne = true;
