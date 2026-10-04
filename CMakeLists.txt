@@ -337,3 +337,12 @@ target_link_libraries(ClockScreen PUBLIC ClockSceneNative SceneInputs)
 add_executable(ClockScreenTest tests/scene/opening/ClockScreenTest.cpp)
 target_link_libraries(ClockScreenTest PRIVATE ClockScreen)
 add_test(NAME ClockScreenTest COMMAND ClockScreenTest ${CMAKE_CURRENT_SOURCE_DIR}/resources/clock/start-boot.json ${CMAKE_CURRENT_SOURCE_DIR}/facts/data/rod-mesh.json)
+
+# opening: renderer
+add_executable(NativeOpeningTest tests/render/NativeOpeningTest.cpp)
+target_link_libraries(NativeOpeningTest PRIVATE ClockRender ClockStb)
+if(EXISTS ${OPENING_TEXTURES}/tex6-256x256.png)
+    add_test(NAME NativeOpeningTest COMMAND NativeOpeningTest ${CMAKE_SOURCE_DIR}/bin/shaders ${OPENING_TEXTURES})
+else()
+    add_test(NAME NativeOpeningTest COMMAND NativeOpeningTest ${CMAKE_SOURCE_DIR}/bin/shaders)
+endif()
