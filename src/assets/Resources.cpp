@@ -2,11 +2,11 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <optional>
 #include <utility>
 
-#include "assets/AssetPack.hpp"
 #include "assets/ClockTextures.hpp"
 #include "assets/ElfImage.hpp"
 #include "assets/Expand.hpp"
@@ -21,7 +21,7 @@ namespace assets {
 namespace {
 
 // The files the decode reads, in this order.
-constexpr std::array<std::string_view, 3> kDecoded{"TEXIMAGE", "FNTOSD", kProgramName};
+constexpr std::array<std::string_view, 4> kDecoded{"TEXIMAGE", "FNTOSD", kProgramName, "SNDIMAGE"};
 
 // The rod mesh in HDD OSD 1.10U's data (facts/data/rod-mesh.json): 64 positions, 16 normals, 64 texture coordinates.
 constexpr uint32_t kFaces = 16, kPositions = 0x002b4b90, kNormals = 0x002b5390, kCoordinates = 0x002b4f90;
@@ -49,28 +49,6 @@ std::vector<ReadFile> readSources(const fs::path& folder) {
 
 }  // namespace
 
-// The decoder's version and every constant it reads by: a change to any of them makes the caches of before stale.
-constexpr uint32_t kDecoderVersion = 3;
-
-uint64_t decoderFingerprint() {
-    uint64_t hash = 0xcbf29ce484222325ull;
-    const auto mix = [&](uint64_t value) {
-        for (int i = 0; i < 8; ++i) hash = (hash ^ uint8_t(value >> (8 * i))) * 0x100000001b3ull;
-    };
-    mix(kDecoderVersion);
-    for (const ClockTextureInfo& info : kClockTextures) {
-        for (const char c : info.name) mix(uint8_t(c));
-        mix(info.width), mix(info.height), mix(uint32_t(info.form)), mix(info.tbp);
-    }
-    for (const OpeningTextureInfo& info : kOpeningTextures) {
-        for (const char c : info.name) mix(uint8_t(c));
-        mix(uint32_t(info.index)), mix(info.width), mix(info.height), mix(uint32_t(info.form)), mix(info.tbp);
-    }
-    mix(kFaces), mix(kPositions), mix(kNormals), mix(kCoordinates);
-    mix(kCubeFaces), mix(kCubePositions), mix(kCubeNormals), mix(kCubeCoordinates);
-    return hash;
-}
-
 const Asset* AssetSet::find(std::string_view name) const {
     for (const Asset& a : assets)
         if (a.name == name) return &a;
@@ -91,7 +69,6 @@ AssetSet decodeFolder(const fs::path& folder) {
             if (files[i].source.name == name) return i;
         return std::nullopt;
     };
-    set.decoder = decoderFingerprint();
     for (const ReadFile& f : files) set.sources.push_back(f.source);
     const auto texImage = index("TEXIMAGE");
     if (!texImage) throw std::runtime_error("no TEXIMAGE in " + folder.string());
@@ -146,6 +123,16 @@ AssetSet decodeFolder(const fs::path& folder) {
         set.assets.push_back({"RODMESH", AssetKind::Mesh, kFaces, 0, *program, meshOf(kFaces, kPositions, kNormals, kCoordinates)});
         set.assets.push_back({"CUBEMESH", AssetKind::Mesh, kCubeFaces, 0, *program, meshOf(kCubeFaces, kCubePositions, kCubeNormals, kCubeCoordinates)});
     }
+    if (const auto sound = index("SNDIMAGE")) {
+        Bytes sounds = files[*sound].data;
+        bool readable = romdirStart(sounds) >= 0;
+        if (!readable && elf) {
+            sounds = decryptImage(sounds, CipherTables::fromProgram(*elf));
+            readable = romdirStart(sounds) >= 0;
+        }
+        if (readable) set.assets.push_back({"SNDIMAGE", AssetKind::SoundContainer, 0, 0, *sound, std::move(sounds)});
+        else std::fprintf(stderr, "assets: SNDIMAGE holds no directory, plain or decrypted: the sound is not read\n");
+    }
     return set;
 }
 
@@ -173,6 +160,26 @@ std::vector<std::string> extractBios(const fs::path& rom, const fs::path& folder
     if (names.empty()) throw std::runtime_error(rom.string() + " holds none of the OSD's resource files");
     for (const auto& [name, member] : members) writeFile(folder / name, member);
     return names;
+}
+
+fs::path userDataDirectory() {
+    const auto variable = [](const char* name) -> fs::path {
+#ifdef _WIN32
+        char* value = nullptr;
+        size_t length = 0;
+        if (_dupenv_s(&value, &length, name) != 0 || !value) return {};
+        fs::path path = value;
+        std::free(value);
+        return path;
+#else
+        const char* value = std::getenv(name);
+        return value ? fs::path(value) : fs::path();
+#endif
+    };
+    if (fs::path base = variable("LOCALAPPDATA"); !base.empty()) return base / "CrystalClockVK";
+    if (fs::path base = variable("XDG_CACHE_HOME"); !base.empty()) return base / "CrystalClockVK";
+    if (fs::path base = variable("HOME"); !base.empty()) return base / ".cache" / "CrystalClockVK";
+    return fs::current_path() / "cache";
 }
 
 }

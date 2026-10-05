@@ -11,19 +11,19 @@ The main checkout keeps its untracked `References/`, `facts/`, `tests/` and the 
 |---|---|
 | `scene/` | Plain C++, templated on `Arithmetic` (`EeArithmetic` exact, `NativeArithmetic` in the app). State, camera, rods, orbs, frame head, text, menus, cubes, the opening. One `scene::Frame` per frame. No Vulkan |
 | `render/` | `Device` (instance, device, queues, VMA, swapchain) and `NativeRenderer` (executes a `scene::Frame`: hardware blend, MSAA, any resolution) |
-| `assets/` | Plain C++, no Vulkan: the console's raw resource files decoded (ROMDIR, HDD container decrypt, Expand, `func_002344F8`), the BIOS extractor, the `assets.bin` cache |
+| `assets/` | Plain C++, no Vulkan: the console's raw resource files decoded (ROMDIR, HDD container decrypt, Expand, `func_002344F8`), the BIOS extractor |
 | `app/` | `CrystalClock`: SDL3 window, host inputs (`settings.json`, local time), cold start, logic, ImGui debug panel, screens, boot chain |
 | `core/` | VMA and stb_image units, the headless GPU context |
 
 Also: `shaders/` (GLSL, compiled to SPIR-V by `glslc`), `3rdparty/` (ImGui submodule, stb).
 
 ## Data rule
-Sony data (textures, font, ELF, meshes, dumps, cipher tables) is never committed. The app decodes the console's raw resource files at start-up: `--bios rom.bin` extracts them from a ROM, `--resources dir` names a folder (TEXIMAGE, FNTOSD, hddosd.elf), the decoded cache is `%LOCALAPPDATA%/CrystalClockVK/assets.bin` (`--assets`). Loose files (`--textures`, `--font`, `--program`, `--mesh`, `--cube-mesh`, `--opening-textures`) are used only when named on the command line. With nothing decoded and no flags, the app prints what is missing and exits with code 1.
+The console's raw resource files (TEXIMAGE, FNTOSD, SNDIMAGE, ICOIMAGE, JISUCS, SKBIMAGE, hddosd.elf) are committed in `resources/` by Jean's decision (2026-10-05); the build copies them to `bin/resources`. Other Sony data (dumps, BIOS, captures, decoded textures or meshes) is never committed. The app decodes the raw files at each start, no cache: `bin/resources`, or `--resources dir`; `--bios rom.bin` extracts into that folder. Loose files (`--textures`, `--font`, `--program`, `--mesh`, `--cube-mesh`, `--opening-textures`) are used only when named on the command line. With files missing, the app prints what is missing and exits with code 1.
 
 ## Build and run
 - CMake 4.2+, C++23, Windows only (Vulkan 1.4, `glslc` from the Vulkan SDK, Visual Studio 2026 with Ninja).
 - `tools/build.ps1 configure app`, then `tools/build.ps1 build app-debug` (or `app-release`). Binary: `bin/CrystalClock.exe`.
-- Check: `bin/CrystalClock.exe --boot --soak 10` must report 0 validation errors.
+- Check: `bin/CrystalClock.exe --soak 10` (opens with the boot; `--skip-boot` starts at the menu) must report 0 validation errors.
 - One `CMakeLists.txt` serves both branches. The root hooks `tests/CMakeLists.txt` in only when `-DCLOCK_BUILD_TESTS=ON` and the file exists (lab).
 - CI (`.github/workflows/build.yml`): Windows app build only.
 

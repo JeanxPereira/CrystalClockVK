@@ -28,8 +28,8 @@ that runs in the window is free of the GS: hardware blending, MSAA in place of t
 resolution.
 
 US Patent 6,693,606 states the intent of the effect and holds no numbers; every number comes from the binary.
-Crystal Clock VK is an independent project and is not affiliated with Sony Interactive Entertainment. No console
-data is in this repository.
+Crystal Clock VK is an independent project and is not affiliated with Sony Interactive Entertainment. The console's raw
+resource files in `resources/` are Sony's.
 
 ## Features
 
@@ -151,7 +151,7 @@ flowchart LR
 | Scene | `src/scene/` | Plain C++. The clock's state, camera, placement, rods, orbs, frame head and text, each part with the facts page it ports. Builds one `scene::Frame`; testable without a window |
 | Render | `src/render/` | `Device` (instance, device, queues, VMA, swapchain) and `NativeRenderer`, which executes a `scene::Frame` |
 | App | `src/app/` | The SDL3 window, real time, the frame loop and the ImGui debug panel |
-| Assets | `src/assets/` | Plain C++, no Vulkan. The console's raw resource files decoded (ROMDIR, HDD container decrypt, Expand), the BIOS extractor and the `assets.bin` cache |
+| Assets | `src/assets/` | Plain C++, no Vulkan. The console's raw resource files decoded (ROMDIR, HDD container decrypt, Expand), and the BIOS extractor |
 
 The measuring rule (`src/parity/`, `ParityTool`, the fixtures and the tests) is on the `lab` branch.
 
@@ -174,23 +174,19 @@ for the IDE. CI builds the app on every push to `main`.
 
 ### Your own data
 
-The textures, the font and the program are Sony's and are not in this repository. The app reads them from your
-own console's files, the raw resource files the OSD itself loads (`TEXIMAGE`, `FNTOSD`, ... and `hddosd.elf`),
-and decodes them at start-up (ROMDIR, the HDD OSD container decrypt, Expand, the 32-bit conversion of
-`func_002344F8`; `src/assets/`).
+The console's raw resource files (`TEXIMAGE`, `FNTOSD`, `SNDIMAGE`, `ICOIMAGE`, `JISUCS`, `SKBIMAGE` and HDD OSD
+1.10U's `hddosd.elf`) are in `resources/`, as the OSD loads them. They are Sony's. The build copies them to
+`bin/resources`, and the app decodes them at each start (ROMDIR, the HDD OSD container decrypt, Expand, the 32-bit
+conversion of `func_002344F8`; `src/assets/`).
 
 ```powershell
-# From a BIOS ROM image: its TEXIMAGE, SNDIMAGE and ICOIMAGE are written, unchanged, to your resource folder
+# Other files: a BIOS ROM image's TEXIMAGE, SNDIMAGE and ICOIMAGE are written, unchanged, to the resource folder
 bin\CrystalClock.exe --bios <rom.bin>
-# From an installed HDD OSD 1.10U: a folder with hddosd.elf, FNTOSD, TEXIMAGE (encrypted), ...
+# Or a folder with hddosd.elf, FNTOSD, TEXIMAGE (encrypted), ...
 bin\CrystalClock.exe --resources <folder>
 ```
 
-The first run decodes the files and writes a cache, `%LOCALAPPDATA%\CrystalClockVK\assets.bin` (`--assets`
-moves it); later runs read the cache while the files' hashes are unchanged. `--bios` extracts into
-`%LOCALAPPDATA%\CrystalClockVK\resources` unless `--resources` names a folder; when a file there holds other
-bytes it writes nothing. With no flag the app uses that folder, else the cache. With neither, it says what is
-missing (`--bios rom.bin` or `--resources dir`) and exits; the cache is decoded again when the decoder changes.
+With no flag the app reads `resources` beside the executable. When files are missing it says which and exits.
 
 The text needs `FNTOSD` and HDD OSD 1.10U's `hddosd.elf` (the original or the host copy; any other ELF is
 recognised and not read): a BIOS gives the textures only, which is not enough to start: the meshes come from
@@ -205,10 +201,9 @@ bin\CrystalClock.exe
 ```
 
 The clock starts as the console starts it: the initial values of `hddosd.elf`, the ported init functions of the clock thread
-(`module_clock_init_resources` and its callees), the host's settings and local time, then frames at 59.94 Hz. With no flag it
-runs the clock module's own entry to the main menu (the menu takes input 129 frames after the thread starts); `--clock` then
-opens System Configuration and hides the list with Square (the clock alone); `--boot` plays the opening, hands off and starts
-the clock thread after it. Settings come from `%LOCALAPPDATA%/CrystalClockVK/settings.json` (`language`, `aspect`, `timeZone`,
+(`module_clock_init_resources` and its callees), the host's settings and local time, then frames at 59.94 Hz. It opens with the opening, hands off and starts the clock
+thread after it; `--skip-boot` runs the clock module's own entry to the main menu instead (the menu takes input 129 frames
+after the thread starts), and `--clock` opens System Configuration and hides the list with Square (the clock alone). Settings come from `%LOCALAPPDATA%/CrystalClockVK/settings.json` (`language`, `aspect`, `timeZone`,
 `summerTime`, `dateFormat`, `timeFormat`); when it is absent the console's first-start defaults apply and the time zone is the host's.
 
 | Flag | Does |
@@ -216,13 +211,12 @@ the clock thread after it. Settings come from `%LOCALAPPDATA%/CrystalClockVK/set
 | `--soak N` | Runs an unattended scripted session for N seconds (resolutions, MSAA, resizes, minimise, pause and step, every target, a midnight crossing, screenshots) and reports frames and validation errors |
 | `--smoke` | A 5.5 s resize and minimise run |
 | `--no-validation` | Runs without the Vulkan validation layers |
-| `--boot` | Plays the opening, then the clock thread starts from the opening's hand-off |
+| `--skip-boot` | Starts at the main menu without the opening (the panel also has Skip opening and Restart opening) |
 | `--clock` | Starts at the clock alone instead of the main menu |
 | `--pal`, `--language N`, `--aspect N` | Video mode and console settings for this run |
 | `--settings <settings.json>` | Another host settings file |
 | `--resources <dir>` | The folder of raw OSD resource files to decode |
 | `--bios <rom.bin>` | Extracts the BIOS's resource files into the resource folder first |
-| `--assets <assets.bin>` | Where the decoded cache is read and written |
 | `--textures`, `--font`, `--program`, `--mesh`, `--cube-mesh`, `--shaders` | Loose files, used only when named |
 | `--screenshots <dir>` | Where the panel's screenshot button writes; `out/screenshots` by default |
 
@@ -239,7 +233,7 @@ It shares this tree's `CMakeLists.txt`: `tests/CMakeLists.txt` is hooked in when
 | Clock screen: scene, native renderer, live window, text | Done |
 | Menus: System Configuration and its glass cubes, Clock Adjustment, the transitions between them | In progress |
 | Sound | In progress |
-| The opening (boot intro, hand-off to the clock; `CrystalClock --boot`) | Done |
+| The opening (boot intro, hand-off to the clock; `CrystalClock`) | Done |
 | PAL, languages | Planned |
 | Improvements beyond resolution and MSAA, each a switch over the faithful base | Planned |
 | macOS | Planned |
@@ -266,7 +260,7 @@ The facts pages, the verifiers, the design documents and the patent are on the `
 
 CrystalClockVK is free software under the [GNU General Public License v3.0](LICENSE). Copyright (C) 2026 Jean Pereira.
 
-The license covers this code only. Sony's data (BIOS, HDD OSD, textures, fonts, sounds) is not part of this repository and is read from your own console's files.
+The license covers this code only. Sony's data in `resources/` (HDD OSD, textures, fonts, sounds) is not covered by it.
 
 ---
 

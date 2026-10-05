@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <array>
+#include <stdexcept>
+#include <string>
 #include <utility>
 
 #include "audio/driver/SnapshotBuilder.hpp"
@@ -108,6 +110,18 @@ uint32_t tickCycles(Video video) { return video == Video::Pal ? 603968 : driver:
 
 ClockSoundSources clockSoundSources(const std::filesystem::path& resources) {
     driver::SoundImages images = driver::buildSoundImages(resources);
+    ClockSoundSources sources;
+    sources.snapshot = std::move(images.snapshot);
+    sources.libsd = std::move(images.libsd);
+    sources.spuRam = std::move(images.spuRam);
+    return sources;
+}
+
+ClockSoundSources clockSoundSources(const assets::AssetSet& decoded) {
+    const assets::Asset* program = decoded.find("PROGRAM");
+    const assets::Asset* sounds = decoded.find("SNDIMAGE");
+    if (!program || !sounds) throw std::runtime_error(std::string("the decoded set lacks ") + (program ? "SNDIMAGE" : "PROGRAM") + ": give --resources once to decode it");
+    driver::SoundImages images = driver::buildSoundImages(program->data, data::SndImage::fromContainer(sounds->data));
     ClockSoundSources sources;
     sources.snapshot = std::move(images.snapshot);
     sources.libsd = std::move(images.libsd);

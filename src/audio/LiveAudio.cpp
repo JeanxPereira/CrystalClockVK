@@ -7,6 +7,8 @@
 
 #include <SDL3/SDL.h>
 
+#include "core/Log.hpp"
+
 namespace audio {
 namespace {
 
@@ -52,8 +54,13 @@ LiveAudio::LiveAudio(ClockSoundSources sources, const LiveAudioOptions& options)
             SDL_PutAudioStreamData(m_stream, silence.data(), int(silence.size() * 2));
             SDL_ResumeAudioStreamDevice(m_stream);
             m_stats.deviceOpen = true;
+        } else {
+            core::log(core::Level::Warn, core::Subsystem::Audio, "no output device: {}", SDL_GetError());
         }
+    } else {
+        core::log(core::Level::Warn, core::Subsystem::Audio, "SDL audio init failed: {}", SDL_GetError());
     }
+    core::log(core::Level::Info, core::Subsystem::Audio, "device {}", m_stats.deviceOpen ? "open" : "none");
 }
 
 LiveAudio::~LiveAudio() {
@@ -68,7 +75,7 @@ template <class F> void LiveAudio::guarded(F&& body) {
     } catch (const std::exception& error) {
         m_stats.failed = true;
         m_error = error.what();
-        std::fprintf(stderr, "audio: stopped: %s\n", m_error.c_str());
+        core::log(core::Level::Error, core::Subsystem::Audio, "stopped: {}", m_error);
     }
 }
 
@@ -80,6 +87,7 @@ void LiveAudio::send(uint32_t id, uint32_t a1, uint32_t a2, uint32_t a3) {
     DriverCommand c;
     c.id = id;
     c.words = {a1, a2, a3, 0, 0};
+    core::log(core::Level::Debug, core::Subsystem::Audio, "send {:x} {} {} {}", id, a1, a2, a3);
     guarded([&] { m_sound.queue(c); });
 }
 
