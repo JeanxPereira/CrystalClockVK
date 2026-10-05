@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <utility>
 
+#include <xmmintrin.h>
+
 namespace scene {
 
 inline uint32_t floatBits(float x) { return std::bit_cast<uint32_t>(x); }
@@ -37,6 +39,17 @@ struct EeArithmetic {
     static float quotientExact(float a, float b);     // opening-lib quotient: x/0 is the largest single of the sign
     static float rootExact(float a);                  // opening-lib root
     static std::pair<float, float> sineCosine(float radians);  // clock_camera sineCosine: {sine, cosine}
+};
+
+class EeRounding {
+public:
+    EeRounding() : m_saved(_mm_getcsr()) { _mm_setcsr(m_saved | 0x6000u | 0x8000u | 0x40u); }
+    ~EeRounding() { _mm_setcsr(m_saved); }
+    EeRounding(const EeRounding&) = delete;
+    EeRounding& operator=(const EeRounding&) = delete;
+
+private:
+    unsigned m_saved;
 };
 
 struct NativeArithmetic {

@@ -1,5 +1,8 @@
 #include "scene/ColdFont.hpp"
 
+#include <optional>
+#include <type_traits>
+
 #include "scene/Arithmetic.hpp"
 
 namespace scene {
@@ -24,6 +27,8 @@ constexpr float kHalf = 0.5f;
 // HDD OSD 1.10U 0x226B10, 0x214228, 0x22CB50 verify_cold_font.mjs
 template <class A>
 ColdFontOut coldFont(std::shared_ptr<const ProgramImage> program, std::shared_ptr<const Font> font, bool pal, uint32_t gsAllocator) {
+    std::optional<EeRounding> truncating;
+    if constexpr (std::is_same_v<A, NativeArithmetic>) truncating.emplace();
     TextInputs inputs;
     FontState& s = inputs.font;
     s.ratio = 1.0f;
