@@ -40,7 +40,8 @@ ColdFontOut coldFont(std::shared_ptr<const ProgramImage> program, std::shared_pt
     cache.table = gsAllocator;
     cache.texture = gsAllocator + static_cast<uint32_t>(kTextureBlocks << kBlockShift);
 
-    FontCache laidOut = cache;
+    const FontCache cold = cache;
+    FontCache laidOut = cold;
     laidOut.cells = 1;
     laidOut.cellW = 8;
     laidOut.cellH = 4;
@@ -63,9 +64,9 @@ ColdFontOut coldFont(std::shared_ptr<const ProgramImage> program, std::shared_pt
     }
     out.state = text.font();
     out.cache = text.cache();
-    out.cache.cells = cache.cells;
-    out.cache.cellW = cache.cellW;
-    out.cache.cellH = cache.cellH;
+    out.cache.cells = cold.cells;
+    out.cache.cellW = cold.cellW;
+    out.cache.cellH = cold.cellH;
     return out;
 }
 
