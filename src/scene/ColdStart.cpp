@@ -181,7 +181,7 @@ ColdStartOut coldStart(const ColdAssets& assets, const ColdInputs& in) {
     m.version.title = p.integer(kVersionRecord);
     m.version.count = p.integer(kVersionRecord + 8);
     m.version.shown = p.integer(kVersionRecord + 12);
-    m.versionList = {{0x62, "Unknown", 1, 0}, {0x65, p.string(kBrowserVersion), 0, 3}, {0x66, "1.30", 0, 5}};
+    m.versionList = {{0x62, "Unknown", 1, 0}, {0x5a, p.string(kBrowserVersion), 0, 3}, {0x66, "1.30", 0, 5}};
     m.dialogRamp = rampAt(p, kDialogClosing);
     m.firstRunRamp = rampAt(p, kFirstRun);
     m.pagePointers = config.pages;

@@ -2,6 +2,7 @@
 
 ## Project Overview
 Native C++23 / Vulkan 1.4 reimplementation of the PlayStation 2 OSDSYS Crystal Clock: the clock, the menus and the opening, running in an SDL3 window on local time at 59.94 Hz. This branch (`main`) holds only the app. Research and proof (the verified `facts/`, `References/` scripts and model, the tests, the GS parity rule and its tools, the design docs, the agents and skills) live on the long-lived branch `lab`, checked out at `D:/CodingProjects/CrystalClockVK-wt/lab`.
+The Version page (Triangle on the main menu) is native: `Menus::versionOpen`/`versionStep`, `Text::versionPage`; the console's rows are `MenusState::versionList` (the cold start's default is the capture's three). Not ported: the front page of a row with sub-rows, and the page's sounds (`0x6300` with 4, 6, 0xA).
 
 The main checkout keeps its untracked `References/`, `facts/`, `tests/` and the rest as the data home (dumps, BIOS, fixtures, captures). They are git-ignored here. Never delete them. The lab worktree reads data from here through `CLOCK_REFERENCES`.
 
