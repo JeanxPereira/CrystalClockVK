@@ -151,7 +151,7 @@ flowchart LR
 | Scene | `src/scene/` | Plain C++. The clock's state, camera, placement, rods, orbs, frame head and text, each part with the facts page it ports. Builds one `scene::Frame`; testable without a window |
 | Render | `src/render/` | `Device` (instance, device, queues, VMA, swapchain) and `NativeRenderer`, which executes a `scene::Frame` |
 | App | `src/app/` | The SDL3 window, real time, the frame loop and the ImGui debug panel |
-| Assets | `src/assets/` | Plain C++, no Vulkan. The console's raw resource files decoded (ROMDIR, HDD container decrypt, Expand), the BIOS extractor and the `assets.bin` cache |
+| Assets | `src/assets/` | Plain C++, no Vulkan. The console's raw resource files decoded (ROMDIR, HDD container decrypt, Expand), and the BIOS extractor |
 
 The measuring rule (`src/parity/`, `ParityTool`, the fixtures and the tests) is on the `lab` branch.
 
@@ -217,7 +217,6 @@ after the thread starts), and `--clock` opens System Configuration and hides the
 | `--settings <settings.json>` | Another host settings file |
 | `--resources <dir>` | The folder of raw OSD resource files to decode |
 | `--bios <rom.bin>` | Extracts the BIOS's resource files into the resource folder first |
-| `--assets <assets.bin>` | Where the decoded cache is read and written |
 | `--textures`, `--font`, `--program`, `--mesh`, `--cube-mesh`, `--shaders` | Loose files, used only when named |
 | `--screenshots <dir>` | Where the panel's screenshot button writes; `out/screenshots` by default |
 
