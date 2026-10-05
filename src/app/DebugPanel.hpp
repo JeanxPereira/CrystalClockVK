@@ -35,7 +35,7 @@ struct PanelInfo {
     uint32_t validationErrors = 0;
     std::string clock;
     std::string lastScreenshot;
-    std::string screen, handOff;
+    std::string screen, handOff, phase, lastError;
     int32_t counter = 0, stage = 0;
     float cameraZ = 0;
     size_t sounds = 0;

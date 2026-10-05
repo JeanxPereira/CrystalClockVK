@@ -11,6 +11,8 @@
 #include <cstring>
 #include <exception>
 #include <filesystem>
+#include <format>
+#include <fstream>
 #include <functional>
 #include <map>
 #include <memory>
@@ -19,6 +21,7 @@
 #include <string>
 #include <vector>
 
+#include "core/Log.hpp"
 #include "scene/ColdStart.hpp"
 #include "app/HostInputs.hpp"
 #include "app/ClockAssets.hpp"
@@ -30,7 +33,6 @@
 #include "app/Input.hpp"
 #include "app/OpeningScreen.hpp"
 #include "app/Png.hpp"
-#include "assets/AssetPack.hpp"
 #include "assets/ClockTextures.hpp"
 #include "assets/Program.hpp"
 #include "audio/LiveAudio.hpp"
@@ -79,16 +81,17 @@ struct Options {
     std::filesystem::path program;
     std::filesystem::path resources;
     std::filesystem::path bios;
-    std::filesystem::path pack;
     bool mute = false;
     std::filesystem::path audioWav;
+    std::filesystem::path logFile;
+    std::filesystem::path traceFile;
 };
 
-// The folder of raw OSD resource files: --resources, else the user's own (where --bios extracts to) when it holds a
-// TEXIMAGE or a BIOS is given.
+// The folder of raw OSD resource files: --resources, else "resources" beside the executable (where --bios extracts to).
 std::filesystem::path resourceFolder(const Options& options) {
     if (!options.resources.empty()) return options.resources;
-    return assets::userDataDirectory() / "resources";
+    const char* base = SDL_GetBasePath();
+    return (base ? std::filesystem::path(base) : std::filesystem::current_path()) / "resources";
 }
 
 std::vector<uint8_t> fileOrEmpty(const std::filesystem::path& path) {
@@ -170,19 +173,20 @@ int main(int argc, char** argv) {
         else if (arg == "--program" && more) options.program = argv[++i];
         else if (arg == "--resources" && more) options.resources = argv[++i];
         else if (arg == "--bios" && more) options.bios = argv[++i];
-        else if (arg == "--assets" && more) options.pack = argv[++i];
         else if (arg == "--mute") options.mute = true;
         else if (arg == "--audio-wav" && more) options.audioWav = argv[++i];
+        else if (arg == "--log" && more) options.logFile = argv[++i];
+        else if (arg == "--trace" && more) options.traceFile = argv[++i];
         else {
-            std::fprintf(stderr, "usage: CrystalClock [--resources dir] [--bios rom.bin] [--assets assets.bin] [--smoke] [--soak seconds] [--clock] [--pal] [--language N] [--aspect N] [--boot [--towers none|demo] [--lights-phase N] [--opening-textures dir] [--capture all|n,n,...]] [--mute] [--audio-wav out.wav] [--no-validation] [--shaders dir]\n"
+            std::fprintf(stderr, "usage: CrystalClock [--resources dir] [--bios rom.bin] [--smoke] [--soak seconds] [--clock] [--pal] [--language N] [--aspect N] [--boot [--towers none|demo] [--lights-phase N] [--opening-textures dir] [--capture all|n,n,...]] [--mute] [--audio-wav out.wav] [--log file] [--trace file.jsonl] [--no-validation] [--shaders dir]\n"
                                  "                    [--settings settings.json] [--screenshots dir] [--textures dir] [--mesh rod-mesh.json] [--cube-mesh cube-mesh.json] [--font FNTOSD] [--program hddosd.elf]\n");
             return 1;
         }
     }
+    if (!options.logFile.empty()) core::Log::get().open(options.logFile);
     if (options.settings.empty()) options.settings = assets::userDataDirectory() / "settings.json";
-    if (options.pack.empty()) options.pack = assets::userDataDirectory() / "assets.bin";
-    // The clock's assets: the console's raw resource files decoded (or their cache); loose files only from explicit flags.
-    std::optional<assets::LoadedAssets> loaded;
+    // The clock's assets: the console's raw resource files decoded at each start; loose files only from explicit flags.
+    std::optional<assets::AssetSet> loaded;
     const std::filesystem::path folder = resourceFolder(options);
     if (!options.bios.empty()) {
         try {
@@ -190,21 +194,21 @@ int main(int argc, char** argv) {
             for (const std::string& name : assets::extractBios(options.bios, folder)) names += " " + name;
             std::printf("bios: %s gives%s, in %s\n", options.bios.string().c_str(), names.c_str(), folder.string().c_str());
         } catch (const std::exception& error) {
-            std::fprintf(stderr, "bios: %s\n", error.what());
+            core::log(core::Level::Error, core::Subsystem::Assets, "bios: {}", error.what());
         }
     }
     try {
-        loaded = assets::loadAssets(folder, options.pack);
+        const auto begin = std::chrono::steady_clock::now();
+        if (!assets::folderSources(folder).empty()) {
+            loaded = assets::decodeFolder(folder);
+            std::printf("assets: %zu decoded from %s in %.1f ms\n", loaded->assets.size(), folder.string().c_str(),
+                        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - begin).count());
+        }
     } catch (const std::exception& error) {
-        std::fprintf(stderr, "assets: %s\n", error.what());
+        core::log(core::Level::Error, core::Subsystem::Assets, "load: {}", error.what());
     }
-    if (loaded) {
-        std::printf("assets: %zu in %.1f ms, %s %s\n", loaded->set.assets.size(), loaded->milliseconds, loaded->fromPack ? "from the cache" : "decoded and cached in",
-                    options.pack.string().c_str());
-    } else {
-        std::printf("assets: no resource files in %s and no cache\n", folder.string().c_str());
-    }
-    const assets::AssetSet* decoded = loaded ? &loaded->set : nullptr;
+    if (!loaded) std::printf("assets: no resource files in %s\n", folder.string().c_str());
+    const assets::AssetSet* decoded = loaded ? &*loaded : nullptr;
     const auto sourceOf = [&](const assets::Asset& a) { return "decoded from " + decoded->sourceOf(a).path; };
 
     // Each group from one place: the decoded set, or a loose file named on the command line.
@@ -243,8 +247,8 @@ int main(int argc, char** argv) {
     if (!missing.empty()) {
         std::string list;
         for (const std::string& what : missing) list += (list.empty() ? "" : ", ") + what;
-        std::fprintf(stderr, "missing: %s.\nGive the console's files: --bios rom.bin (a PS2 BIOS image) or --resources dir (a folder with TEXIMAGE, FNTOSD and hddosd.elf).\n"
-                             "Decoded data is cached in %s.\n", list.c_str(), options.pack.string().c_str());
+        std::fprintf(stderr, "missing: %s.\nGive the console's files: --bios rom.bin (a PS2 BIOS image) or --resources dir (a folder with TEXIMAGE, FNTOSD, SNDIMAGE and hddosd.elf),\n"
+                             "or put those files in %s.\n", list.c_str(), folder.string().c_str());
         return 1;
     }
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD)) {
@@ -335,10 +339,16 @@ int main(int argc, char** argv) {
             audioOptions.video = options.pal ? audio::Video::Pal : audio::Video::Ntsc;
             audioOptions.wav = options.audioWav;
             if (!options.audioWav.empty()) audioOptions.commandLog = options.audioWav.string() + ".commands.txt";
-            audio = std::make_unique<audio::LiveAudio>(audio::clockSoundSources(folder), audioOptions);
+            audio = std::make_unique<audio::LiveAudio>(decoded && decoded->find("SNDIMAGE") ? audio::clockSoundSources(*decoded) : audio::clockSoundSources(folder), audioOptions);
+            core::log(core::Level::Info, core::Subsystem::Audio, "init: ready, mute {}", options.mute);
         } catch (const std::exception& error) {
-            std::fprintf(stderr, "audio: off: %s\n", error.what());
+            core::log(core::Level::Error, core::Subsystem::Audio, "off: {}", error.what());
         }
+        std::ofstream trace;
+        if (!options.traceFile.empty()) trace.open(options.traceFile, std::ios::trunc);
+        app::BootPhase lastPhase = app::BootPhase::Opening;
+        bool emptyWarned = false;
+        const auto phaseName = [](app::BootPhase phase) { return phase == app::BootPhase::Opening ? "opening" : phase == app::BootPhase::Gap ? "black gap" : "clock"; };
         const auto stepClock = [&] {
             const system_clock::time_point now = system_clock::now() + offset;
             scene::Frame produced;
@@ -366,6 +376,7 @@ int main(int argc, char** argv) {
             }
             const int32_t rampBefore = clockPtr->state().menuRamp.state;
             const bool squarePressed = (inputs.menu.pad.pressed & scene::pad::Square) != 0;
+            produced = clockPtr->frame(inputs);
             if (audio && squarePressed) {
                 const int32_t rampAfter = clockPtr->state().menuRamp.state;
                 if (rampBefore == 2 && rampAfter == 3) audio->queueSquare(false);
@@ -460,20 +471,33 @@ int main(int argc, char** argv) {
             const system_clock::time_point now = system_clock::now() + offset;
             inputs.time = clockTime(now);
             inputs.items = clockItems(now);
+            core::Log::get().setFrame(logicFrames);
+            std::string sent;
             if (chain) {
                 const bool inOpening = chain->phase() == app::BootPhase::Opening;
                 chain->step();
                 frame = chain->frame();
-                if (audio && inOpening)
+                if (chain->phase() != lastPhase) {
+                    const scene::opening::HandOff* h = bootOpening->handOff();
+                    core::log(core::Level::Info, core::Subsystem::Boot, "phase {} -> {}, opening counter {}, hand-off {}", phaseName(lastPhase), chain->name(), bootOpening->counter(),
+                              h ? std::format("module {} execute type {}", h->module, h->executeAppType) : std::string("none"));
+                    lastPhase = chain->phase();
+                }
+                if (inOpening)
                     for (const scene::opening::SoundEvent& e : bootOpening->sounds()) {
+                        const bool known = e.id == 0x6150 || e.id == 0x6140;
+                        core::log(core::Level::Debug, core::Subsystem::Opening, "sound event {:x} argument {} {}", e.id, e.argument, audio ? (known ? "sent" : "ignored") : "no audio");
+                        if (!audio || !known) continue;
                         if (e.id == 0x6150) audio->send(e.id, 0, 0, uint32_t(e.argument));
-                        else if (e.id == 0x6140) audio->send(e.id, uint32_t(e.argument), 0, 0);
+                        else audio->send(e.id, uint32_t(e.argument), 0, 0);
+                        sent += std::format("{}{:x}({})", sent.empty() ? "" : ",", e.id, e.argument);
                     }
             } else {
                 frame = stepClock();
             }
             if (audio) {
                 if (!audioClockStarted && clockPtr) {
+                    core::log(core::Level::Info, core::Subsystem::Audio, "startClock");
                     audio->startClock();
                     audioClockStarted = true;
                 }
@@ -482,6 +506,20 @@ int main(int argc, char** argv) {
                 audio->step();
             }
             ++logicFrames;
+            if (!emptyWarned && frame.passes.empty() && (!chain || chain->phase() == app::BootPhase::Clock)) {
+                core::log(core::Level::Warn, core::Subsystem::Clock, "the clock produced a frame with no passes");
+                emptyWarned = true;
+            }
+            if (trace.is_open()) {
+                size_t vertices = 0;
+                for (const scene::Pass& pass : frame.passes) vertices += pass.vertices.size();
+                const bool inClock = !chain || chain->phase() == app::BootPhase::Clock;
+                const int32_t counter = inClock && clockPtr ? clockPtr->state().counter : bootOpening ? bootOpening->counter() : 0;
+                trace << std::format(R"({{"frame":{},"phase":"{}","counter":{},"screen":"{}","mode":{},"ramp":{},"sent":"{}","queued":{},"passes":{},"vertices":{},"error":"{}"}})",
+                                     logicFrames, chain ? chain->name() : "clock", counter, inClock && !visited.empty() ? visited.back() : "", inClock && clockPtr ? clockPtr->state().mode : -1,
+                                     inClock && clockPtr ? clockPtr->state().menuRamp.state : -1, sent, audio ? audio->queuedFrames() : -1, frame.passes.size(), vertices, core::Log::get().lastError().empty() ? "" : "yes")
+                      << '\n';
+            }
             fresh = true;
         };
         produce();
@@ -500,7 +538,7 @@ int main(int argc, char** argv) {
         std::vector<Step> script;
         const auto resize = [&](int w, int h) { return [=] { SDL_SetWindowSize(window, w, h); }; };
         const auto set = [&](app::Resolution r, uint32_t samples) { return [&panel, r, samples] { panel.resolution = r; panel.samples = samples; }; };
-        const auto shot = [&](const char* name) { return [&screenshotName, name] { screenshotName = name; }; };
+        const auto shot = [&](std::string name) { return [&screenshotName, name] { screenshotName = name; }; };
         if (options.smoke) {
             script = {{1.0, resize(800, 600)}, {2.0, resize(1024, 700)}, {2.5, [&] { SDL_MinimizeWindow(window); }}, {3.5, [&] { SDL_RestoreWindow(window); }},
                       {4.5, resize(1280, 896)}};
@@ -518,6 +556,7 @@ int main(int argc, char** argv) {
             press(13.0, app::PadButton::Down);
             press(14.0, app::PadButton::Cross);
             script.push_back({17.0, shot("boot-menu-next")});
+            for (double at = 25.0; at < options.soak - 1.0; at += 10.0) script.push_back({at, shot("boot-t" + std::to_string(int(at)))});
         } else if (options.soak > 0 && !options.clockStart) {
             const auto press = [&](double at, app::PadButton button) {
                 const uint32_t bit = app::bitOf(button);
@@ -678,6 +717,8 @@ int main(int argc, char** argv) {
                 info.sounds = bootOpening->sounds().size();
             }
             info.logicFrames = logicFrames;
+            info.phase = chain ? chain->name() : "clock";
+            info.lastError = core::Log::get().lastError();
             info.audioAvailable = bool(audio);
             if (audio) {
                 const audio::LiveAudioStats& a = audio->stats();
@@ -786,7 +827,7 @@ int main(int argc, char** argv) {
         }
         if (device.validationErrors() != 0) code = 1;
     } catch (const std::exception& error) {
-        std::fprintf(stderr, "fatal: %s\n", error.what());
+        core::log(core::Level::Error, core::Subsystem::App, "fatal: {}", error.what());
         code = 1;
     }
     SDL_DestroyWindow(window);

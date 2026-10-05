@@ -11,6 +11,8 @@ void drawPanel(PanelState& state, const PanelInfo& info) {
     ImGui::Text("%s", info.clock.c_str());
     ImGui::Text("output %ux%u, %.1f fps, logic frame %llu", info.outputWidth, info.outputHeight, info.framesPerSecond, static_cast<unsigned long long>(info.logicFrames));
     ImGui::Text("validation errors: %u", info.validationErrors);
+    if (!info.phase.empty()) ImGui::Text("chain phase: %s", info.phase.c_str());
+    if (!info.lastError.empty()) ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "last error: %s", info.lastError.c_str());
     if (!info.screen.empty()) {
         ImGui::Text("pad held %04x pressed %04x", info.pad.held, info.pad.pressed);
         ImGui::Text("screen: %s", info.screen.c_str());
