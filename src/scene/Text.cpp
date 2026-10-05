@@ -121,8 +121,7 @@ Text<A>::Text(std::shared_ptr<const Font> font, std::shared_ptr<const ProgramIma
     : m_fontFile(std::move(font)), m_program(std::move(program)), m_cache(inputs.cache), m_font(inputs.font), m_ramps(inputs.ramps), m_settings(inputs.settings) {
     if (!m_fontFile || !m_program) throw std::runtime_error("text: no font or program");
     // The library's context is read from the capture (scene.json's input.font); without it there is no cache to draw from.
-    if (m_cache.list.empty() || m_cache.cells <= 0 || m_cache.cellW <= 0 || m_cache.cellH <= 0)
-        throw std::runtime_error("text: the glyph cache is empty (the input has no font context); build the clock without text");
+    if (m_cache.list.empty()) throw std::runtime_error("text: the glyph cache is empty (the input has no font context); build the clock without text");
     m_libraryColour = m_font.colour;
     m_cells.assign(static_cast<size_t>(m_cache.cells), 0);
     for (const FontCacheEntry& e : m_cache.list)
