@@ -396,6 +396,7 @@ std::optional<float> Text<A>::putCharacter(const Character& c, bool measuring, T
             }
             // _scePFontUpdateTex: the picture into the entry's cell, the one the lay-out dealt the head of the list.
             const size_t cell = static_cast<size_t>(list[0].cell);
+            if (list[0].cell < 0 || cell >= m_drawn.size()) throw std::runtime_error("text: the entry for code " + std::to_string(c.code) + " has cell " + std::to_string(list[0].cell) + " of " + std::to_string(m_drawn.size()));
             if (m_drawn.at(cell)) throw std::runtime_error("text: a cell drawn in this frame is given another glyph in the same frame");
             m_cells.at(cell) = c.code;
             list[0].loaded = 1;
