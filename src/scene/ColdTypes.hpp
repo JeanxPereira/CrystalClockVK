@@ -10,6 +10,7 @@ struct RtcTime {
 struct ColdInputs {
     bool pal = false;
     int language = 0;
+    int city = 0x33;
     int aspect = 0;
     int timeZone = 0;
     bool summerTime = false;
