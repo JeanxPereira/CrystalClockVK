@@ -27,6 +27,9 @@ constexpr uint32_t kSummerMark = 0x00365558, kNoMark = 0x00370138;  // "\ar0.88\
 constexpr uint32_t kTimeLine = 0x00370130;                       // "%s %s"
 constexpr uint32_t kDateRatio = 0x0036fb94, kHintRatio = 0x0036fb98, kVersionRatio = 0x0036fbb0;
 constexpr uint32_t kVersionPal = 0x003656c8;
+// A Version row not filled yet holds null pointers (the record's count is 3 from the start, its table zero): the page draws the string at
+// address 0 of the console's RAM, the first eight bytes of the kernel's exception vector, before the job's list is in.
+constexpr char kNullPointerText[] = "\x01\x80\x1a\x3c\x38\x59\x59\xff";
 constexpr uint32_t kPalMultiply = 0x00365570, kPalDivide = 0x00365578;          // func_00226300
 constexpr uint32_t kHintPalMultiply = 0x00365590, kHintPalDivide = 0x00365598;  // func_00226958
 constexpr uint32_t kIconPalMultiply = 0x00365580, kIconPalDivide = 0x00365588;  // DrawIcon
@@ -715,14 +718,15 @@ void Text<A>::versionPage(const PagesInputs& in, TextFrame& out) {
     for (int32_t row = v.first - 2; row < v.first + v.shown + 4; ++row, y += step) {
         if (row < 0 || row >= v.count || row < v.first || row >= v.first + v.shown) continue;
         const VersionRow& entry = v.rows.at(static_cast<size_t>(row));
-        const std::string label = languageString(entry.label);
+        const std::string label = entry.label != 0 ? languageString(entry.label) : std::string(kNullPointerText);
+        const std::string value = entry.value.empty() ? std::string(kNullPointerText) : entry.value;
         uint32_t labelColour = kPlainColour, valueColour = kPlainColour;
         if (row == v.selected) {
             labelColour = entry.subRows != 0 ? kChosenColour : kValueColour;
             valueColour = kValueColour;
         }
         if (alpha >= 16) drawItem(0x187 - widthOf(label, out), y, labelColour, alpha, label, out);
-        drawItem(0x1a1, y, valueColour, alpha, entry.value, out);
+        drawItem(0x1a1, y, valueColour, alpha, value, out);
     }
 }
 
