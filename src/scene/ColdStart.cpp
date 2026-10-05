@@ -1,5 +1,8 @@
 #include "scene/ColdStart.hpp"
 
+#include <optional>
+#include <type_traits>
+
 #include "scene/Arithmetic.hpp"
 #include "scene/ColdCamera.hpp"
 #include "scene/ColdConfig.hpp"
@@ -70,6 +73,8 @@ TubeConstants tubeAt(const ProgramImage& p, uint32_t a) {
 // HDD OSD 1.10U 0x225DB0 module_clock_init_resources and the thread set-up, in the order of its calls
 template <class A>
 ColdStartOut coldStart(const ColdAssets& assets, const ColdInputs& in) {
+    std::optional<EeRounding> truncating;
+    if constexpr (std::is_same_v<A, NativeArithmetic>) truncating.emplace();
     const ProgramImage& p = *assets.program;
     const ColdCameraOut camera = coldCamera(p, in.pal, in.screenWidth, in.screenHeight, in.field);
     const ColdTimeOut time = coldTime<A>(p, in.rtc, in.timeZone, in.summerTime, in.pal);
