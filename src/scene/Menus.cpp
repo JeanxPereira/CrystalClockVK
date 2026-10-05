@@ -340,7 +340,7 @@ int32_t versionAlpha(const MenusState& m) {
     return (product < 0 ? product + 0x7f : product) >> 7;
 }
 
-void versionFill(MenusState& m, std::vector<std::string>& notes) {
+void versionFill(MenusState& m) {
     VersionPage& v = m.version;
     v.selected = 0;
     v.first = 0;
@@ -349,7 +349,6 @@ void versionFill(MenusState& m, std::vector<std::string>& notes) {
         const VersionRow& entry = m.versionList[static_cast<size_t>(count)];
         if (entry.id == 6) v.selected = count;
         v.rows[static_cast<size_t>(count)] = entry;
-        if (entry.subRows > 0) notes.push_back("a Version row has sub-rows: its page in the page stack is not modelled");
     }
     v.count = count;
     const int32_t low = v.selected - v.shown + 1;
@@ -428,7 +427,7 @@ void Menus::versionStep(MenusState& m, uint32_t pressed, std::vector<std::string
     if (ramp.state == 1 && ramp.counter == 1) {
         const bool done = v.polls >= 1;
         v.polls += 1;
-        if (done) versionFill(m, notes);
+        if (done) versionFill(m);
         else ramp.counter = 0;
     }
     if (ramp.state == 0 && ramp.changed != 0) v.panelOn = 0;
