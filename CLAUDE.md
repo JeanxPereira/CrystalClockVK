@@ -10,7 +10,7 @@ The main checkout keeps its untracked `References/`, `facts/`, `tests/` and the 
 |---|---|
 | `scene/` | Plain C++, templated on `Arithmetic` (`EeArithmetic` exact, `NativeArithmetic` in the app). State, camera, rods, orbs, frame head, text, menus, cubes, the opening. One `scene::Frame` per frame. No Vulkan |
 | `render/` | `Device` (instance, device, queues, VMA, swapchain) and `NativeRenderer` (executes a `scene::Frame`: hardware blend, MSAA, any resolution) |
-| `assets/` | Plain C++, no Vulkan: the console's raw resource files decoded (ROMDIR, HDD container decrypt, Expand, `func_002344F8`), the BIOS extractor, the `assets.bin` cache |
+| `assets/` | Plain C++, no Vulkan: the console's raw resource files decoded (ROMDIR, HDD container decrypt, Expand, `func_002344F8`), the BIOS extractor |
 | `app/` | `CrystalClock`: SDL3 window, host inputs (`settings.json`, local time), cold start, logic, ImGui debug panel, screens, boot chain |
 | `core/` | VMA and stb_image units, the headless GPU context |
 
