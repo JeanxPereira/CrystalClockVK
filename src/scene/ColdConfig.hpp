@@ -28,7 +28,7 @@ struct ColdConfigOut {
 ColdSettingsWords coldSettingsWords(const ProgramImage& program, const ColdInputs& inputs);
 
 template <class A>
-ColdConfigOut coldConfig(const ProgramImage& program, const ColdSettingsWords& words, int videoMode, const ColdLengths& lengths, const ColdTimeOut& time);
+ColdConfigOut coldConfig(const ProgramImage& program, const ColdSettingsWords& words, int videoMode, const ColdLengths& lengths, const ColdTimeOut& time, int selected = 0);
 
 template <class A>
 ColdConfigOut coldConfig(const ProgramImage& program, const ColdInputs& inputs, const ColdLengths& lengths, const ColdTimeOut& time);

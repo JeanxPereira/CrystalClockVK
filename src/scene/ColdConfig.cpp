@@ -76,7 +76,7 @@ ColdSettingsWords coldSettingsWords(const ProgramImage& program, const ColdInput
 
 // HDD OSD 1.10U 0x234F78 config_load_clock_osd 0x234F88, 0x227F08 verify_cold_config.mjs
 template <class A>
-ColdConfigOut coldConfig(const ProgramImage& program, const ColdSettingsWords& words, int videoMode, const ColdLengths& lengths, const ColdTimeOut& time) {
+ColdConfigOut coldConfig(const ProgramImage& program, const ColdSettingsWords& words, int videoMode, const ColdLengths& lengths, const ColdTimeOut& time, int selected) {
     ColdConfigOut out;
     uint32_t param = words.param;
     ConfigItems& items = out.items;
@@ -111,7 +111,7 @@ ColdConfigOut coldConfig(const ProgramImage& program, const ColdSettingsWords& w
     out.page.entries = program.word(kPage + 4);
     out.page.count = program.integer(kPage + 8);
     out.page.titleWidth = program.integer(kPage + 12);
-    out.page.selected = program.integer(kPage + 0x10);
+    out.page.selected = selected;
     out.page.word14 = program.integer(kPage + 0x14);
     out.page.level = program.integer(kPage + 0x18);
     out.page.ramp = lengths.config;
@@ -153,14 +153,14 @@ ColdConfigOut coldConfig(const ProgramImage& program, const ColdSettingsWords& w
 
 template <class A>
 ColdConfigOut coldConfig(const ProgramImage& program, const ColdInputs& inputs, const ColdLengths& lengths, const ColdTimeOut& time) {
-    return coldConfig<A>(program, coldSettingsWords(program, inputs), inputs.pal ? 2 : 1, lengths, time);
+    return coldConfig<A>(program, coldSettingsWords(program, inputs), inputs.pal ? 2 : 1, lengths, time, 0);
 }
 
 #ifndef SCENE_NATIVE_ONLY
-template ColdConfigOut coldConfig<EeArithmetic>(const ProgramImage&, const ColdSettingsWords&, int, const ColdLengths&, const ColdTimeOut&);
+template ColdConfigOut coldConfig<EeArithmetic>(const ProgramImage&, const ColdSettingsWords&, int, const ColdLengths&, const ColdTimeOut&, int);
 template ColdConfigOut coldConfig<EeArithmetic>(const ProgramImage&, const ColdInputs&, const ColdLengths&, const ColdTimeOut&);
 #endif
-template ColdConfigOut coldConfig<NativeArithmetic>(const ProgramImage&, const ColdSettingsWords&, int, const ColdLengths&, const ColdTimeOut&);
+template ColdConfigOut coldConfig<NativeArithmetic>(const ProgramImage&, const ColdSettingsWords&, int, const ColdLengths&, const ColdTimeOut&, int);
 template ColdConfigOut coldConfig<NativeArithmetic>(const ProgramImage&, const ColdInputs&, const ColdLengths&, const ColdTimeOut&);
 
 }
