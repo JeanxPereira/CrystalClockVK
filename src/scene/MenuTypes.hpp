@@ -92,6 +92,7 @@ struct MenusState {
     std::vector<VersionRow> versionList;
     VersionPage versionDrawn;
     Ramp versionRampDrawn;
+    bool versionDrawnValid = false;
     std::array<int32_t, 5> pagePointers{};
     int32_t entryActive = 0;
     std::array<int32_t, 3> menuLengths{};

@@ -439,6 +439,7 @@ void Menus::versionStep(MenusState& m, uint32_t pressed, std::vector<std::string
     }
     m.versionDrawn = v;
     m.versionRampDrawn = ramp;
+    m.versionDrawnValid = true;
     if (ramp.state == 0) return;
     versionHints(m, 1, 0x55, 1, v.rows[static_cast<size_t>(std::clamp(v.selected, 0, int(kVersionRows) - 1))].subRows != 0 ? 0x57 : 1);
     const int32_t up = v.selected == 0 ? 0 : static_cast<int32_t>(pad::Up);

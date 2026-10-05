@@ -347,6 +347,27 @@ FrameInputs frameInputs(const json& in) {
     return out;
 }
 
+VersionRow versionRow(const json& row) { return {row.at("label"), row.at("value"), row.at("subRows"), row.at("id")}; }
+
+VersionPage versionPage(const json& page) {
+    VersionPage v;
+    v.title = page.at("title");
+    v.count = page.at("count");
+    v.shown = page.at("shown");
+    v.selected = page.at("selected");
+    v.first = page.at("first");
+    const json& rows = page.at("rows");
+    for (size_t i = 0; i < rows.size() && i < v.rows.size(); ++i) v.rows[i] = versionRow(rows.at(i));
+    if (page.contains("job")) v.job = page.at("job");
+    if (page.contains("panelOn")) v.panelOn = page.at("panelOn");
+    if (page.contains("panelAlpha")) v.panelAlpha = page.at("panelAlpha");
+    if (page.contains("arrows")) v.arrows = page.at("arrows");
+    if (page.contains("hints"))
+        for (size_t i = 0; i < 4; ++i) v.hints[i] = page.at("hints").at(i);
+    if (page.contains("polls")) v.polls = page.at("polls");
+    return v;
+}
+
 bool hasMenus(const json& input) { return input.contains("configPage"); }
 
 MenusState menusState(const json& in) {
@@ -374,6 +395,14 @@ MenusState menusState(const json& in) {
     if (in.contains("listFade")) s.listFade = listFade(in.at("listFade"));
     s.body = in.at("body");
     s.videoMode = in.at("videoMode");
+    if (in.contains("versionPage")) s.version = versionPage(in.at("versionPage"));
+    if (in.contains("versionList"))
+        for (const json& row : in.at("versionList")) s.versionList.push_back(versionRow(row));
+    if (in.contains("versionDrawn")) {
+        s.versionDrawn = versionPage(in.at("versionDrawn"));
+        s.versionRampDrawn = ramp(in.at("versionDrawn").at("ramp"));
+        s.versionDrawnValid = true;
+    }
     return s;
 }
 

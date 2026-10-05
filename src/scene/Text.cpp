@@ -917,6 +917,10 @@ MenusState menusAtPages(const MenusState& before, const MenusState& after) {
     ticked(at.versionRamp, after.versionRamp);
     ticked(at.dialogRamp, after.dialogRamp);
     ticked(at.firstRunRamp, after.firstRunRamp);
+    if (after.versionDrawnValid) {
+        at.version = after.versionDrawn;
+        at.versionRamp = after.versionRampDrawn;
+    }
     return at;
 }
 

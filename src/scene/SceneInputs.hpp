@@ -28,6 +28,8 @@ nlohmann::json firstInput(const std::string& path);
 // The menus' and cubes' pieces of a frame's `input` (tools/scene/instrument.mjs PIECES).
 bool hasMenus(const nlohmann::json& input);
 MenusState menusState(const nlohmann::json& input);
+VersionPage versionPage(const nlohmann::json& page);
+VersionRow versionRow(const nlohmann::json& row);
 CubeState cubeState(const nlohmann::json& input);
 MenuExternals menuExternals(const nlohmann::json& input);
 ConfigItems configItems(const nlohmann::json& input);
