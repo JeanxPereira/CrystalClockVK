@@ -10,8 +10,16 @@ namespace {
 
 constexpr float kNearEnough = 73.0f;
 constexpr uint32_t kElfRandSeed = 1;
-constexpr uint32_t kSetUpRandCalls = 385 + 1;
+constexpr uint32_t kGhostRandCalls = 385;
+constexpr uint32_t kSetUpRandCalls = kGhostRandCalls + 1;
+constexpr uint32_t kPhaseModulus = 0x929;
+constexpr uint32_t kPhaseBase = 0xD80;
 constexpr uint32_t kRandCallsPerQuad = 4;
+
+uint32_t drawnPhase() {
+    const uint32_t state = advanceRand(advanceRand(kElfRandSeed, kGhostRandCalls), 1);
+    return (state & 0x7FFFFFFFu) % kPhaseModulus + kPhaseBase;  // InitLightsCubes 0x220CB0
+}
 
 TowerMatrices towerMatrices(const Matrices& m) {
     Mat4 identity{};
@@ -26,7 +34,7 @@ Opening<A>::Opening(const BootOptions& options, std::shared_ptr<const ProgramIma
     : m_options(options),
       m_timeline(options, Timeline<A>::initialState(1)),
       m_towers(options.history.value_or(History{}), *program),
-      m_lights(options.lightsPhase),
+      m_lights(options.lightsPhase.value_or(drawnPhase())),
       m_cubes(*program) {
     m_randCalls = kSetUpRandCalls;
     m_step = m_timeline.step(options.disc.first);

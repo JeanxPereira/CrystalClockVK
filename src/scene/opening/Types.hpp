@@ -22,7 +22,7 @@ struct DiscSchedule {
 // The intro is a closed system fed by these (the design's input table).
 struct BootOptions {
     DiscSchedule disc;
-    uint32_t lightsPhase = 0xD80;
+    std::optional<uint32_t> lightsPhase;
     std::optional<History> history;
     bool clockForced = false, hddReady = false;
     int32_t hddExec = 0;

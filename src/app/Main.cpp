@@ -60,7 +60,7 @@ struct Options {
     double soak = 0;
     bool boot = false;
     bool towersDemo = false;
-    uint32_t lightsPhase = 0xD80;
+    std::optional<uint32_t> lightsPhase;
     std::filesystem::path openingTextures;
     std::filesystem::path bootStart = CLOCK_START_BOOT;
     std::string capture;
