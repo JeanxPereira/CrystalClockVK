@@ -150,6 +150,8 @@ add_library(ClockAssets STATIC src/assets/Bytes.cpp src/assets/Expand.cpp src/as
     src/assets/ClockTextures.cpp src/assets/Resources.cpp src/assets/AssetPack.cpp src/assets/Program.cpp)
 target_include_directories(ClockAssets PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
+include(cmake/Audio.cmake)
+
 add_library(ClockInput STATIC src/app/Input.cpp src/app/Screens.cpp)
 add_library(HostInputs STATIC src/app/HostInputs.cpp)
 target_include_directories(HostInputs PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
@@ -178,7 +180,7 @@ target_link_libraries(BootScreens PUBLIC OpeningSceneNative ClockScreen)
 
 if(NOT CLOCK_BUILD_TESTS)
 add_executable(CrystalClock src/app/Main.cpp src/app/DebugPanel.cpp src/app/Png.cpp src/app/ClockAssets.cpp)
-target_link_libraries(CrystalClock PRIVATE ClockRender ClockSceneNative ImGui ClockAssets ClockInput BootScreens HostInputs)
+target_link_libraries(CrystalClock PRIVATE ClockRender ClockSceneNative ImGui ClockAssets ClockInput BootScreens HostInputs ClockAudioLive)
 target_compile_definitions(CrystalClock PRIVATE
     CLOCK_SHADERS="${CLOCK_BIN_DIR}/shaders" CLOCK_SCREENSHOTS="${CMAKE_SOURCE_DIR}/out/screenshots")
 endif()

@@ -54,6 +54,16 @@ void drawPanel(PanelState& state, const PanelInfo& info) {
     if (ImGui::Button("local time")) state.localTime = true;
     ImGui::Separator();
 
+    if (info.audioAvailable) {
+        ImGui::Checkbox("mute", &state.mute);
+        ImGui::SetNextItemWidth(160);
+        ImGui::SliderFloat("volume", &state.volume, 0.0f, 1.0f, "%.2f");
+        ImGui::Text("audio: %s", info.audio.c_str());
+    } else {
+        ImGui::Text("audio: off");
+    }
+    ImGui::Separator();
+
     if (ImGui::Button("screenshot")) state.screenshot = true;
     if (!info.lastScreenshot.empty()) ImGui::TextWrapped("%s", info.lastScreenshot.c_str());
     ImGui::End();
