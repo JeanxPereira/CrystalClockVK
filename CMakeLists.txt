@@ -159,7 +159,7 @@ target_link_libraries(ClockInput PUBLIC SDL3::SDL3 ClockScene)
 
 add_library(ClockScreen STATIC src/app/ClockScreen.cpp)
 target_include_directories(ClockScreen PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(ClockScreen PUBLIC ClockSceneNative SceneInputs)
+target_link_libraries(ClockScreen PUBLIC ClockSceneNative)
 
 # The app's opening: the same sources with NativeArithmetic only, linked into CrystalClock.
 add_library(OpeningSceneNative STATIC src/scene/opening/Timeline.cpp src/scene/opening/Cubes.cpp src/scene/opening/Fog.cpp src/scene/opening/Lights.cpp src/scene/opening/Flat.cpp
@@ -176,16 +176,11 @@ endif()
 add_library(BootScreens STATIC src/app/OpeningScreen.cpp src/app/BootChain.cpp)
 target_link_libraries(BootScreens PUBLIC OpeningSceneNative ClockScreen)
 
-set(CLOCK_START ${CMAKE_SOURCE_DIR}/resources/clock/start.json)
-set(CLOCK_START_BOOT ${CMAKE_SOURCE_DIR}/resources/clock/start-boot.json)
-
 if(NOT CLOCK_BUILD_TESTS)
 add_executable(CrystalClock src/app/Main.cpp src/app/DebugPanel.cpp src/app/Png.cpp src/app/ClockAssets.cpp)
-target_link_libraries(CrystalClock PRIVATE ClockRender ClockSceneNative SceneInputs ImGui ClockAssets ClockInput BootScreens HostInputs)
+target_link_libraries(CrystalClock PRIVATE ClockRender ClockSceneNative ImGui ClockAssets ClockInput BootScreens HostInputs)
 target_compile_definitions(CrystalClock PRIVATE
-    CLOCK_SHADERS="${CLOCK_BIN_DIR}/shaders" CLOCK_START="${CLOCK_START}" CLOCK_START_BOOT="${CLOCK_START_BOOT}"
-    CLOCK_SCREENSHOTS="${CMAKE_SOURCE_DIR}/out/screenshots"
-    CLOCK_MENUS_START="${CMAKE_SOURCE_DIR}/resources/menus/start-menu.json" CLOCK_CLOCK_START="${CMAKE_SOURCE_DIR}/resources/menus/start-clock.json")
+    CLOCK_SHADERS="${CLOCK_BIN_DIR}/shaders" CLOCK_SCREENSHOTS="${CMAKE_SOURCE_DIR}/out/screenshots")
 endif()
 
 if(CLOCK_BUILD_TESTS AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/CMakeLists.txt)

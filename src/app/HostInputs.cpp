@@ -32,6 +32,7 @@ constexpr Range kTimeZone{-1024, 1023};
 constexpr Range kDateFormat{0, 2};
 constexpr Range kTimeFormat{0, 1};
 
+constexpr uint32_t kNoDisc = 0x64;
 constexpr uint32_t kScreenWidth = 640;
 constexpr uint32_t kScreenHeightNtsc = 0xE0;
 constexpr uint32_t kScreenHeightPal = 0x100;
@@ -93,7 +94,7 @@ scene::ColdInputs hostInputs(const HostOptions& options, std::chrono::system_clo
     out.screenHeight = options.pal ? kScreenHeightPal : kScreenHeightNtsc;
     out.randState = 1;
     out.wide = false;
-    out.screenCode = 0;
+    out.screenCode = kNoDisc;
 
     bool zoneGiven = false;
     readSettings(settings, out, zoneGiven);

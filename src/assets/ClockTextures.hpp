@@ -25,6 +25,13 @@ inline constexpr std::array<ClockTextureInfo, 10> kClockTextures{{
     {"TEXCSTSL", 64, 64, PixelForm::GreyAlpha, 0x2e80},  {"TEXCMARU", 64, 64, PixelForm::Rgba, 0x2ec0},
 }};
 
+// The GS word address the clock's texture allocator reaches once the ten textures are placed: the end of the last one (a block is 64 words).
+constexpr uint32_t clockTexturesEnd() {
+    constexpr uint32_t kWordsPerBlock = 64, kBytesPerBlock = 256;
+    const ClockTextureInfo& last = kClockTextures.back();
+    return (last.tbp + last.width * last.height * 4 / kBytesPerBlock) * kWordsPerBlock;
+}
+
 // The opening's textures (facts/opening.md section 2): the OSD's resources 35, 29, 34, 30, 26, 36, 31, 27, 32 are the
 // TEXO* members of TEXIMAGE; index is the opening's own texture index. BlackAlpha: (0, 0, 0, a). Rgb555: a 16-byte header,
 // then 16-bit texels expanded as the GS reads PSMCT16 with TEXA 127 / 129 and AEM (c << 3; alpha 129 when bit 15, else 127,
