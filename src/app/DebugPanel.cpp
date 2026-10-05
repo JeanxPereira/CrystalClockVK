@@ -20,6 +20,8 @@ void drawPanel(PanelState& state, const PanelInfo& info) {
         ImGui::Text("hand-off: %s", info.handOff.empty() ? "pending" : info.handOff.c_str());
         ImGui::Text("sound events of the last frame: %zu", info.sounds);
         if (ImGui::Button("Restart opening")) state.restartOpening = true;
+        ImGui::SameLine();
+        if (ImGui::Button("Skip opening")) state.skipOpening = true;
     }
     ImGui::Separator();
 

@@ -25,7 +25,7 @@ compile_commands.json
 # Screenshots and other run output
 out/
 
-# The decoded asset cache when no user data directory is found (src/assets/AssetPack.cpp)
+# The user data directory when none is found (settings.json)
 cache/
 
 # Research and proof live on the lab branch; their files stay here as untracked data

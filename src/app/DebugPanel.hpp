@@ -22,6 +22,7 @@ struct PanelState {
     bool localTime = false;
     bool screenshot = false;
     bool restartOpening = false;
+    bool skipOpening = false;
     bool mute = false;
     float volume = 1.0f;
 };

@@ -62,7 +62,7 @@ struct Options {
     bool validation = true;
     bool smoke = false;
     double soak = 0;
-    bool boot = false;
+    bool boot = true;
     bool towersDemo = false;
     std::optional<uint32_t> lightsPhase;
     std::filesystem::path openingTextures;
@@ -152,7 +152,7 @@ int main(int argc, char** argv) {
         const bool more = i + 1 < argc;
         explicitFlags.insert(arg);
         if (arg == "--smoke") options.smoke = true;
-        else if (arg == "--boot") options.boot = true;
+        else if (arg == "--skip-boot") options.boot = false;
         else if (arg == "--towers" && more) options.towersDemo = std::string(argv[++i]) == "demo";
         else if (arg == "--lights-phase" && more) options.lightsPhase = static_cast<uint32_t>(std::strtoul(argv[++i], nullptr, 0));
         else if (arg == "--opening-textures" && more) options.openingTextures = argv[++i];
@@ -162,7 +162,7 @@ int main(int argc, char** argv) {
         else if (arg == "--shaders" && more) options.shaders = argv[++i];
         else if (arg == "--textures" && more) options.textures = argv[++i];
         else if (arg == "--settings" && more) options.settings = argv[++i];
-        else if (arg == "--clock") options.clockStart = true;
+        else if (arg == "--clock") options.clockStart = true, options.boot = false;
         else if (arg == "--pal") options.pal = true;
         else if (arg == "--language" && more) options.language = std::atoi(argv[++i]);
         else if (arg == "--aspect" && more) options.aspect = std::atoi(argv[++i]);
@@ -178,7 +178,7 @@ int main(int argc, char** argv) {
         else if (arg == "--log" && more) options.logFile = argv[++i];
         else if (arg == "--trace" && more) options.traceFile = argv[++i];
         else {
-            std::fprintf(stderr, "usage: CrystalClock [--resources dir] [--bios rom.bin] [--smoke] [--soak seconds] [--clock] [--pal] [--language N] [--aspect N] [--boot [--towers none|demo] [--lights-phase N] [--opening-textures dir] [--capture all|n,n,...]] [--mute] [--audio-wav out.wav] [--log file] [--trace file.jsonl] [--no-validation] [--shaders dir]\n"
+            std::fprintf(stderr, "usage: CrystalClock [--resources dir] [--bios rom.bin] [--smoke] [--soak seconds] [--skip-boot] [--clock] [--pal] [--language N] [--aspect N] [--towers none|demo] [--lights-phase N] [--opening-textures dir] [--capture all|n,n,...] [--mute] [--audio-wav out.wav] [--log file] [--trace file.jsonl] [--no-validation] [--shaders dir]\n"
                                  "                    [--settings settings.json] [--screenshots dir] [--textures dir] [--mesh rod-mesh.json] [--cube-mesh cube-mesh.json] [--font FNTOSD] [--program hddosd.elf]\n");
             return 1;
         }
@@ -243,7 +243,7 @@ int main(int argc, char** argv) {
     if (!meshAsset && options.mesh.empty()) missing.push_back("the rod mesh");
     if (!cubeAsset && options.cubeMesh.empty()) missing.push_back("the cube mesh");
     if (programFile.empty()) missing.push_back("the program hddosd.elf (HDD OSD 1.10U)");
-    if (options.boot && options.openingTextures.empty() && !(decoded && decoded->find(assets::kOpeningTextures[0].name))) missing.push_back("the opening textures");
+    if (options.openingTextures.empty() && !(decoded && decoded->find(assets::kOpeningTextures[0].name))) missing.push_back("the opening textures");
     if (!missing.empty()) {
         std::string list;
         for (const std::string& what : missing) list += (list.empty() ? "" : ", ") + what;
@@ -266,7 +266,7 @@ int main(int argc, char** argv) {
         render::NativeRenderer renderer(device, options.shaders);
         if (useTextureFiles) renderer.loadClockTextures(options.textures);
         else app::uploadClockTextures(renderer, *decoded);
-        if (options.boot) {
+        {
             const bool openingFiles = !options.openingTextures.empty();
             const std::filesystem::path openingDirectory = options.openingTextures;
             if (openingFiles) renderer.loadOpeningTextures(openingDirectory);
@@ -790,7 +790,14 @@ int main(int argc, char** argv) {
                 }
                 if (logicFrames >= 246 + (captureAll ? 40 : 0)) running = false;
             }
-            if (panel.restartOpening && chain) {
+            if (panel.skipOpening && chain && chain->phase() != app::BootPhase::Clock) {
+                panel.skipOpening = false;
+                chain.reset();
+                bootOpening = nullptr;
+                startClock(false, std::nullopt);
+                produce();
+            }
+            if (panel.restartOpening) {
                 panel.restartOpening = false;
                 visited.clear();
                 audioClockStarted = false;

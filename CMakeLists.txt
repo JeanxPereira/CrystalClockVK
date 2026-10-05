@@ -183,6 +183,8 @@ add_executable(CrystalClock src/app/Main.cpp src/app/DebugPanel.cpp src/app/Png.
 target_link_libraries(CrystalClock PRIVATE ClockRender ClockSceneNative ImGui ClockAssets ClockInput BootScreens HostInputs ClockAudioLive)
 target_compile_definitions(CrystalClock PRIVATE
     CLOCK_SHADERS="${CLOCK_BIN_DIR}/shaders" CLOCK_SCREENSHOTS="${CMAKE_SOURCE_DIR}/out/screenshots")
+add_custom_command(TARGET CrystalClock POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different ${CMAKE_SOURCE_DIR}/resources ${CLOCK_BIN_DIR}/resources)
 endif()
 
 if(CLOCK_BUILD_TESTS AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/CMakeLists.txt)
