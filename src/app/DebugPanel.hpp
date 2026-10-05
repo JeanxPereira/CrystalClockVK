@@ -22,6 +22,8 @@ struct PanelState {
     bool localTime = false;
     bool screenshot = false;
     bool restartOpening = false;
+    bool mute = false;
+    float volume = 1.0f;
 };
 
 // What the panel shows.
@@ -37,6 +39,8 @@ struct PanelInfo {
     int32_t counter = 0, stage = 0;
     float cameraZ = 0;
     size_t sounds = 0;
+    bool audioAvailable = false;
+    std::string audio;
     scene::PadWords pad;
 };
 

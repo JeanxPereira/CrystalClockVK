@@ -97,6 +97,11 @@ constexpr std::array<Timed, 2> kSquareShow{{
     {kSquareGap, 0x6300, {1u, 1u, 1800u, 2684495248u, 64u}},
 }};
 
+class ModelledStamp final : public WriteTiming {
+public:
+    uint64_t sample(const WriteContext& context) override { return context.eventSample + context.write.cycle / kCyclesPerSample; }
+};
+
 uint32_t tickCycles(Video video) { return video == Video::Pal ? 603968 : driver::kTickCyclesNtsc; }
 
 }
@@ -120,6 +125,11 @@ ClockSound::ClockSound(ClockSoundSources sources, ClockSoundOptions options) : m
     feed.tick = own;
     feed.allocation = own;
     m_driver = std::make_unique<driver::Driver>(sources.snapshot, std::move(sources.libsd), feed, true);
+    if (m_options.modelledWrites) {
+        m_driver->enableTiming();
+        m_driver->setDmaCompletion(driver::nominalDmaCompletion());
+        m_timing = std::make_shared<ModelledStamp>();
+    }
     uint64_t firstTick = 0;
     if (m_options.replayInit) {
         for (const Timed& t : kInitCommands) {
@@ -151,7 +161,8 @@ void ClockSound::enqueue(uint64_t sample, const DriverCommand& command) {
     e.command = command;
     e.frame = command.frame != 0 ? command.frame : frameOf(sample);
     e.command.frame = e.frame;
-    m_events.emplace(sample, std::move(e));
+    m_log.push_back({sample, e.command});
+    m_events.emplace(std::pair<uint64_t, int>{sample, 0}, std::move(e));
 }
 
 void ClockSound::scheduleAutoTick() {
@@ -160,7 +171,7 @@ void ClockSound::scheduleAutoTick() {
     e.automatic = true;
     const uint64_t sample = m_nextTickCycle / kCyclesPerSample;
     e.frame = frameOf(sample);
-    m_events.emplace(sample, std::move(e));
+    m_events.emplace(std::pair<uint64_t, int>{sample, 1}, std::move(e));
     m_nextTickCycle += tickCycles(m_options.video);
 }
 
@@ -169,7 +180,7 @@ void ClockSound::scheduleTick(uint64_t sample, uint32_t frame) {
     Event e;
     e.tick = true;
     e.frame = frame;
-    m_events.emplace(sample, std::move(e));
+    m_events.emplace(std::pair<uint64_t, int>{sample, 1}, std::move(e));
 }
 
 void ClockSound::queue(const DriverCommand& command) {
@@ -195,6 +206,11 @@ void ClockSound::queueSquare(bool hide) {
         c.words = t.words;
         enqueue(m_mixed + t.offset, c);
     }
+}
+
+std::vector<LoggedCommand> ClockSound::commandLog() const {
+    std::lock_guard lock(m_lock);
+    return m_log;
 }
 
 uint64_t ClockSound::position() const {
@@ -223,10 +239,10 @@ void ClockSound::run(uint64_t sample, const Event& event) {
 void ClockSound::render(int16_t* out, size_t frames) {
     std::lock_guard lock(m_lock);
     for (size_t i = 0; i < frames; ++i) {
-        while (!m_events.empty() && m_events.begin()->first <= m_mixed) {
+        while (!m_events.empty() && m_events.begin()->first.first <= m_mixed) {
             const auto it = m_events.begin();
             const Event event = it->second;
-            const uint64_t at = it->first;
+            const uint64_t at = it->first.first;
             m_events.erase(it);
             if (event.automatic) scheduleAutoTick();
             run(at, event);

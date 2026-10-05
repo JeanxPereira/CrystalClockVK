@@ -33,6 +33,7 @@
 #include "assets/AssetPack.hpp"
 #include "assets/ClockTextures.hpp"
 #include "assets/Program.hpp"
+#include "audio/LiveAudio.hpp"
 #include "app/Screens.hpp"
 #include "render/Device.hpp"
 #include "render/NativeRenderer.hpp"
@@ -79,6 +80,8 @@ struct Options {
     std::filesystem::path resources;
     std::filesystem::path bios;
     std::filesystem::path pack;
+    bool mute = false;
+    std::filesystem::path audioWav;
 };
 
 // The folder of raw OSD resource files: --resources, else the user's own (where --bios extracts to) when it holds a
@@ -168,8 +171,10 @@ int main(int argc, char** argv) {
         else if (arg == "--resources" && more) options.resources = argv[++i];
         else if (arg == "--bios" && more) options.bios = argv[++i];
         else if (arg == "--assets" && more) options.pack = argv[++i];
+        else if (arg == "--mute") options.mute = true;
+        else if (arg == "--audio-wav" && more) options.audioWav = argv[++i];
         else {
-            std::fprintf(stderr, "usage: CrystalClock [--resources dir] [--bios rom.bin] [--assets assets.bin] [--smoke] [--soak seconds] [--clock] [--pal] [--language N] [--aspect N] [--boot [--towers none|demo] [--lights-phase N] [--opening-textures dir] [--capture all|n,n,...]] [--no-validation] [--shaders dir]\n"
+            std::fprintf(stderr, "usage: CrystalClock [--resources dir] [--bios rom.bin] [--assets assets.bin] [--smoke] [--soak seconds] [--clock] [--pal] [--language N] [--aspect N] [--boot [--towers none|demo] [--lights-phase N] [--opening-textures dir] [--capture all|n,n,...]] [--mute] [--audio-wav out.wav] [--no-validation] [--shaders dir]\n"
                                  "                    [--settings settings.json] [--screenshots dir] [--textures dir] [--mesh rod-mesh.json] [--cube-mesh cube-mesh.json] [--font FNTOSD] [--program hddosd.elf]\n");
             return 1;
         }
@@ -308,6 +313,7 @@ int main(int argc, char** argv) {
         if (!ImGui_ImplVulkan_Init(&imgui)) throw std::runtime_error("ImGui Vulkan backend");
 
         app::PanelState panel;
+        panel.mute = options.mute;
         app::PanelInfo info;
         info.sampleCounts = device.sampleCounts();
         system_clock::duration offset{};
@@ -321,6 +327,18 @@ int main(int argc, char** argv) {
         scene::Frame frame;
         bool fresh = false;
         uint64_t logicFrames = 0;
+        std::unique_ptr<audio::LiveAudio> audio;
+        bool audioClockStarted = false;
+        try {
+            audio::LiveAudioOptions audioOptions;
+            audioOptions.mute = options.mute;
+            audioOptions.video = options.pal ? audio::Video::Pal : audio::Video::Ntsc;
+            audioOptions.wav = options.audioWav;
+            if (!options.audioWav.empty()) audioOptions.commandLog = options.audioWav.string() + ".commands.txt";
+            audio = std::make_unique<audio::LiveAudio>(audio::clockSoundSources(folder), audioOptions);
+        } catch (const std::exception& error) {
+            std::fprintf(stderr, "audio: off: %s\n", error.what());
+        }
         const auto stepClock = [&] {
             const system_clock::time_point now = system_clock::now() + offset;
             scene::Frame produced;
@@ -346,7 +364,14 @@ int main(int argc, char** argv) {
                                                                int32_t(hms.hours().count()), int32_t(hms.minutes().count()), int32_t(hms.seconds().count())};
                 inputs.configItems = items;
             }
+            const int32_t rampBefore = clockPtr->state().menuRamp.state;
+            const bool squarePressed = (inputs.menu.pad.pressed & scene::pad::Square) != 0;
             produced = clockPtr->frame(inputs);
+            if (audio && squarePressed) {
+                const int32_t rampAfter = clockPtr->state().menuRamp.state;
+                if (rampBefore == 2 && rampAfter == 3) audio->queueSquare(true);
+                else if (rampBefore == 0 && rampAfter == 1) audio->queueSquare(false);
+            }
             if (const scene::MenusState* menus = clockPtr->menus()) {
                 items = clockPtr->items();
                 const app::Screen screen = app::screenOf(*menus, clockPtr->state().menuRamp);
@@ -437,10 +462,25 @@ int main(int argc, char** argv) {
             inputs.time = clockTime(now);
             inputs.items = clockItems(now);
             if (chain) {
+                const bool inOpening = chain->phase() == app::BootPhase::Opening;
                 chain->step();
                 frame = chain->frame();
+                if (audio && inOpening)
+                    for (const scene::opening::SoundEvent& e : bootOpening->sounds()) {
+                        if (e.id == 0x6150) audio->send(e.id, 0, 0, uint32_t(e.argument));
+                        else if (e.id == 0x6140) audio->send(e.id, uint32_t(e.argument), 0, 0);
+                    }
             } else {
                 frame = stepClock();
+            }
+            if (audio) {
+                if (!audioClockStarted && clockPtr) {
+                    audio->startClock();
+                    audioClockStarted = true;
+                }
+                audio->setMuted(panel.mute);
+                audio->setVolume(panel.volume);
+                audio->step();
             }
             ++logicFrames;
             fresh = true;
@@ -639,6 +679,15 @@ int main(int argc, char** argv) {
                 info.sounds = bootOpening->sounds().size();
             }
             info.logicFrames = logicFrames;
+            info.audioAvailable = bool(audio);
+            if (audio) {
+                const audio::LiveAudioStats& a = audio->stats();
+                char line[160];
+                std::snprintf(line, sizeof line, "%s, queue %u..%u frames, %llu underruns, %llu overruns, peak %u", a.failed ? "stopped" : a.deviceOpen ? "device open" : "no device",
+                              a.minQueuedFrames == UINT32_MAX ? 0u : a.minQueuedFrames, a.maxQueuedFrames, static_cast<unsigned long long>(a.underruns),
+                              static_cast<unsigned long long>(a.overruns), a.peak);
+                info.audio = line;
+            }
             if (!chain || chain->phase() == app::BootPhase::Clock) info.screen = visited.empty() ? "" : visited.back();
             info.pad = inputs.menu.pad;
             info.framesPerSecond = fps;
@@ -704,6 +753,7 @@ int main(int argc, char** argv) {
             if (panel.restartOpening && chain) {
                 panel.restartOpening = false;
                 visited.clear();
+                audioClockStarted = false;
                 buildBoot();
                 logicFrames = 0;
                 produce();
@@ -714,6 +764,7 @@ int main(int argc, char** argv) {
                 screenshotName.clear();
             }
         }
+        if (audio) std::printf("%s\n", audio->finish().c_str());
         vkDeviceWaitIdle(device.device());
         ImGui_ImplVulkan_Shutdown();
         ImGui_ImplSDL3_Shutdown();

@@ -21,6 +21,10 @@ constexpr uint32_t kMemcpy = uint32_t(kOsdsndBase) + 0x861c;
 constexpr uint32_t kDmaCodeFirst = 0x8d200;
 constexpr uint32_t kDmaCodeEnd = 0x8d600;
 constexpr uint32_t kWaitEventFlag = 0xe090;
+constexpr uint32_t kKernelStub = 0x1000;
+constexpr uint32_t kImportMagic = 0x41e00000;
+constexpr uint32_t kJumpReturn = 0x03e00008;
+constexpr uint32_t kEventLibraryWait = 10;
 constexpr uint32_t kDmaResumeCycles = 793;
 constexpr uint32_t kMultiplyExtra = 7;
 constexpr uint32_t kMemsetTickLength = 0x3c;
@@ -82,6 +86,20 @@ IopClock::IopClock(assets::View libsd, assets::View osdsnd, assets::View iop) : 
             }
         }
     };
+    const auto word = [&](uint32_t a) { return uint32_t(m_ram[a]) | uint32_t(m_ram[a + 1]) << 8 | uint32_t(m_ram[a + 2]) << 16 | uint32_t(m_ram[a + 3]) << 24; };
+    const auto link = [&](uint32_t from, size_t length) {
+        for (uint32_t a = from; a + 20 <= from + length; a += 4) {
+            if (word(a) != kImportMagic) continue;
+            const bool events = std::string(reinterpret_cast<const char*>(&m_ram[a + 12]), 7) == "thevent";
+            for (uint32_t p = a + 20; p + 8 <= from + length && word(p) == kJumpReturn; p += 8) {
+                const uint32_t target = events && (word(p + 4) & 0xffff) == kEventLibraryWait ? kWaitEventFlag : kKernelStub;
+                const uint32_t jump = 0x08000000u | (target >> 2);
+                for (size_t b = 0; b < 4; ++b) m_ram[p + b] = uint8_t(jump >> (8 * b));
+            }
+        }
+    };
+    link(uint32_t(kLibsdBase), libsd.size());
+    link(uint32_t(kOsdsndBase), osdsnd.size());
     scan(uint32_t(kLibsdBase), libsd.size());
     scan(uint32_t(kOsdsndBase), osdsnd.size());
     for (const auto& [address, value] : {std::pair<uint32_t, uint16_t>{0x1f9007c0, 0xc032}, {0x1f9007c6, 0x900}, {0x1f9007c8, 0x200}, {0x1f9007ca, 0x8}}) m_values[address] = value;

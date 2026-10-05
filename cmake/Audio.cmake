@@ -24,9 +24,9 @@ add_library(ClockAudioFacade STATIC src/audio/ClockSound.cpp)
 target_include_directories(ClockAudioFacade PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(ClockAudioFacade PUBLIC ClockAudioSnapshot ClockAudioDriver ClockAudioSpu2 ClockAudioCore ClockAssets)
 
-add_library(ClockAudioLive STATIC src/audio/Output.cpp)
+add_library(ClockAudioLive STATIC src/audio/Output.cpp src/audio/LiveAudio.cpp)
 target_include_directories(ClockAudioLive PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(ClockAudioLive PUBLIC SDL3::SDL3)
+target_link_libraries(ClockAudioLive PUBLIC SDL3::SDL3 ClockAudioFacade)
 
 add_library(ClockAudio INTERFACE)
 target_include_directories(ClockAudio INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/src)
