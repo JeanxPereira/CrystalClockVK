@@ -147,7 +147,7 @@ target_link_libraries(ClockRender PUBLIC ClockVma ClockStb vk-bootstrap VulkanMe
 
 # The clock's assets from the console's own resource files (src/assets: no Vulkan), and their decoded cache.
 add_library(ClockAssets STATIC src/assets/Bytes.cpp src/assets/Expand.cpp src/assets/Romdir.cpp src/assets/ElfImage.cpp src/assets/ImageCipher.cpp
-    src/assets/ClockTextures.cpp src/assets/Resources.cpp src/assets/AssetPack.cpp src/assets/Program.cpp)
+    src/assets/ClockTextures.cpp src/assets/Resources.cpp src/assets/Program.cpp)
 target_include_directories(ClockAssets PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 include(cmake/Audio.cmake)

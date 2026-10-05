@@ -33,7 +33,6 @@
 #include "app/Input.hpp"
 #include "app/OpeningScreen.hpp"
 #include "app/Png.hpp"
-#include "assets/AssetPack.hpp"
 #include "assets/ClockTextures.hpp"
 #include "assets/Program.hpp"
 #include "audio/LiveAudio.hpp"
@@ -82,18 +81,17 @@ struct Options {
     std::filesystem::path program;
     std::filesystem::path resources;
     std::filesystem::path bios;
-    std::filesystem::path pack;
     bool mute = false;
     std::filesystem::path audioWav;
     std::filesystem::path logFile;
     std::filesystem::path traceFile;
 };
 
-// The folder of raw OSD resource files: --resources, else the user's own (where --bios extracts to) when it holds a
-// TEXIMAGE or a BIOS is given.
+// The folder of raw OSD resource files: --resources, else "resources" beside the executable (where --bios extracts to).
 std::filesystem::path resourceFolder(const Options& options) {
     if (!options.resources.empty()) return options.resources;
-    return assets::userDataDirectory() / "resources";
+    const char* base = SDL_GetBasePath();
+    return (base ? std::filesystem::path(base) : std::filesystem::current_path()) / "resources";
 }
 
 std::vector<uint8_t> fileOrEmpty(const std::filesystem::path& path) {
@@ -175,22 +173,20 @@ int main(int argc, char** argv) {
         else if (arg == "--program" && more) options.program = argv[++i];
         else if (arg == "--resources" && more) options.resources = argv[++i];
         else if (arg == "--bios" && more) options.bios = argv[++i];
-        else if (arg == "--assets" && more) options.pack = argv[++i];
         else if (arg == "--mute") options.mute = true;
         else if (arg == "--audio-wav" && more) options.audioWav = argv[++i];
         else if (arg == "--log" && more) options.logFile = argv[++i];
         else if (arg == "--trace" && more) options.traceFile = argv[++i];
         else {
-            std::fprintf(stderr, "usage: CrystalClock [--resources dir] [--bios rom.bin] [--assets assets.bin] [--smoke] [--soak seconds] [--clock] [--pal] [--language N] [--aspect N] [--boot [--towers none|demo] [--lights-phase N] [--opening-textures dir] [--capture all|n,n,...]] [--mute] [--audio-wav out.wav] [--log file] [--trace file.jsonl] [--no-validation] [--shaders dir]\n"
+            std::fprintf(stderr, "usage: CrystalClock [--resources dir] [--bios rom.bin] [--smoke] [--soak seconds] [--clock] [--pal] [--language N] [--aspect N] [--boot [--towers none|demo] [--lights-phase N] [--opening-textures dir] [--capture all|n,n,...]] [--mute] [--audio-wav out.wav] [--log file] [--trace file.jsonl] [--no-validation] [--shaders dir]\n"
                                  "                    [--settings settings.json] [--screenshots dir] [--textures dir] [--mesh rod-mesh.json] [--cube-mesh cube-mesh.json] [--font FNTOSD] [--program hddosd.elf]\n");
             return 1;
         }
     }
     if (!options.logFile.empty()) core::Log::get().open(options.logFile);
     if (options.settings.empty()) options.settings = assets::userDataDirectory() / "settings.json";
-    if (options.pack.empty()) options.pack = assets::userDataDirectory() / "assets.bin";
-    // The clock's assets: the console's raw resource files decoded (or their cache); loose files only from explicit flags.
-    std::optional<assets::LoadedAssets> loaded;
+    // The clock's assets: the console's raw resource files decoded at each start; loose files only from explicit flags.
+    std::optional<assets::AssetSet> loaded;
     const std::filesystem::path folder = resourceFolder(options);
     if (!options.bios.empty()) {
         try {
@@ -202,17 +198,17 @@ int main(int argc, char** argv) {
         }
     }
     try {
-        loaded = assets::loadAssets(folder, options.pack);
+        const auto begin = std::chrono::steady_clock::now();
+        if (!assets::folderSources(folder).empty()) {
+            loaded = assets::decodeFolder(folder);
+            std::printf("assets: %zu decoded from %s in %.1f ms\n", loaded->assets.size(), folder.string().c_str(),
+                        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - begin).count());
+        }
     } catch (const std::exception& error) {
         core::log(core::Level::Error, core::Subsystem::Assets, "load: {}", error.what());
     }
-    if (loaded) {
-        std::printf("assets: %zu in %.1f ms, %s %s\n", loaded->set.assets.size(), loaded->milliseconds, loaded->fromPack ? "from the cache" : "decoded and cached in",
-                    options.pack.string().c_str());
-    } else {
-        std::printf("assets: no resource files in %s and no cache\n", folder.string().c_str());
-    }
-    const assets::AssetSet* decoded = loaded ? &loaded->set : nullptr;
+    if (!loaded) std::printf("assets: no resource files in %s\n", folder.string().c_str());
+    const assets::AssetSet* decoded = loaded ? &*loaded : nullptr;
     const auto sourceOf = [&](const assets::Asset& a) { return "decoded from " + decoded->sourceOf(a).path; };
 
     // Each group from one place: the decoded set, or a loose file named on the command line.
@@ -251,8 +247,8 @@ int main(int argc, char** argv) {
     if (!missing.empty()) {
         std::string list;
         for (const std::string& what : missing) list += (list.empty() ? "" : ", ") + what;
-        std::fprintf(stderr, "missing: %s.\nGive the console's files: --bios rom.bin (a PS2 BIOS image) or --resources dir (a folder with TEXIMAGE, FNTOSD and hddosd.elf).\n"
-                             "Decoded data is cached in %s.\n", list.c_str(), options.pack.string().c_str());
+        std::fprintf(stderr, "missing: %s.\nGive the console's files: --bios rom.bin (a PS2 BIOS image) or --resources dir (a folder with TEXIMAGE, FNTOSD, SNDIMAGE and hddosd.elf),\n"
+                             "or put those files in %s.\n", list.c_str(), folder.string().c_str());
         return 1;
     }
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD)) {
