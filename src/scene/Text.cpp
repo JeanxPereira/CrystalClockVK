@@ -600,7 +600,7 @@ TextFrame Text<A>::frame(const TextFrameInputs& in) {
         buttonPanel(7, 0x80, hintY, in, out);
     } else {
         if (ramps.panel8On != 0) buttonPanel(8, ramps.panel8, hintY, in, out);
-        // func_002326F0: panels 1 to 6 by func_00231E78, func_00230E10, func_0022A238 (1 and 0), func_00228F40,
+        // func_002326F0: the first of panels 1 to 6 whose alpha is above 0 (0x00226A6C returns after it), by func_00231E78, func_00230E10, func_0022A238 (1 and 0), func_00228F40,
         // func_00230C28, capped at 128 (verify_text2.mjs panelsOf).
         const Ramp& menu = in.menu;
         const int32_t tail = in.tail;
@@ -627,7 +627,10 @@ TextFrame Text<A>::frame(const TextFrameInputs& in) {
             case 6: a = clock(); break;
             }
             if (a > 0x80) a = 0x80;
-            if (a > 0) buttonPanel(panel, a, hintY, in, out);
+            if (a > 0) {
+                buttonPanel(panel, a, hintY, in, out);
+                break;
+            }
         }
     }
 
