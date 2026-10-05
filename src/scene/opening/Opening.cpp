@@ -1,5 +1,7 @@
 #include "scene/opening/Opening.hpp"
 
+#include "scene/ColdState.hpp"
+
 #include <stdexcept>
 
 namespace scene::opening {
@@ -7,6 +9,9 @@ namespace scene::opening {
 namespace {
 
 constexpr float kNearEnough = 73.0f;
+constexpr uint32_t kElfRandSeed = 1;
+constexpr uint32_t kSetUpRandCalls = 385 + 1;
+constexpr uint32_t kRandCallsPerQuad = 4;
 
 TowerMatrices towerMatrices(const Matrices& m) {
     Mat4 identity{};
@@ -23,10 +28,16 @@ Opening<A>::Opening(const BootOptions& options, std::shared_ptr<const ProgramIma
       m_towers(options.history.value_or(History{}), *program),
       m_lights(options.lightsPhase),
       m_cubes(*program) {
+    m_randCalls = kSetUpRandCalls;
     m_step = m_timeline.step(options.disc.first);
     m_timeline.sceneSetUp();
     m_camera = m_timeline.state().camera;
     if (!options.coldStart) m_step.matrices = Matrices{};
+}
+
+template <class A>
+uint32_t Opening<A>::randState() const {
+    return advanceRand(kElfRandSeed, m_randCalls);
 }
 
 template <class A>
@@ -75,6 +86,7 @@ Frame Opening<A>::frame(int32_t displayIndex, int32_t field) {
     m_work.clear();
     if (m_camera[2] < kNearEnough) {
         m_lights.draw(counter, m.worldToScreen, passes);
+        m_randCalls += kRandCallsPerQuad * static_cast<uint32_t>(m_lights.stats().quadsDrawn);
         m_cubes.draw(m, m_camera, passes, &m_work, counter & 1);
     }
     if (m_step.blurLevel > 0) Flat<A>::blur(flat, passes);

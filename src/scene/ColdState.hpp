@@ -24,6 +24,7 @@ struct ColdStateOut {
 };
 
 std::array<int32_t, kOrbCount> randAngles(uint32_t& state);
+uint32_t advanceRand(uint32_t state, uint32_t calls);
 
 template <class A>
 ColdStateOut coldState(const ProgramImage& program, const ColdLengths& lengths, const ClockTime& time, uint32_t randState);

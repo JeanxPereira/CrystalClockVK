@@ -29,6 +29,8 @@ public:
     Frame frame(int32_t displayIndex, int32_t field);
 
     bool ended() const { return m_ended; }
+    uint32_t randCalls() const { return m_randCalls; }
+    uint32_t randState() const;
     // The counter of the frame frame() draws next.
     int32_t counter() const { return m_counter; }
     const std::vector<SoundEvent>& sounds() const { return m_sounds; }
@@ -53,6 +55,7 @@ private:
     Vec4 m_camera{};
     int32_t m_counter = 1;
     bool m_ended = false;
+    uint32_t m_randCalls = 0;
     HandOff m_handOff;
     std::vector<SoundEvent> m_sounds;
     std::vector<CubeWork> m_work;

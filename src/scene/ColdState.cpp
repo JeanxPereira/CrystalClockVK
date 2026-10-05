@@ -29,6 +29,11 @@ Colour colourAt(const ProgramImage& program, uint32_t address) {
 
 }
 
+uint32_t advanceRand(uint32_t state, uint32_t calls) {
+    for (uint32_t i = 0; i < calls; ++i) state = state * 0x41C64E6Du + 12345u;  // HDD OSD 1.10U rand 0x29C6E8 facts/clock-rand-chain.md
+    return state;
+}
+
 std::array<int32_t, kOrbCount> randAngles(uint32_t& state) {
     std::array<int32_t, kOrbCount> out{};
     for (int32_t& angle : out) {
