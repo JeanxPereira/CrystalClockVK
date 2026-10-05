@@ -21,6 +21,8 @@ struct ColdInputs {
     uint32_t screenWidth = 640, screenHeight = 224;
     bool wide = false;
     uint32_t screenCode = 0;
+    uint32_t field = 0;
+    uint32_t gsAllocator = 0;
 };
 
 }
