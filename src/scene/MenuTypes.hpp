@@ -2,6 +2,8 @@
 #include <array>
 #include <cstdint>
 #include <optional>
+#include <string>
+#include <vector>
 
 #include "scene/ClockState.hpp"
 #include "scene/FrameHead.hpp"
@@ -59,12 +61,37 @@ struct ListFade {
 };
 using ConfigItems = std::array<int32_t, 20>;
 
+// clock_version.mjs: one row of the Version page's table (HDD 0x00404D48, 0x10 a row): the module's name as a language string id,
+// its version string, the module's sub-row count (func_002086A8) and its id in the module table.
+struct VersionRow {
+    int32_t label = 0;
+    std::string value;
+    int32_t subRows = 0, id = 0;
+    bool operator==(const VersionRow&) const = default;
+};
+constexpr size_t kVersionRows = 0x20;
+// clock_version.mjs V.record and the words the page writes: the record (title, count, shown rows, selected, first shown), the job
+// handle, the button panel words (func_002266C0, func_002266C8, func_002266E0, func_002266D0) and how long the job has been asked.
+struct VersionPage {
+    int32_t title = 0x59, count = 0, shown = 6, selected = 0, first = 0;
+    std::array<VersionRow, kVersionRows> rows{};
+    int32_t job = 0;
+    int32_t panelOn = 0, panelAlpha = 0, arrows = 0;
+    std::array<int32_t, 4> hints{1, 1, 1, 1};
+    int32_t polls = 0;
+    bool operator==(const VersionPage&) const = default;
+};
+
 // What the menus own (clock_menus.mjs); the clock owns the rest of what they write (MenuWorld).
 struct MenusState {
     ConfigPage page;
     std::array<ConfigEntry, 9> entries{};
     MainMenu mainMenu;
     Ramp versionRamp, dialogRamp, firstRunRamp;
+    VersionPage version;
+    std::vector<VersionRow> versionList;
+    VersionPage versionDrawn;
+    Ramp versionRampDrawn;
     std::array<int32_t, 5> pagePointers{};
     int32_t entryActive = 0;
     std::array<int32_t, 3> menuLengths{};

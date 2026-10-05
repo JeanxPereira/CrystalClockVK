@@ -139,6 +139,7 @@ struct PagesInputs {
     TextRamps ramps;
     int32_t width = 640, height = 224;
     int32_t pending = 0;   // D_003701D0, what func_0022AAF0 answers
+    VersionPage version;   // D_002B2FE8 and its table, as the page's drawing sees them
 };
 struct PagesFrame {
     TextFrame text;
@@ -193,6 +194,7 @@ private:
     int32_t templateWidth(int32_t timeFormat, TextFrame& out);
     void mainMenuItems(const PagesInputs& in, TextFrame& out);
     std::optional<int32_t> list(const PagesInputs& in, TextFrame& out, std::vector<uint32_t>& unmodelled);
+    void versionPage(const PagesInputs& in, TextFrame& out);
     void listEntry(const PagesInputs& in, int32_t index, int32_t alpha, TextFrame& out, std::vector<uint32_t>& unmodelled);
     bool clockValue(const PagesInputs& in, const ConfigEntry& entry, const std::array<AdjustField, 6>& fields, int32_t x, int32_t y, int32_t alpha, bool editing, TextFrame& out);
     void valueRow(const ConfigEntry& entry, int32_t x, int32_t y, int32_t alpha, TextFrame& out);

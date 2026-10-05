@@ -41,6 +41,7 @@ constexpr uint32_t kDialogClosing = 0x2B46B8;
 constexpr uint32_t kFirstRun = 0x2B46D0;
 constexpr uint32_t kPanel7 = 0x2B2E00;
 constexpr uint32_t kPanel8On = 0x370140;
+constexpr uint32_t kVersionRecord = 0x2B2FE8, kBrowserVersion = 0x370680;
 constexpr uint32_t kPanel8 = 0x37013C;
 constexpr uint32_t kEntryActive = 0x3702C8;
 constexpr uint32_t kListConstants = 0x36FC00;
@@ -177,6 +178,10 @@ ColdStartOut coldStart(const ColdAssets& assets, const ColdInputs& in) {
     m.entries = config.entries;
     m.mainMenu = config.menu;
     m.versionRamp = lengths.version;
+    m.version.title = p.integer(kVersionRecord);
+    m.version.count = p.integer(kVersionRecord + 8);
+    m.version.shown = p.integer(kVersionRecord + 12);
+    m.versionList = {{0x62, "Unknown", 1, 0}, {0x65, p.string(kBrowserVersion), 0, 3}, {0x66, "1.30", 0, 5}};
     m.dialogRamp = rampAt(p, kDialogClosing);
     m.firstRunRamp = rampAt(p, kFirstRun);
     m.pagePointers = config.pages;

@@ -331,6 +331,44 @@ void configPage(MenuWorld& w, MenuExternals& ext, std::vector<std::string>& note
     }
 }
 
+constexpr int32_t kVersionJob = 0x0020aad8;
+
+int32_t versionFraction(const Ramp& ramp, int32_t scale) { return ramp.length == 0 ? 0 : static_cast<int32_t>(int64_t(ramp.counter) * scale / ramp.length); }
+
+int32_t versionAlpha(const MenusState& m) {
+    const int32_t product = versionFraction(m.versionRamp, 0x80) * 0x80;
+    return (product < 0 ? product + 0x7f : product) >> 7;
+}
+
+void versionFill(MenusState& m, std::vector<std::string>& notes) {
+    VersionPage& v = m.version;
+    v.selected = 0;
+    v.first = 0;
+    int32_t count = 0;
+    for (; count < static_cast<int32_t>(kVersionRows) && count < static_cast<int32_t>(m.versionList.size()); ++count) {
+        const VersionRow& entry = m.versionList[static_cast<size_t>(count)];
+        if (entry.id == 6) v.selected = count;
+        v.rows[static_cast<size_t>(count)] = entry;
+        if (entry.subRows > 0) notes.push_back("a Version row has sub-rows: its page in the page stack is not modelled");
+    }
+    v.count = count;
+    const int32_t low = v.selected - v.shown + 1;
+    v.first = v.first < low ? low : std::min(v.first, v.selected);
+}
+
+void versionHints(MenusState& m, int32_t mode, int32_t left, int32_t right, int32_t third) {
+    auto& out = m.version.hints;
+    out[0] = mode;
+    if (m.videoMode > 0) {
+        out[2] = left != 0x55 ? left : 0x56;
+        out[1] = right != 0x56 ? right : 0x55;
+    } else {
+        out[2] = right;
+        out[1] = left;
+    }
+    out[3] = third;
+}
+
 bool nothingElse(const MenuWorld& w) {
     const MenusState& m = w.menus;
     if (m.page.ramp.state != 0 || m.versionRamp.state != 0 || m.dialogRamp.state != 0 || m.firstRunRamp.state != 0) return false;
@@ -370,10 +408,56 @@ void mainMenu(MenuWorld& w, const MenuExternals& ext, std::vector<std::string>& 
             if (browserEnters) Menus::hide(ramp);
         } else if (menu.selected == 1) startSystemConfiguration(w);
     } else if (pressed & pad::Triangle) {
-        notes.push_back("the version page (triangle on the main menu) is not modelled");
+        Menus::versionOpen(w.menus);
     }
 }
 
+}
+
+void Menus::versionOpen(MenusState& m) {
+    if (m.versionRamp.state != 0) return;
+    m.version.job = kVersionJob;
+    m.version.polls = 0;
+    show(m.versionRamp);
+}
+
+void Menus::versionStep(MenusState& m, uint32_t pressed, std::vector<std::string>& notes) {
+    VersionPage& v = m.version;
+    Ramp& ramp = m.versionRamp;
+    tickRamp(ramp);
+    if (ramp.state == 1 && ramp.counter == 1) {
+        const bool done = v.polls >= 1;
+        v.polls += 1;
+        if (done) versionFill(m, notes);
+        else ramp.counter = 0;
+    }
+    if (ramp.state == 0 && ramp.changed != 0) v.panelOn = 0;
+    const int32_t alpha = versionAlpha(m);
+    if (ramp.state != 0) {
+        v.panelOn = 1;
+        v.panelAlpha = alpha;
+    }
+    m.versionDrawn = v;
+    m.versionRampDrawn = ramp;
+    if (ramp.state == 0) return;
+    versionHints(m, 1, 0x55, 1, v.rows[static_cast<size_t>(std::clamp(v.selected, 0, int(kVersionRows) - 1))].subRows != 0 ? 0x57 : 1);
+    const int32_t up = v.selected == 0 ? 0 : static_cast<int32_t>(pad::Up);
+    v.arrows = v.selected + 1 < v.count ? (up | static_cast<int32_t>(pad::Down)) : up;
+    if (ramp.state != 2) return;
+    if (pressed & pad::Up) {
+        const int32_t s = v.selected - 1;
+        if (s >= 0) v.selected = s;
+        v.first -= v.selected < v.first ? 1 : 0;
+    } else if (pressed & pad::Down) {
+        const int32_t s = v.selected + 1;
+        if (s < v.count) v.selected = s;
+        v.first += v.selected < v.first + v.shown ? 0 : 1;
+    } else if (pressed & pad::Triangle) {
+        if (v.rows[static_cast<size_t>(std::clamp(v.selected, 0, int(kVersionRows) - 1))].subRows != 0)
+            notes.push_back("the front page of a Version row (func_00228F68) is not modelled");
+    } else if (pressed & pad::Circle) {
+        hide(ramp);
+    }
 }
 
 void Menus::show(Ramp& ramp) {
@@ -428,10 +512,9 @@ void Menus::menuStep(MenuWorld& w, const MenuExternals& ext) {
 }
 
 void Menus::step(MenuWorld& w, MenuExternals& ext, std::vector<std::string>& notes) const {
-    if (w.menus.versionRamp.state != 0) notes.push_back("versionRamp is not hidden: that page is not modelled");
     if (w.menus.dialogRamp.state != 0) notes.push_back("dialogRamp is not hidden: that page is not modelled");
     if (w.menus.firstRunRamp.state != 0) notes.push_back("firstRunRamp is not hidden: that page is not modelled");
-    tickRamp(w.menus.versionRamp);
+    versionStep(w.menus, ext.pad.pressed, notes);
     configPage(w, ext, notes);
     mainMenu(w, ext, notes, m_options.browserEnters);
     tickRamp(w.menus.firstRunRamp);

@@ -530,6 +530,9 @@ int main(int argc, char** argv) {
             press(3.5, PadButton::Up);
             press(5.0, PadButton::Up);
             press(6.5, PadButton::Triangle);
+            press(7.0, PadButton::Down);
+            script.push_back({7.5, shot("version")});
+            press(7.7, PadButton::Circle);
             press(8.0, PadButton::Cross);
             press(10.0, PadButton::Down);
             press(11.5, PadButton::Cross);

@@ -3,6 +3,7 @@
 namespace app {
 
 Screen screenOf(const scene::MenusState& menus, const scene::Ramp& menuRamp) {
+    if (menus.versionRamp.state != 0) return Screen::Version;
     switch (menus.page.ramp.state) {
     case 0: return Screen::MainMenu;
     case 1: return Screen::OpeningConfiguration;
@@ -27,6 +28,7 @@ const char* screenName(Screen screen) {
     case Screen::HidingMenu: return "hiding the menu";
     case Screen::ClockAlone: return "clock alone";
     case Screen::ShowingMenu: return "showing the menu";
+    case Screen::Version: return "version";
     }
     return "?";
 }

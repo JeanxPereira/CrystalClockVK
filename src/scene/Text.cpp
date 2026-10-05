@@ -25,7 +25,8 @@ constexpr uint32_t kTime12 = 0x00360df0;                         // the same and
 constexpr uint32_t kMorning = 0x00360e10, kAfternoon = 0x00360e28;  // "\ar0.80\ap@AA\ap00M\ar0.00", the same with P
 constexpr uint32_t kSummerMark = 0x00365558, kNoMark = 0x00370138;  // "\ar0.88\ao020\ar0.00", ""
 constexpr uint32_t kTimeLine = 0x00370130;                       // "%s %s"
-constexpr uint32_t kDateRatio = 0x0036fb94, kHintRatio = 0x0036fb98;
+constexpr uint32_t kDateRatio = 0x0036fb94, kHintRatio = 0x0036fb98, kVersionRatio = 0x0036fbb0;
+constexpr uint32_t kVersionPal = 0x003656c8;
 constexpr uint32_t kPalMultiply = 0x00365570, kPalDivide = 0x00365578;          // func_00226300
 constexpr uint32_t kHintPalMultiply = 0x00365590, kHintPalDivide = 0x00365598;  // func_00226958
 constexpr uint32_t kIconPalMultiply = 0x00365580, kIconPalDivide = 0x00365588;  // DrawIcon
@@ -693,6 +694,38 @@ void Text<A>::mainMenuItems(const PagesInputs& in, TextFrame& out) {
     }
 }
 
+// func_0022A410: the Version page. The title centred on 404 (27 above the table's top, 31.05 on PAL), the rows from two above the
+// first shown one, a line (11, 13 on PAL) a row whether it shows or not; the label right-aligned on 391, the value at 417; the
+// chosen row's label in the chosen colour when its module has sub-rows. The page's alpha is func_0022A1D8's.
+template <class A>
+void Text<A>::versionPage(const PagesInputs& in, TextFrame& out) {
+    const TextRamps& r = in.ramps;
+    if (r.version.state == 0 || r.dialog.state == 2) return;
+    const VersionPage& v = in.version;
+    const ProgramImage& p = *m_program;
+    const int32_t alpha = by128(int64_t(scaleOf(r.version, 0x80)) * (0x80 - scaleOf(r.dialog, 0x80)));
+    const double centre = double(half(in.height));
+    const int32_t top = static_cast<int32_t>(std::trunc(centre - (pal() ? p.doubleAt(kVersionPal) : 6.0)));
+    const int32_t titleY = static_cast<int32_t>(std::trunc(double(top) - (pal() ? p.doubleAt(kVersionPal + 8) : 27.0)));
+    const int32_t first = static_cast<int32_t>(std::trunc(0.0 - (pal() ? p.doubleAt(kVersionPal + 16) : 17.0)));
+    const int32_t step = pal() ? 13 : 11;
+    setRatio(p.single(kVersionRatio));
+    menuItem(0x194, titleY, kTitleColour, alpha, languageString(v.title), out);
+    int32_t y = first + top;
+    for (int32_t row = v.first - 2; row < v.first + v.shown + 4; ++row, y += step) {
+        if (row < 0 || row >= v.count || row < v.first || row >= v.first + v.shown) continue;
+        const VersionRow& entry = v.rows.at(static_cast<size_t>(row));
+        const std::string label = languageString(entry.label);
+        uint32_t labelColour = kPlainColour, valueColour = kPlainColour;
+        if (row == v.selected) {
+            labelColour = entry.subRows != 0 ? kChosenColour : kValueColour;
+            valueColour = kValueColour;
+        }
+        if (alpha >= 16) drawItem(0x187 - widthOf(label, out), y, labelColour, alpha, label, out);
+        drawItem(0x1a1, y, valueColour, alpha, entry.value, out);
+    }
+}
+
 // browser_str_related (0x00231388): the title, the widest entry's width (browser_str_related2), the arrow and the one or two
 // entries of the crossfade (R4); the places and colours are verify_text2.mjs LIST_Y and PLACES.
 template <class A>
@@ -846,6 +879,7 @@ PagesFrame Text<A>::pages(const PagesInputs& in) {
     PagesFrame out;
     mainMenuItems(in, out.text);
     out.titleWidth = list(in, out.text, out.unmodelled);
+    versionPage(in, out.text);
     finish(out.text);
     return out;
 }
@@ -862,6 +896,13 @@ TextRamps textRampsOf(const MenusState& menus, const TextRamps& constants) {
     // func_002266E0(0x5E, 0x55, 0x56, 0x57), which the list's entry callbacks call when the page opens (D_00227BE8, D_00227CA8,
     // clock_config_change_cb_*); inside an entry the page calls it with others.
     if (menus.page.level == 0) r.panel8Ids = {0x5e, 0x55, 0x56, 0x57};
+    if (menus.versionRamp.state != 0 || menus.version.panelOn != 0) {
+        const VersionPage& v = menus.version;
+        r.panel8On = v.panelOn;
+        r.panel8 = v.panelAlpha;
+        if (menus.versionRamp.state != 0) r.panel8Ids = v.hints;
+        r.adjustRow = v.rows.at(static_cast<size_t>(std::clamp(v.selected, 0, int(kVersionRows) - 1))).subRows;
+    }
     return r;
 }
 
@@ -895,6 +936,7 @@ PagesInputs pagesOf(const MenusState& menus, const ClockState& clock, const Conf
     in.width = width;
     in.height = height;
     in.pending = menus.pagePointers[4];
+    in.version = menus.version;
     return in;
 }
 

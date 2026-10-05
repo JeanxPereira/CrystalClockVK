@@ -525,8 +525,11 @@ Frame Clock<A>::frame(const FrameInputs& in) {
         }
         m_menus->step(world, ext, m_notes);
         const TextRamps& constants = in.textRamps ? *in.textRamps : m_textRamps;
-        pageRamps = textRampsOf(menusAtPages(before, m_menusState), constants);
-        pages = pagesOf(menusAtPages(before, m_menusState), atMenus, atItems, pageRamps, m_width, m_height);
+        MenusState seen = menusAtPages(before, m_menusState);
+        seen.version = m_menusState.versionDrawn;
+        seen.versionRamp = m_menusState.versionRampDrawn;
+        pageRamps = textRampsOf(seen, constants);
+        pages = pagesOf(seen, atMenus, atItems, pageRamps, m_width, m_height);
         out.cut();
         if (m_text) {
             PagesFrame drawn = m_text->pages(*pages);
