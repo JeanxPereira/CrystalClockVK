@@ -7,7 +7,7 @@
 
 #include "audio/ClockSound.hpp"
 
-struct SDL_AudioStream;
+#include <SDL3/SDL_audio.h>
 
 namespace audio {
 
@@ -41,6 +41,7 @@ public:
     void setVolume(float volume) { m_volume = volume; }
     float volume() const { return m_volume; }
     const LiveAudioStats& stats() const { return m_stats; }
+    int queuedFrames() const { return m_stream ? int(SDL_GetAudioStreamQueued(m_stream)) / 4 : -1; }
     std::string finish();
 
 private:
