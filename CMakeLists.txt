@@ -125,6 +125,8 @@ add_library(ClockSceneNative STATIC src/scene/ClockState.cpp src/scene/Camera.cp
 target_include_directories(ClockSceneNative PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_compile_definitions(ClockSceneNative PRIVATE SCENE_NATIVE_ONLY)
 target_link_libraries(ClockSceneNative PRIVATE nlohmann_json::nlohmann_json)
+target_sources(ClockScene PRIVATE src/scene/ColdRamps.cpp)
+target_sources(ClockSceneNative PRIVATE src/scene/ColdRamps.cpp)
 
 add_library(ClockRender STATIC src/render/Device.cpp src/render/NativeRenderer.cpp)
 add_dependencies(ClockRender Shaders)
