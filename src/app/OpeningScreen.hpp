@@ -20,6 +20,7 @@ public:
     int32_t stage() const { return m_opening.timeline().state().stage; }
     float cameraZ() const { return m_opening.timeline().state().camera[2]; }
     const scene::opening::HandOff* handOff() const { return m_opening.handOff(); }
+    uint32_t randState() const { return m_opening.randState(); }
     const std::vector<scene::opening::SoundEvent>& sounds() const { return m_opening.sounds(); }
 
 private:

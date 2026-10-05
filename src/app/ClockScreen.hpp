@@ -1,6 +1,4 @@
 #pragma once
-#include <filesystem>
-
 #include "app/Screen.hpp"
 #include "scene/Clock.hpp"
 
@@ -9,7 +7,6 @@ namespace app {
 class ClockScreen : public FrameSource {
 public:
     ClockScreen(const scene::ClockInputs& inputs, const scene::FrameInputs& frame);
-    static ClockScreen fromStart(const std::filesystem::path& start, const std::filesystem::path& mesh);
 
     void setTime(const scene::ClockTime& time, const scene::ClockItems& items);
     void step() override;

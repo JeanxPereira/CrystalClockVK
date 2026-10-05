@@ -110,7 +110,7 @@ flowchart LR
 
     subgraph In["Inputs"]
         direction TB
-        Start(["start.json<br/>a captured moment"]):::input
+        Start(["Cold start<br/>the program's initial values � init functions"]):::input
         Data(["Your dumps<br/>textures · FNTOSD · hddosd.elf"]):::input
         Time(["Local time"]):::input
     end
@@ -204,16 +204,22 @@ words are read from your `hddosd.elf`.
 bin\CrystalClock.exe
 ```
 
-The clock starts from a real moment, the first frame of the `whole3-clock` capture
-(`resources/clock/start.json`, the model has no default state), and runs on local time from there. Over the
-first seconds the rods sweep from the captured hour to yours.
+The clock starts as the console starts it: the initial values of `hddosd.elf`, the ported init functions of the clock thread
+(`module_clock_init_resources` and its callees), the host's settings and local time, then frames at 59.94 Hz. With no flag it
+runs the clock module's own entry to the main menu (the menu takes input 129 frames after the thread starts); `--clock` then
+opens System Configuration and hides the list with Square (the clock alone); `--boot` plays the opening, hands off and starts
+the clock thread after it. Settings come from `%LOCALAPPDATA%/CrystalClockVK/settings.json` (`language`, `aspect`, `timeZone`,
+`summerTime`, `dateFormat`, `timeFormat`); when it is absent the console's first-start defaults apply and the time zone is the host's.
 
 | Flag | Does |
 |---|---|
 | `--soak N` | Runs an unattended scripted session for N seconds (resolutions, MSAA, resizes, minimise, pause and step, every target, a midnight crossing, screenshots) and reports frames and validation errors |
 | `--smoke` | A 5.5 s resize and minimise run |
 | `--no-validation` | Runs without the Vulkan validation layers |
-| `--start <scene.json>` | Starts from another capture's first frame |
+| `--boot` | Plays the opening, then the clock thread starts from the opening's hand-off |
+| `--clock` | Starts at the clock alone instead of the main menu |
+| `--pal`, `--language N`, `--aspect N` | Video mode and console settings for this run |
+| `--settings <settings.json>` | Another host settings file |
 | `--resources <dir>` | The folder of raw OSD resource files to decode |
 | `--bios <rom.bin>` | Extracts the BIOS's resource files into the resource folder first |
 | `--assets <assets.bin>` | Where the decoded cache is read and written |

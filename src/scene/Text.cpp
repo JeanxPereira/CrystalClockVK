@@ -121,8 +121,7 @@ Text<A>::Text(std::shared_ptr<const Font> font, std::shared_ptr<const ProgramIma
     : m_fontFile(std::move(font)), m_program(std::move(program)), m_cache(inputs.cache), m_font(inputs.font), m_ramps(inputs.ramps), m_settings(inputs.settings) {
     if (!m_fontFile || !m_program) throw std::runtime_error("text: no font or program");
     // The library's context is read from the capture (scene.json's input.font); without it there is no cache to draw from.
-    if (m_cache.list.empty() || m_cache.cells <= 0 || m_cache.cellW <= 0 || m_cache.cellH <= 0)
-        throw std::runtime_error("text: the glyph cache is empty (the input has no font context); build the clock without text");
+    if (m_cache.list.empty()) throw std::runtime_error("text: the glyph cache is empty (the input has no font context); build the clock without text");
     m_libraryColour = m_font.colour;
     m_cells.assign(static_cast<size_t>(m_cache.cells), 0);
     for (const FontCacheEntry& e : m_cache.list)
@@ -397,6 +396,7 @@ std::optional<float> Text<A>::putCharacter(const Character& c, bool measuring, T
             }
             // _scePFontUpdateTex: the picture into the entry's cell, the one the lay-out dealt the head of the list.
             const size_t cell = static_cast<size_t>(list[0].cell);
+            if (list[0].cell < 0 || cell >= m_drawn.size()) throw std::runtime_error("text: the entry for code " + std::to_string(c.code) + " has cell " + std::to_string(list[0].cell) + " of " + std::to_string(m_drawn.size()));
             if (m_drawn.at(cell)) throw std::runtime_error("text: a cell drawn in this frame is given another glyph in the same frame");
             m_cells.at(cell) = c.code;
             list[0].loaded = 1;
@@ -467,6 +467,12 @@ int32_t Text<A>::widthOf(const std::string& text, TextFrame& out) {
     const float x = scaleX(m_font);
     const float reach = putString(text, true, out);
     return A::toInt(A::add(static_cast<float>(A::toInt(reach)), A::mul(static_cast<float>(m_font.pitch), x)));
+}
+
+template <class A>
+int32_t Text<A>::stringWidth(const std::string& text) {
+    TextFrame scratch;
+    return widthOf(text, scratch);
 }
 
 // DrawIcon (0x00226508): a button's picture, 28 wide from texture 8 (pictures 0 and 1) or 25 wide from texture 9, half

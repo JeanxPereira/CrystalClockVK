@@ -163,6 +163,8 @@ public:
     TextFrame frame(const TextFrameInputs& in);
     // The pages function's text (the main menu's items, System Configuration's list), before the bars, the cache carried.
     PagesFrame pages(const PagesInputs& in);
+    // func_00213EE8: the width of a string through calcDrawArea at the font state as it stands.
+    int32_t stringWidth(const std::string& text);
     // One string through Font_PutsPackets at the font state as it stands, as a frame of its own (for tests).
     TextFrame drawString(const std::string& text, int32_t width = 640, int32_t height = 224);
 

@@ -45,6 +45,8 @@ public:
     std::array<Rgba, 16> table(const FontBlock& block) const;
     const FontBlock* blockAt(uint32_t at) const;
     const std::vector<FontBlock>& blocks() const { return m_blocks; }
+    // The s16 at `offset` of the expanded file's header (+0x50 ascent, +0x52 descent, +0x54 the blank's width).
+    int32_t header16(uint32_t offset) const;
 
 private:
     std::vector<uint8_t> m_data;

@@ -19,7 +19,8 @@
 #include <string>
 #include <vector>
 
-#include "scene/SceneInputs.hpp"
+#include "scene/ColdStart.hpp"
+#include "app/HostInputs.hpp"
 #include "app/ClockAssets.hpp"
 #include "app/DebugPanel.hpp"
 #include "app/BootChain.hpp"
@@ -60,15 +61,16 @@ struct Options {
     double soak = 0;
     bool boot = false;
     bool towersDemo = false;
-    uint32_t lightsPhase = 0xD80;
+    std::optional<uint32_t> lightsPhase;
     std::filesystem::path openingTextures;
-    std::filesystem::path bootStart = CLOCK_START_BOOT;
     std::string capture;
     std::filesystem::path shaders = CLOCK_SHADERS;
     std::filesystem::path textures;
-    std::filesystem::path start = CLOCK_MENUS_START;
-    bool startGiven = false;
+    std::filesystem::path settings;
     bool clockStart = false;
+    bool pal = false;
+    std::optional<int> language;
+    std::optional<int> aspect;
     std::filesystem::path cubeMesh;
     std::filesystem::path mesh;
     std::filesystem::path screenshots = CLOCK_SCREENSHOTS;
@@ -153,8 +155,11 @@ int main(int argc, char** argv) {
         else if (arg == "--soak" && more) options.soak = std::atof(argv[++i]);
         else if (arg == "--shaders" && more) options.shaders = argv[++i];
         else if (arg == "--textures" && more) options.textures = argv[++i];
-        else if (arg == "--start" && more) { options.start = argv[++i]; options.startGiven = true; }
+        else if (arg == "--settings" && more) options.settings = argv[++i];
         else if (arg == "--clock") options.clockStart = true;
+        else if (arg == "--pal") options.pal = true;
+        else if (arg == "--language" && more) options.language = std::atoi(argv[++i]);
+        else if (arg == "--aspect" && more) options.aspect = std::atoi(argv[++i]);
         else if (arg == "--cube-mesh" && more) options.cubeMesh = argv[++i];
         else if (arg == "--mesh" && more) options.mesh = argv[++i];
         else if (arg == "--screenshots" && more) options.screenshots = argv[++i];
@@ -164,12 +169,12 @@ int main(int argc, char** argv) {
         else if (arg == "--bios" && more) options.bios = argv[++i];
         else if (arg == "--assets" && more) options.pack = argv[++i];
         else {
-            std::fprintf(stderr, "usage: CrystalClock [--resources dir] [--bios rom.bin] [--assets assets.bin] [--smoke] [--soak seconds] [--clock] [--boot [--towers none|demo] [--lights-phase N] [--opening-textures dir] [--capture all|n,n,...]] [--no-validation] [--shaders dir]\n"
-                                 "                    [--start scene.json] [--screenshots dir] [--textures dir] [--mesh rod-mesh.json] [--cube-mesh cube-mesh.json] [--font FNTOSD] [--program hddosd.elf]\n");
+            std::fprintf(stderr, "usage: CrystalClock [--resources dir] [--bios rom.bin] [--assets assets.bin] [--smoke] [--soak seconds] [--clock] [--pal] [--language N] [--aspect N] [--boot [--towers none|demo] [--lights-phase N] [--opening-textures dir] [--capture all|n,n,...]] [--no-validation] [--shaders dir]\n"
+                                 "                    [--settings settings.json] [--screenshots dir] [--textures dir] [--mesh rod-mesh.json] [--cube-mesh cube-mesh.json] [--font FNTOSD] [--program hddosd.elf]\n");
             return 1;
         }
     }
-    if (!options.startGiven) options.start = options.clockStart ? CLOCK_CLOCK_START : CLOCK_MENUS_START;
+    if (options.settings.empty()) options.settings = assets::userDataDirectory() / "settings.json";
     if (options.pack.empty()) options.pack = assets::userDataDirectory() / "assets.bin";
     // The clock's assets: the console's raw resource files decoded (or their cache); loose files only from explicit flags.
     std::optional<assets::LoadedAssets> loaded;
@@ -228,6 +233,7 @@ int main(int argc, char** argv) {
     if (!useTextureFiles && !(decoded && decoded->find("TEXCFLOW"))) missing.push_back("the clock textures");
     if (!meshAsset && options.mesh.empty()) missing.push_back("the rod mesh");
     if (!cubeAsset && options.cubeMesh.empty()) missing.push_back("the cube mesh");
+    if (programFile.empty()) missing.push_back("the program hddosd.elf (HDD OSD 1.10U)");
     if (options.boot && options.openingTextures.empty() && !(decoded && decoded->find(assets::kOpeningTextures[0].name))) missing.push_back("the opening textures");
     if (!missing.empty()) {
         std::string list;
@@ -259,34 +265,16 @@ int main(int argc, char** argv) {
             std::printf("opening textures: %s\n", openingFiles ? ("PNG files in " + openingDirectory.string()).c_str() : sourceOf(*decoded->find(assets::kOpeningTextures[0].name)).c_str());
         }
 
-        // The clock as the whole3-clock capture holds it at its first frame (resources/clock/start.json, or a
-        // capture's scene.json through --start), then real time.
+        // The clock starts as the console's does: the program's initial values, the init functions, the host's inputs (scene/ColdStart.cpp).
         const scene::RodMesh cubeMesh = cubeAsset ? app::rodMeshOf(*cubeAsset) : scene::loadRodMesh(options.cubeMesh);
-        nlohmann::json input = scene::firstInput(options.start.string());
-        if (options.boot) {
-            input = scene::firstInput(options.bootStart.string());
-            for (const auto& [key, value] : scene::firstInput(CLOCK_MENUS_START).items())
-                if (!input.contains(key)) input[key] = value;
-        }
-        scene::ClockInputs clockInputs = scene::hasMenus(input) ? scene::clockInputs(input, (meshAsset ? app::rodMeshOf(*meshAsset) : scene::loadRodMesh(options.mesh)), &cubeMesh)
-                                                                                      : scene::clockInputs(input, (meshAsset ? app::rodMeshOf(*meshAsset) : scene::loadRodMesh(options.mesh)));
-        if (clockInputs.menus) clockInputs.menus->options.browserEnters = false;
-        // The text needs the font library's context of the start state; a start without it runs without text.
+        const std::shared_ptr<const scene::ProgramImage> program = std::make_shared<const scene::ProgramImage>(std::move(programFile));
         std::shared_ptr<const scene::Font> font;
-        std::shared_ptr<const scene::ProgramImage> program;
-        if (!input.contains("font")) {
-            std::printf("%s has no font context: the clock runs without text\n", options.start.string().c_str());
-        } else if (!fontFile.empty() && !programFile.empty()) {
-            font = std::make_shared<const scene::Font>(std::move(fontFile));
-            clockInputs.font = font;
-            program = std::make_shared<const scene::ProgramImage>(std::move(programFile));
-            clockInputs.program = program;
-        }
-        const scene::ClockInputs clockInputs0 = clockInputs;
-        auto clockPtr = std::make_unique<Clock>(clockInputs0);
-        scene::FrameInputs inputs = scene::frameInputs(input);
-        app::firstFrame(inputs);
-        inputs.threadStep = false;
+        if (!fontFile.empty()) font = std::make_shared<const scene::Font>(std::move(fontFile));
+        else std::printf("no FNTOSD: the clock runs without text\n");
+        const scene::ColdAssets coldAssets{program, font, meshAsset ? app::rodMeshOf(*meshAsset) : scene::loadRodMesh(options.mesh), cubeMesh};
+        scene::ClockInputs clockInputs;
+        std::unique_ptr<Clock> clockPtr;
+        scene::FrameInputs inputs;
 
         const bool captureAll = options.capture == "all";
         std::set<uint64_t> captureAt;
@@ -326,7 +314,7 @@ int main(int argc, char** argv) {
         app::Bindings bindings = app::Bindings::defaults();
         app::PadReader reader;
         std::map<SDL_JoystickID, SDL_Gamepad*> gamepads;
-        scene::ConfigItems items = clockInputs.menus ? clockInputs.menus->items : scene::ConfigItems{};
+        scene::ConfigItems items{};
         int32_t previousLevel = 0;
         std::vector<std::string> visited;
         bool soakFailed = false;
@@ -365,20 +353,30 @@ int main(int argc, char** argv) {
                 if (visited.empty() || visited.back() != app::screenName(screen)) visited.push_back(app::screenName(screen));
                 if (clockPtr->state().mode == 3 || clockPtr->state().scene.leaving != 0 || menus->screenCode == 9999) soakFailed = true;
             }
-            if (options.boot) inputs.timeFilled = 1;
+            scene::fillTime(inputs);
             inputs.threadStep = true;
             app::nextFrame(inputs);
             return produced;
         };
         std::unique_ptr<app::BootChain> chain;
         app::OpeningScreen* bootOpening = nullptr;
-        const scene::FrameInputs inputs0 = inputs;
-        const auto buildBoot = [&] {
-            if (!program) throw std::runtime_error("--boot needs hddosd.elf (HDD OSD 1.10U) and FNTOSD");
-            clockPtr = std::make_unique<Clock>(clockInputs0);
-            inputs = inputs0;
-            items = clockInputs0.menus ? clockInputs0.menus->items : scene::ConfigItems{};
+        const auto startClock = [&](bool wide, std::optional<uint32_t> randState) {
+            const system_clock::time_point now = system_clock::now() + offset;
+            scene::ColdInputs cold = app::hostInputs({options.pal, options.language, options.aspect}, now, options.settings, *std::chrono::current_zone());
+            cold.wide = wide;
+            if (randState) cold.randState = *randState;
+            cold.gsAllocator = assets::clockTexturesEnd();
+            scene::ColdStartOut start = scene::coldStart<scene::NativeArithmetic>(coldAssets, cold);
+            clockInputs = std::move(start.clock);
+            if (clockInputs.menus) clockInputs.menus->options.browserEnters = false;
+            clockPtr = std::make_unique<Clock>(clockInputs);
+            inputs = start.frame;
+            app::firstFrame(inputs);
+            inputs.threadStep = false;
+            items = clockInputs.menus->items;
             previousLevel = 0;
+        };
+        const auto buildBoot = [&] {
             scene::opening::BootOptions boot;
             boot.lightsPhase = options.lightsPhase;
             if (options.towersDemo) {
@@ -394,9 +392,46 @@ int main(int argc, char** argv) {
             }
             auto opening = std::make_unique<app::OpeningScreen>(boot, program);
             bootOpening = opening.get();
-            chain = std::make_unique<app::BootChain>(std::move(opening), std::make_unique<FunctionScreen>([&] { return stepClock(); }), scene::opening::kFramesToClock);
+            clockPtr.reset();
+            auto clockScreen = std::make_unique<FunctionScreen>([&] {
+                if (!clockPtr) startClock(true, bootOpening->randState());
+                return stepClock();
+            });
+            chain = std::make_unique<app::BootChain>(std::move(opening), std::move(clockScreen), scene::opening::kFramesToClock);
         };
-        if (options.boot) buildBoot();
+        const auto settle = [&](const auto& done) {
+            for (int n = 0; !done() && n < 2000; ++n) {
+                const system_clock::time_point now = system_clock::now() + offset;
+                inputs.time = clockTime(now);
+                inputs.items = clockItems(now);
+                stepClock();
+            }
+        };
+        if (options.boot) {
+            buildBoot();
+        } else {
+            startClock(false, std::nullopt);
+            settle([&] { return clockPtr->state().mode == 0 && clockPtr->menus()->mainMenu.ramp.state == 2; });
+            if (options.clockStart) {
+                const auto run = [&](int count) {
+                    int n = 0;
+                    settle([&] { return n++ >= count; });
+                };
+                const auto tap = [&](app::PadButton button) {
+                    const uint32_t bit = app::bitOf(button);
+                    reader.down(0, bit);
+                    run(6);
+                    reader.up(0, bit);
+                    run(1);
+                };
+                tap(app::PadButton::Down);
+                tap(app::PadButton::Cross);
+                settle([&] { return clockPtr->menus()->page.ramp.state == 2; });
+                tap(app::PadButton::Square);
+                settle([&] { return clockPtr->state().menuRamp.state == 2; });
+            }
+            std::printf("start: frame %d, mode %d, menu ramp state %d\n", clockPtr->state().counter, clockPtr->state().mode, clockPtr->state().menuRamp.state);
+        }
         const auto produce = [&] {
             const system_clock::time_point now = system_clock::now() + offset;
             inputs.time = clockTime(now);
@@ -444,7 +479,7 @@ int main(int argc, char** argv) {
             press(13.0, app::PadButton::Down);
             press(14.0, app::PadButton::Cross);
             script.push_back({17.0, shot("boot-menu-next")});
-        } else if (options.soak > 0 && clockInputs.menus && !options.clockStart) {
+        } else if (options.soak > 0 && !options.clockStart) {
             const auto press = [&](double at, app::PadButton button) {
                 const uint32_t bit = app::bitOf(button);
                 script.push_back({at, [&reader, bit] { reader.down(0, bit); }});
@@ -690,7 +725,7 @@ int main(int argc, char** argv) {
             std::printf("display %.2f Hz; %llu present intervals, mean %.3f ms (step %.3f ms), %llu off by more than 2 ms, worst off by %.3f ms\n", refreshRate(),
                         static_cast<unsigned long long>(intervals), intervals ? intervalSum / double(intervals) * 1e3 : 0.0, step * 1e3,
                         static_cast<unsigned long long>(uneven), intervalWorst * 1e3);
-        if (options.soak > 0 && clockPtr->menus()) {
+        if (options.soak > 0 && clockPtr && clockPtr->menus()) {
             std::string list;
             for (const std::string& name : visited) list += (list.empty() ? "" : ", ") + name;
             std::printf("screens visited: %s\n", list.c_str());

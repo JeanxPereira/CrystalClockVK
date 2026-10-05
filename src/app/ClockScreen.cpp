@@ -1,15 +1,13 @@
 #include "app/ClockScreen.hpp"
 
 #include "app/NativeFrames.hpp"
-#include "scene/SceneInputs.hpp"
+#include "scene/ColdStart.hpp"
 
 namespace app {
 
-ClockScreen::ClockScreen(const scene::ClockInputs& inputs, const scene::FrameInputs& frame) : m_clock(inputs), m_inputs(frame) { firstFrame(m_inputs); }
-
-ClockScreen ClockScreen::fromStart(const std::filesystem::path& start, const std::filesystem::path& mesh) {
-    const nlohmann::json input = scene::firstInput(start.string());
-    return ClockScreen(scene::clockInputs(input, scene::loadRodMesh(mesh)), scene::frameInputs(input));
+ClockScreen::ClockScreen(const scene::ClockInputs& inputs, const scene::FrameInputs& frame) : m_clock(inputs), m_inputs(frame) {
+    firstFrame(m_inputs);
+    m_inputs.threadStep = false;
 }
 
 void ClockScreen::setTime(const scene::ClockTime& time, const scene::ClockItems& items) {
@@ -19,7 +17,8 @@ void ClockScreen::setTime(const scene::ClockTime& time, const scene::ClockItems&
 
 void ClockScreen::step() {
     m_frame = m_clock.frame(m_inputs);
-    m_inputs.timeFilled = 1;
+    scene::fillTime(m_inputs);
+    m_inputs.threadStep = true;
     nextFrame(m_inputs);
 }
 

@@ -135,6 +135,10 @@ template <class A>
 struct ClockLogic {
     static void step(ClockState& clock);
     static void logic(ClockState& clock);
+    static float seconds(const ClockTime& time);
+    static float hours(const ClockTime& time);
+    static void angles(ClockState& clock);
+    static void colours(ClockState& clock);
     static void scale(ClockState& clock);
     static void blurLevel(ClockState& clock);
     static void overlayStep(ClockState& clock);

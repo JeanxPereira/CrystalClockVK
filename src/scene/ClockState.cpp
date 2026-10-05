@@ -23,7 +23,7 @@ int32_t ease(int64_t target, int32_t old, float factor) {
 
 // facts/clock-state.md: HDD func_0022EBD0, the time becomes the current rod, the eased angles and the progress target.
 template <class A>
-void angles(ClockState& clock) {
+void timeToAngles(ClockState& clock) {
     const ClockTime& time = clock.time;
     const float k1 = clock.logicConstants.rodEasing, k2 = clock.logicConstants.secondsEasing;
     const int32_t current = A::toInt(hours<A>(time)) % 12;
@@ -71,7 +71,7 @@ void cycle(Colour& colour, CycleCounter& counter, std::span<const Colour> table)
 }
 
 // facts/clock-state.md: HDD func_0022EE20 and func_0022E8C0, the two cycling colours, their mix, and every chaser.
-void colours(ClockState& clock) {
+void cycleColours(ClockState& clock) {
     RodsState& state = clock.state;
     ClockColours& base = clock.colours;
     cycle(base.base, clock.cycleCounters.base, clock.cycleTables.base);
@@ -93,9 +93,25 @@ void colours(ClockState& clock) {
 }
 
 template <class A>
+float ClockLogic<A>::seconds(const ClockTime& time) { return scene::seconds<A>(time); }
+
+template <class A>
+float ClockLogic<A>::hours(const ClockTime& time) { return scene::hours<A>(time); }
+
+template <class A>
+void ClockLogic<A>::angles(ClockState& clock) {
+    timeToAngles<A>(clock);
+}
+
+template <class A>
+void ClockLogic<A>::colours(ClockState& clock) {
+    cycleColours(clock);
+}
+
+template <class A>
 void ClockLogic<A>::logic(ClockState& clock) {
     tickRamp(clock.appearance);
-    angles<A>(clock);
+    angles(clock);
     colours(clock);
     const float step = clock.logicConstants.progressStep;
     const int32_t current = clock.state.currentRod;
