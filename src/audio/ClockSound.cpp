@@ -139,6 +139,7 @@ ClockSound::ClockSound(ClockSoundSources sources, ClockSoundOptions options) : m
             enqueue(t.offset, c);
         }
         firstTick = kFirstTickAfterInit;
+        m_log.clear();
     }
     if (m_options.autoTicks) {
         m_nextTickCycle = firstTick * kCyclesPerSample;

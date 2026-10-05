@@ -98,6 +98,14 @@ IopClock::IopClock(assets::View libsd, assets::View osdsnd, assets::View iop) : 
             }
         }
     };
+    const auto seedHandle = [&](uint32_t a, uint32_t value) {
+        if (word(a) != 0) return;
+        for (size_t b = 0; b < 4; ++b) m_ram[a + b] = uint8_t(value >> (8 * b));
+    };
+    // libsd's module start creates its event flags and keeps the kernel's handles here; a start image built from the file has none, and any nonzero handle serves.
+    seedHandle(0x90050, 0x01361521);
+    seedHandle(0x90054, 0x01360f23);
+    seedHandle(0x90058, 1);
     link(uint32_t(kLibsdBase), libsd.size());
     link(uint32_t(kOsdsndBase), osdsnd.size());
     scan(uint32_t(kLibsdBase), libsd.size());
