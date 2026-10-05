@@ -145,6 +145,9 @@ add_library(ClockAssets STATIC src/assets/Bytes.cpp src/assets/Expand.cpp src/as
 target_include_directories(ClockAssets PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 add_library(ClockInput STATIC src/app/Input.cpp src/app/Screens.cpp)
+add_library(HostInputs STATIC src/app/HostInputs.cpp)
+target_include_directories(HostInputs PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(HostInputs PUBLIC nlohmann_json::nlohmann_json)
 target_include_directories(ClockInput PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(ClockInput PUBLIC SDL3::SDL3 ClockScene)
 
@@ -172,7 +175,7 @@ set(CLOCK_START_BOOT ${CMAKE_SOURCE_DIR}/resources/clock/start-boot.json)
 
 if(NOT CLOCK_BUILD_TESTS)
 add_executable(CrystalClock src/app/Main.cpp src/app/DebugPanel.cpp src/app/Png.cpp src/app/ClockAssets.cpp)
-target_link_libraries(CrystalClock PRIVATE ClockRender ClockSceneNative SceneInputs ImGui ClockAssets ClockInput BootScreens)
+target_link_libraries(CrystalClock PRIVATE ClockRender ClockSceneNative SceneInputs ImGui ClockAssets ClockInput BootScreens HostInputs)
 target_compile_definitions(CrystalClock PRIVATE
     CLOCK_SHADERS="${CLOCK_BIN_DIR}/shaders" CLOCK_START="${CLOCK_START}" CLOCK_START_BOOT="${CLOCK_START_BOOT}"
     CLOCK_SCREENSHOTS="${CMAKE_SOURCE_DIR}/out/screenshots"

@@ -69,6 +69,9 @@ struct Options {
     std::filesystem::path start = CLOCK_MENUS_START;
     bool startGiven = false;
     bool clockStart = false;
+    bool pal = false;
+    std::optional<int> language;
+    std::optional<int> aspect;
     std::filesystem::path cubeMesh;
     std::filesystem::path mesh;
     std::filesystem::path screenshots = CLOCK_SCREENSHOTS;
@@ -155,6 +158,9 @@ int main(int argc, char** argv) {
         else if (arg == "--textures" && more) options.textures = argv[++i];
         else if (arg == "--start" && more) { options.start = argv[++i]; options.startGiven = true; }
         else if (arg == "--clock") options.clockStart = true;
+        else if (arg == "--pal") options.pal = true;
+        else if (arg == "--language" && more) options.language = std::atoi(argv[++i]);
+        else if (arg == "--aspect" && more) options.aspect = std::atoi(argv[++i]);
         else if (arg == "--cube-mesh" && more) options.cubeMesh = argv[++i];
         else if (arg == "--mesh" && more) options.mesh = argv[++i];
         else if (arg == "--screenshots" && more) options.screenshots = argv[++i];
@@ -164,7 +170,7 @@ int main(int argc, char** argv) {
         else if (arg == "--bios" && more) options.bios = argv[++i];
         else if (arg == "--assets" && more) options.pack = argv[++i];
         else {
-            std::fprintf(stderr, "usage: CrystalClock [--resources dir] [--bios rom.bin] [--assets assets.bin] [--smoke] [--soak seconds] [--clock] [--boot [--towers none|demo] [--lights-phase N] [--opening-textures dir] [--capture all|n,n,...]] [--no-validation] [--shaders dir]\n"
+            std::fprintf(stderr, "usage: CrystalClock [--resources dir] [--bios rom.bin] [--assets assets.bin] [--smoke] [--soak seconds] [--clock] [--pal] [--language N] [--aspect N] [--boot [--towers none|demo] [--lights-phase N] [--opening-textures dir] [--capture all|n,n,...]] [--no-validation] [--shaders dir]\n"
                                  "                    [--start scene.json] [--screenshots dir] [--textures dir] [--mesh rod-mesh.json] [--cube-mesh cube-mesh.json] [--font FNTOSD] [--program hddosd.elf]\n");
             return 1;
         }
