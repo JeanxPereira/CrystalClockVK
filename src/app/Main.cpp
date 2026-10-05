@@ -366,11 +366,10 @@ int main(int argc, char** argv) {
             }
             const int32_t rampBefore = clockPtr->state().menuRamp.state;
             const bool squarePressed = (inputs.menu.pad.pressed & scene::pad::Square) != 0;
-            produced = clockPtr->frame(inputs);
             if (audio && squarePressed) {
                 const int32_t rampAfter = clockPtr->state().menuRamp.state;
-                if (rampBefore == 2 && rampAfter == 3) audio->queueSquare(true);
-                else if (rampBefore == 0 && rampAfter == 1) audio->queueSquare(false);
+                if (rampBefore == 2 && rampAfter == 3) audio->queueSquare(false);
+                else if (rampBefore == 0 && rampAfter == 1) audio->queueSquare(true);
             }
             if (const scene::MenusState* menus = clockPtr->menus()) {
                 items = clockPtr->items();

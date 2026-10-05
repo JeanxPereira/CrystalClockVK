@@ -12,7 +12,7 @@ namespace {
 
 constexpr int kRate = 48000;
 constexpr uint64_t kSamplesNumerator = 4004, kSamplesDenominator = 5;
-constexpr uint32_t kPrefillFrames = 2;
+constexpr uint32_t kPrefillFrames = 4;
 constexpr uint32_t kMaxQueuedFrames = 8;
 constexpr uint32_t kFrameSamples = 801;
 
