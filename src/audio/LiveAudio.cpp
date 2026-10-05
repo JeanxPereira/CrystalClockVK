@@ -101,7 +101,7 @@ void LiveAudio::step() {
     const uint32_t queued = uint32_t(SDL_GetAudioStreamQueued(m_stream)) / 4;
     m_stats.minQueuedFrames = std::min(m_stats.minQueuedFrames, queued);
     m_stats.maxQueuedFrames = std::max(m_stats.maxQueuedFrames, queued);
-    if (queued == 0) ++m_stats.underruns;
+    if (queued == 0 && m_stats.frames > 120) ++m_stats.underruns;
     if (queued > kMaxQueuedFrames * kFrameSamples) {
         ++m_stats.overruns;
         return;
