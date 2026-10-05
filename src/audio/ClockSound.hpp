@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "assets/Bytes.hpp"
+#include "assets/Resources.hpp"
 #include "audio/SpuWrite.hpp"
 #include "audio/driver/Driver.hpp"
 #include "audio/spu2/Spu2.hpp"
@@ -25,6 +26,7 @@ struct ClockSoundSources {
 };
 
 ClockSoundSources clockSoundSources(const std::filesystem::path& resources);
+ClockSoundSources clockSoundSources(const assets::AssetSet& decoded);
 
 struct ClockSoundOptions {
     Video video = Video::Ntsc;

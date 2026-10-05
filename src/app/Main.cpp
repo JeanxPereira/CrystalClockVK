@@ -343,7 +343,7 @@ int main(int argc, char** argv) {
             audioOptions.video = options.pal ? audio::Video::Pal : audio::Video::Ntsc;
             audioOptions.wav = options.audioWav;
             if (!options.audioWav.empty()) audioOptions.commandLog = options.audioWav.string() + ".commands.txt";
-            audio = std::make_unique<audio::LiveAudio>(audio::clockSoundSources(folder), audioOptions);
+            audio = std::make_unique<audio::LiveAudio>(decoded && decoded->find("SNDIMAGE") ? audio::clockSoundSources(*decoded) : audio::clockSoundSources(folder), audioOptions);
             core::log(core::Level::Info, core::Subsystem::Audio, "init: ready, mute {}", options.mute);
         } catch (const std::exception& error) {
             core::log(core::Level::Error, core::Subsystem::Audio, "off: {}", error.what());
@@ -351,6 +351,7 @@ int main(int argc, char** argv) {
         std::ofstream trace;
         if (!options.traceFile.empty()) trace.open(options.traceFile, std::ios::trunc);
         app::BootPhase lastPhase = app::BootPhase::Opening;
+        bool emptyWarned = false;
         const auto phaseName = [](app::BootPhase phase) { return phase == app::BootPhase::Opening ? "opening" : phase == app::BootPhase::Gap ? "black gap" : "clock"; };
         const auto stepClock = [&] {
             const system_clock::time_point now = system_clock::now() + offset;
@@ -509,6 +510,10 @@ int main(int argc, char** argv) {
                 audio->step();
             }
             ++logicFrames;
+            if (!emptyWarned && frame.passes.empty() && (!chain || chain->phase() == app::BootPhase::Clock)) {
+                core::log(core::Level::Warn, core::Subsystem::Clock, "the clock produced a frame with no passes");
+                emptyWarned = true;
+            }
             if (trace.is_open()) {
                 size_t vertices = 0;
                 for (const scene::Pass& pass : frame.passes) vertices += pass.vertices.size();

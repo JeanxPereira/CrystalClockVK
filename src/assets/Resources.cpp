@@ -21,7 +21,7 @@ namespace assets {
 namespace {
 
 // The files the decode reads, in this order.
-constexpr std::array<std::string_view, 3> kDecoded{"TEXIMAGE", "FNTOSD", kProgramName};
+constexpr std::array<std::string_view, 4> kDecoded{"TEXIMAGE", "FNTOSD", kProgramName, "SNDIMAGE"};
 
 // The rod mesh in HDD OSD 1.10U's data (facts/data/rod-mesh.json): 64 positions, 16 normals, 64 texture coordinates.
 constexpr uint32_t kFaces = 16, kPositions = 0x002b4b90, kNormals = 0x002b5390, kCoordinates = 0x002b4f90;
@@ -50,7 +50,7 @@ std::vector<ReadFile> readSources(const fs::path& folder) {
 }  // namespace
 
 // The decoder's version and every constant it reads by: a change to any of them makes the caches of before stale.
-constexpr uint32_t kDecoderVersion = 3;
+constexpr uint32_t kDecoderVersion = 4;
 
 uint64_t decoderFingerprint() {
     uint64_t hash = 0xcbf29ce484222325ull;
@@ -145,6 +145,16 @@ AssetSet decodeFolder(const fs::path& folder) {
         };
         set.assets.push_back({"RODMESH", AssetKind::Mesh, kFaces, 0, *program, meshOf(kFaces, kPositions, kNormals, kCoordinates)});
         set.assets.push_back({"CUBEMESH", AssetKind::Mesh, kCubeFaces, 0, *program, meshOf(kCubeFaces, kCubePositions, kCubeNormals, kCubeCoordinates)});
+    }
+    if (const auto sound = index("SNDIMAGE")) {
+        Bytes sounds = files[*sound].data;
+        bool readable = romdirStart(sounds) >= 0;
+        if (!readable && elf) {
+            sounds = decryptImage(sounds, CipherTables::fromProgram(*elf));
+            readable = romdirStart(sounds) >= 0;
+        }
+        if (readable) set.assets.push_back({"SNDIMAGE", AssetKind::SoundContainer, 0, 0, *sound, std::move(sounds)});
+        else std::fprintf(stderr, "assets: SNDIMAGE holds no directory, plain or decrypted: the sound is not read\n");
     }
     return set;
 }

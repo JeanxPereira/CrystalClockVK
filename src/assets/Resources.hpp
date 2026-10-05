@@ -13,7 +13,7 @@ namespace assets {
 inline constexpr std::array<std::string_view, 6> kResourceNames{"FNTOSD", "JISUCS", "SNDIMAGE", "TEXIMAGE", "ICOIMAGE", "SKBIMAGE"};
 inline constexpr std::string_view kProgramName = "hddosd.elf";
 
-enum class AssetKind : uint32_t { TextureRgba32 = 1, TextureIndexed = 2, Font = 3, Program = 4, Mesh = 5 };
+enum class AssetKind : uint32_t { TextureRgba32 = 1, TextureIndexed = 2, Font = 3, Program = 4, Mesh = 5, SoundContainer = 6 };
 
 struct SourceFile {
     std::string name;
