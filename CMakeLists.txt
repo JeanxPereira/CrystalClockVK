@@ -150,6 +150,8 @@ add_library(ClockAssets STATIC src/assets/Bytes.cpp src/assets/Expand.cpp src/as
     src/assets/ClockTextures.cpp src/assets/Resources.cpp src/assets/AssetPack.cpp src/assets/Program.cpp)
 target_include_directories(ClockAssets PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
+include(cmake/Audio.cmake)
+
 add_library(ClockInput STATIC src/app/Input.cpp src/app/Screens.cpp)
 add_library(HostInputs STATIC src/app/HostInputs.cpp)
 target_include_directories(HostInputs PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
