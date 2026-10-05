@@ -20,6 +20,8 @@ constexpr uint32_t kMemset = uint32_t(kOsdsndBase) + 0x8624;
 constexpr uint32_t kMemcpy = uint32_t(kOsdsndBase) + 0x861c;
 constexpr uint32_t kDmaCodeFirst = 0x8d200;
 constexpr uint32_t kDmaCodeEnd = 0x8d600;
+constexpr uint32_t kWaitEventFlag = 0xe090;
+constexpr uint32_t kDmaResumeCycles = 793;
 constexpr uint32_t kMultiplyExtra = 7;
 constexpr uint32_t kMemsetTickLength = 0x3c;
 constexpr uint32_t kMemsetTickCycles = 67;
@@ -45,7 +47,13 @@ bool isControl(uint32_t word) {
 void addVblankPreemption(std::span<SpuWrite> writes, uint64_t entryCycle, std::span<const uint64_t> vblankCycles) {
     size_t next = size_t(std::lower_bound(vblankCycles.begin(), vblankCycles.end(), entryCycle) - vblankCycles.begin());
     uint64_t shift = 0;
+    uint32_t segment = 0;
     for (SpuWrite& w : writes) {
+        if (w.resume != segment) {
+            segment = w.resume;
+            shift = 0;
+            while (next < vblankCycles.size() && vblankCycles[next] - entryCycle <= segment) ++next;
+        }
         uint64_t t = w.cycle + shift;
         while (next < vblankCycles.size() && vblankCycles[next] - entryCycle <= t) {
             shift += kVblankHandlerCycles;
@@ -102,6 +110,8 @@ HandlerTiming IopClock::run(uint32_t entry, std::span<const uint32_t> args, uint
     m_seen = {};
     m_stubCycles = 0;
     m_ordinal = 0;
+    m_dmaOrdinal = 0;
+    m_resume = 0;
     m_handlerIsInit = isCommand && handlerId == kInitCommand ? 1 : 0;
     m_boundary = true;
     m_r.fill(0);
@@ -167,6 +177,18 @@ void IopClock::step() {
 }
 
 void IopClock::stub(uint32_t at) {
+    if (at == kWaitEventFlag && m_dma) {
+        const uint32_t now = m_count.instructions + kMultiplyExtra * m_count.multiplies + m_stubCycles;
+        if (const auto done = m_dma(m_dmaOrdinal++, now)) {
+            const uint32_t resume = *done + kDmaResumeCycles;
+            if (resume > now) m_stubCycles += resume - now;
+            m_resume = std::max(resume, now);
+        }
+        ++m_ordinal;
+        m_r[2] = 0;
+        m_pc = uint32_t(m_r[31]);
+        return;
+    }
     const uint32_t cost = stubCost({at, uint32_t(m_r[6])}, m_ordinal);
     if (cost == 0) ++m_out->unmodelledStubs;
     m_stubCycles += cost;
@@ -231,7 +253,7 @@ void IopClock::mmioWrite(uint32_t address, uint32_t value) {
     m_values[address] = uint16_t(value);
     if (m_count.divides != 0) ++m_out->unmeasuredOps;
     if ((address >> 16) == 0x1f90)
-        m_out->writes.push_back({address, uint16_t(value), m_seen.instructions + kMultiplyExtra * m_seen.multiplies + m_stubCycles});
+        m_out->writes.push_back({address, uint16_t(value), m_seen.instructions + kMultiplyExtra * m_seen.multiplies + m_stubCycles, m_resume});
 }
 
 uint32_t IopClock::load(uint32_t address, int size, bool sign) {

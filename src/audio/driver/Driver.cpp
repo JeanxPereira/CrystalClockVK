@@ -55,6 +55,7 @@ void stamp(Driver::State& s, size_t first, const HandlerTiming& timing, const st
         if (w.address != timing.writes[k].address || w.value != timing.writes[k].value)
             throw std::runtime_error(what + ": the IOP clock write " + std::to_string(k) + " differs from the driver's");
         w.cycle = timing.writes[k].cycle;
+        w.resume = timing.writes[k].resume;
     }
 }
 
@@ -77,6 +78,11 @@ void Driver::enableTiming() {
         s.envxLog.push_back({core, voice, v});
         return v;
     };
+}
+
+void Driver::setDmaCompletion(DmaCompletion completion) {
+    if (!m_state->clock) throw std::runtime_error("the DMA completion is set before write timing is enabled");
+    m_state->clock->setDmaCompletion(std::move(completion));
 }
 
 bool Driver::timing() const { return bool(m_state->clock); }

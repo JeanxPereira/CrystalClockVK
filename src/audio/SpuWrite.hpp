@@ -13,6 +13,7 @@ struct SpuWrite {
     uint32_t address = 0;
     uint16_t value = 0;
     uint32_t cycle = 0;
+    uint32_t resume = 0;
 };
 
 struct DriverCommand {

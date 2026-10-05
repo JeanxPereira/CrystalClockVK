@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "audio/SpuWrite.hpp"
+#include "audio/driver/IopClock.hpp"
 #include "audio/driver/Memory.hpp"
 
 namespace audio::driver {
@@ -32,6 +33,7 @@ public:
 
     void seedRegister(uint32_t address, uint16_t value);
     void enableTiming();
+    void setDmaCompletion(DmaCompletion completion);
     bool timing() const;
     void beginFrame(uint32_t frame);
     void command(const DriverCommand& command);

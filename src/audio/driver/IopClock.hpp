@@ -1,6 +1,8 @@
 #pragma once
 #include <array>
 #include <cstdint>
+#include <functional>
+#include <optional>
 #include <span>
 #include <unordered_map>
 #include <unordered_set>
@@ -24,7 +26,19 @@ struct TimedWrite {
     uint32_t address = 0;
     uint16_t value = 0;
     uint32_t cycle = 0;
+    uint32_t resume = 0;
 };
+
+using DmaCompletion = std::function<std::optional<uint32_t>(uint32_t ordinal, uint32_t entry)>;
+
+// psx-spx documents the PS1 SPU only and gives no SPU2 DMA rate. 12622 is the shortest observed time of one 1 KiB chunk in Watson (PCSX2)
+// boot-a, the emulator's floor; 751 is the unmodelled kernel-call time between the clock's wait entry and the transfer start (mode of 167 waits).
+inline constexpr uint32_t kDmaChunkCycles = 12622;
+inline constexpr uint32_t kDmaStartCycles = 751;
+
+inline DmaCompletion nominalDmaCompletion() {
+    return [](uint32_t, uint32_t entry) -> std::optional<uint32_t> { return entry + kDmaStartCycles + kDmaChunkCycles; };
+}
 
 struct HandlerTiming {
     std::vector<TimedWrite> writes;
@@ -42,6 +56,7 @@ public:
     IopClock(assets::View libsd, assets::View osdsnd, assets::View iop);
 
     void seed(uint32_t address, uint16_t value);
+    void setDmaCompletion(DmaCompletion completion) { m_dma = std::move(completion); }
     HandlerTiming tick(std::span<const EnvxRead> envx);
     HandlerTiming command(uint32_t id, const std::array<uint32_t, 5>& words, std::span<const EnvxRead> envx);
 
@@ -87,6 +102,9 @@ private:
     Counters m_seen;
     uint32_t m_stubCycles = 0;
     uint32_t m_ordinal = 0;
+    uint32_t m_dmaOrdinal = 0;
+    uint32_t m_resume = 0;
+    DmaCompletion m_dma;
     uint32_t m_handlerIsInit = 0;
     HandlerTiming* m_out = nullptr;
     std::unordered_map<uint32_t, std::vector<uint16_t>> m_envx;
