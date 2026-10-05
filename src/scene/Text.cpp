@@ -469,6 +469,12 @@ int32_t Text<A>::widthOf(const std::string& text, TextFrame& out) {
     return A::toInt(A::add(static_cast<float>(A::toInt(reach)), A::mul(static_cast<float>(m_font.pitch), x)));
 }
 
+template <class A>
+int32_t Text<A>::stringWidth(const std::string& text) {
+    TextFrame scratch;
+    return widthOf(text, scratch);
+}
+
 // DrawIcon (0x00226508): a button's picture, 28 wide from texture 8 (pictures 0 and 1) or 25 wide from texture 9, half
 // as high, its corners from D_002B22A0; in PAL its bottom is scaled by 0.5405 / 0.47 (facts/text.md section 5).
 template <class A>

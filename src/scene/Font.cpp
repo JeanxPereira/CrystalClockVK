@@ -61,6 +61,10 @@ std::vector<uint8_t> expandOsd(const std::vector<uint8_t>& src) {
     return dst;
 }
 
+int32_t Font::header16(uint32_t offset) const {
+    return s16(m_data, offset);
+}
+
 Font::Font(std::vector<uint8_t> file) : m_data(expandOsd(file)) {
     const std::vector<uint8_t>& d = m_data;
     if (u32(d, 0) != 0 || u32(d, 4) != 0) throw std::runtime_error("not font data: the first two words are not zero");
