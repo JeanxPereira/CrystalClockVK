@@ -179,7 +179,7 @@ add_library(BootScreens STATIC src/app/OpeningScreen.cpp src/app/BootChain.cpp)
 target_link_libraries(BootScreens PUBLIC OpeningSceneNative ClockScreen)
 
 if(NOT CLOCK_BUILD_TESTS)
-add_executable(CrystalClock src/app/Main.cpp src/app/Golden.cpp src/app/DebugPanel.cpp src/app/Png.cpp src/app/ClockAssets.cpp)
+add_executable(CrystalClock src/app/Main.cpp src/app/Golden.cpp src/app/GoldenScenario.cpp src/app/DebugPanel.cpp src/app/Png.cpp src/app/ClockAssets.cpp)
 target_link_libraries(CrystalClock PRIVATE ClockRender ClockSceneNative ImGui ClockAssets ClockInput BootScreens HostInputs ClockAudioLive)
 target_compile_definitions(CrystalClock PRIVATE
     CLOCK_SHADERS="${CLOCK_BIN_DIR}/shaders" CLOCK_SCREENSHOTS="${CMAKE_SOURCE_DIR}/out/screenshots")

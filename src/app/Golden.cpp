@@ -29,6 +29,7 @@ void material(Hasher& x, const scene::Material& m) {
 }
 
 std::string underscored(std::string text) {
+    if (text.empty()) return "-";
     std::replace(text.begin(), text.end(), ' ', '_');
     return text;
 }
@@ -77,7 +78,7 @@ std::optional<GoldenLine> parseLine(const std::string& text) {
     unsigned long long frame = 0, scene = 0, pixels = 0, sound = 0;
     const int read = std::sscanf(text.c_str(), "%llu %127s %127s scene=%llx pixels=%llx sound=%llx", &frame, phase, screen, &scene, &pixels, &sound);
     if (read != 6) return std::nullopt;
-    return GoldenLine{frame, phase, screen, scene, pixels, sound};
+    return GoldenLine{frame, phase, std::string(screen) == "-" ? "" : screen, scene, pixels, sound};
 }
 
 GoldenWriter::GoldenWriter(std::filesystem::path path) {

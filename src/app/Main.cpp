@@ -18,6 +18,7 @@
 #include <memory>
 #include <optional>
 #include <set>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -33,6 +34,8 @@
 #include "app/Input.hpp"
 #include "app/OpeningScreen.hpp"
 #include "app/Png.hpp"
+#include "app/Golden.hpp"
+#include "app/GoldenScenario.hpp"
 #include "assets/ClockTextures.hpp"
 #include "assets/Program.hpp"
 #include "audio/LiveAudio.hpp"
@@ -85,6 +88,9 @@ struct Options {
     std::filesystem::path audioWav;
     std::filesystem::path logFile;
     std::filesystem::path traceFile;
+    std::string golden;
+    std::filesystem::path goldenFile;
+    std::string goldenOutput = "native";
 };
 
 // The folder of raw OSD resource files: --resources, else "resources" beside the executable (where --bios extracts to).
@@ -177,13 +183,24 @@ int main(int argc, char** argv) {
         else if (arg == "--audio-wav" && more) options.audioWav = argv[++i];
         else if (arg == "--log" && more) options.logFile = argv[++i];
         else if (arg == "--trace" && more) options.traceFile = argv[++i];
+        else if (arg == "--golden" && i + 2 < argc && (std::string(argv[i + 1]) == "record" || std::string(argv[i + 1]) == "check")) options.golden = argv[i + 1], options.goldenFile = argv[i + 2], i += 2;
+        else if (arg == "--golden-output" && more && (std::string(argv[i + 1]) == "native" || std::string(argv[i + 1]) == "x2-msaa4")) options.goldenOutput = argv[++i];
         else {
-            std::fprintf(stderr, "usage: CrystalClock [--resources dir] [--bios rom.bin] [--smoke] [--soak seconds] [--skip-boot] [--clock] [--pal] [--language N] [--aspect N] [--towers none|demo] [--lights-phase N] [--opening-textures dir] [--capture all|n,n,...] [--mute] [--audio-wav out.wav] [--log file] [--trace file.jsonl] [--no-validation] [--shaders dir]\n"
+            std::fprintf(stderr, "usage: CrystalClock [--resources dir] [--bios rom.bin] [--smoke] [--soak seconds] [--skip-boot] [--clock] [--pal] [--language N] [--aspect N] [--towers none|demo] [--lights-phase N] [--opening-textures dir] [--capture all|n,n,...] [--mute] [--audio-wav out.wav] [--log file] [--trace file.jsonl] [--golden record|check file] [--golden-output native|x2-msaa4] [--no-validation] [--shaders dir]\n"
                                  "                    [--settings settings.json] [--screenshots dir] [--textures dir] [--mesh rod-mesh.json] [--cube-mesh cube-mesh.json] [--font FNTOSD] [--program hddosd.elf]\n");
             return 1;
         }
     }
     if (!options.logFile.empty()) core::Log::get().open(options.logFile);
+    const bool golden = !options.golden.empty();
+    if (golden) {
+        options.settings = std::filesystem::path("out") / "golden" / "no-settings.json";
+        options.pal = false;
+        options.language.reset();
+        options.aspect.reset();
+        options.mute = true;
+        options.boot = true;
+    }
     if (options.settings.empty()) options.settings = assets::userDataDirectory() / "settings.json";
     // The clock's assets: the console's raw resource files decoded at each start; loose files only from explicit flags.
     std::optional<assets::AssetSet> loaded;
@@ -255,7 +272,7 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "SDL: %s\n", SDL_GetError());
         return 1;
     }
-    SDL_Window* window = SDL_CreateWindow("Crystal Clock", 1280, 896, SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE);
+    SDL_Window* window = SDL_CreateWindow("Crystal Clock", 1280, 896, SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | (golden ? SDL_WINDOW_HIDDEN : 0));
     if (!window) {
         std::fprintf(stderr, "window: %s\n", SDL_GetError());
         return 1;
@@ -295,11 +312,12 @@ int main(int argc, char** argv) {
         }
         const bool capturing = options.boot && !options.capture.empty();
 
+        static const VkFormat swapchainFormat = device.swapchainFormat();
+        if (!golden) {
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
         ImGui::GetIO().IniFilename = nullptr;
         ImGui_ImplSDL3_InitForVulkan(window);
-        static const VkFormat swapchainFormat = device.swapchainFormat();
         ImGui_ImplVulkan_InitInfo imgui{};
         imgui.ApiVersion = VK_API_VERSION_1_4;
         imgui.Instance = device.instance();
@@ -315,12 +333,17 @@ int main(int argc, char** argv) {
         imgui.PipelineInfoMain.PipelineRenderingCreateInfo.colorAttachmentCount = 1;
         imgui.PipelineInfoMain.PipelineRenderingCreateInfo.pColorAttachmentFormats = &swapchainFormat;
         if (!ImGui_ImplVulkan_Init(&imgui)) throw std::runtime_error("ImGui Vulkan backend");
+        }
 
         app::PanelState panel;
         panel.mute = options.mute;
         app::PanelInfo info;
         info.sampleCounts = device.sampleCounts();
         system_clock::duration offset{};
+        std::optional<system_clock::time_point> fixedNow;
+        system_clock::time_point goldenStart;
+        uint64_t goldenTicks = 0;
+        const auto wallNow = [&] { return fixedNow ? *fixedNow : system_clock::now(); };
         app::Bindings bindings = app::Bindings::defaults();
         app::PadReader reader;
         std::map<SDL_JoystickID, SDL_Gamepad*> gamepads;
@@ -336,6 +359,7 @@ int main(int argc, char** argv) {
         try {
             audio::LiveAudioOptions audioOptions;
             audioOptions.mute = options.mute;
+            audioOptions.device = !golden;
             audioOptions.video = options.pal ? audio::Video::Pal : audio::Video::Ntsc;
             audioOptions.wav = options.audioWav;
             if (!options.audioWav.empty()) audioOptions.commandLog = options.audioWav.string() + ".commands.txt";
@@ -350,7 +374,7 @@ int main(int argc, char** argv) {
         bool emptyWarned = false;
         const auto phaseName = [](app::BootPhase phase) { return phase == app::BootPhase::Opening ? "opening" : phase == app::BootPhase::Gap ? "black gap" : "clock"; };
         const auto stepClock = [&] {
-            const system_clock::time_point now = system_clock::now() + offset;
+            const system_clock::time_point now = wallNow() + offset;
             scene::Frame produced;
             if (const scene::MenusState* menus = clockPtr->menus()) {
                 const int32_t level = menus->page.level;
@@ -358,11 +382,11 @@ int main(int argc, char** argv) {
                     menus->entries[menus->page.selected].confirm == 0x00227b90u) {
                     const std::chrono::local_time<std::chrono::seconds> wanted{std::chrono::local_days{std::chrono::year(items[6]) / items[7] / items[8]} +
                                                                                 std::chrono::hours(items[9]) + std::chrono::minutes(items[10]) + std::chrono::seconds(items[11])};
-                    offset = std::chrono::current_zone()->to_sys(wanted) - system_clock::now();
+                    offset = std::chrono::current_zone()->to_sys(wanted) - wallNow();
                 }
                 previousLevel = level;
                 if (level != 1) {
-                    const scene::ClockItems local = clockItems(system_clock::now() + offset);
+                    const scene::ClockItems local = clockItems(wallNow() + offset);
                     items[6] = local.year, items[7] = local.month, items[8] = local.day, items[9] = local.hour, items[10] = local.minute, items[11] = local.second;
                 }
                 const auto utc9 = std::chrono::floor<std::chrono::seconds>(now) + std::chrono::minutes(540);
@@ -396,7 +420,7 @@ int main(int argc, char** argv) {
         std::unique_ptr<app::BootChain> chain;
         app::OpeningScreen* bootOpening = nullptr;
         const auto startClock = [&](bool wide, std::optional<uint32_t> randState) {
-            const system_clock::time_point now = system_clock::now() + offset;
+            const system_clock::time_point now = wallNow() + offset;
             scene::ColdInputs cold = app::hostInputs({options.pal, options.language, options.aspect}, now, options.settings, *std::chrono::current_zone());
             cold.wide = wide;
             if (randState) cold.randState = *randState;
@@ -436,12 +460,17 @@ int main(int argc, char** argv) {
         };
         const auto settle = [&](const auto& done) {
             for (int n = 0; !done() && n < 2000; ++n) {
-                const system_clock::time_point now = system_clock::now() + offset;
+                const system_clock::time_point now = wallNow() + offset;
                 inputs.time = clockTime(now);
                 inputs.items = clockItems(now);
                 stepClock();
             }
         };
+        if (golden) {
+            goldenStart = std::chrono::current_zone()->to_sys(std::chrono::local_days{std::chrono::year(2026) / 1 / 1} + std::chrono::hours(12));
+            fixedNow = goldenStart;
+            panel.mute = true;
+        }
         if (options.boot) {
             buildBoot();
         } else {
@@ -468,7 +497,7 @@ int main(int argc, char** argv) {
             std::printf("start: frame %d, mode %d, menu ramp state %d\n", clockPtr->state().counter, clockPtr->state().mode, clockPtr->state().menuRamp.state);
         }
         const auto produce = [&] {
-            const system_clock::time_point now = system_clock::now() + offset;
+            const system_clock::time_point now = wallNow() + offset;
             inputs.time = clockTime(now);
             inputs.items = clockItems(now);
             core::Log::get().setFrame(logicFrames);
@@ -521,8 +550,12 @@ int main(int argc, char** argv) {
                       << '\n';
             }
             fresh = true;
+            if (fixedNow) {
+                ++goldenTicks;
+                *fixedNow = goldenStart + std::chrono::duration_cast<system_clock::duration>(std::chrono::duration<double>(double(goldenTicks) * 1001.0 / 60000.0));
+            }
         };
-        produce();
+        if (!golden) produce();
 
         std::string screenshotName;
         const auto shoot = [&](const std::string& name) {
@@ -652,7 +685,53 @@ int main(int argc, char** argv) {
         uint64_t intervals = 0, uneven = 0;
         double intervalSum = 0, intervalWorst = 0;
         float fps = 0;
-        bool running = true;
+        if (golden) {
+            renderer.configure(options.goldenOutput == "x2-msaa4" ? render::NativeOutput{1280, 896, 4} : render::NativeOutput{640, 448, 1});
+            std::optional<app::GoldenWriter> writer;
+            std::optional<app::GoldenChecker> checker;
+            if (options.golden == "record") writer.emplace(options.goldenFile);
+            else checker.emplace(options.goldenFile);
+            const std::span<const app::ScenarioPress> presses = app::goldenScenario();
+            uint64_t clockFrames = 0, compared = 0;
+            bool identical = true;
+            while (clockFrames < app::goldenFrames()) {
+                for (const app::ScenarioPress& press : presses) {
+                    if (press.afterClock == clockFrames) reader.down(0, app::bitOf(press.button));
+                    if (press.afterClock + 6 == clockFrames) reader.up(0, app::bitOf(press.button));
+                }
+                produce();
+                if (font && frame.textureSet == scene::TextureSet::Clock) renderer.setGlyphCache(*font, frame.glyphs);
+                renderer.draw(frame);
+                app::GoldenLine line;
+                line.frame = logicFrames;
+                line.phase = chain ? chain->name() : "clock";
+                line.screen = visited.empty() ? "" : visited.back();
+                line.scene = app::hashFrame(frame);
+                const std::vector<uint8_t> pixels = renderer.readTarget(scene::TargetName::Display);
+                line.pixels = app::hashBytes(pixels);
+                if (audio) {
+                    const std::vector<int16_t>& samples = audio->lastFrame();
+                    line.sound = app::hashBytes({reinterpret_cast<const uint8_t*>(samples.data()), samples.size() * sizeof(int16_t)});
+                }
+                if (writer) writer->add(line);
+                else if (!checker->check(line)) {
+                    std::printf("%s\n", checker->report().c_str());
+                    identical = false;
+                    break;
+                }
+                ++compared;
+                if (!chain || chain->phase() == app::BootPhase::Clock) ++clockFrames;
+            }
+            std::string list;
+            for (const std::string& name : visited) list += (list.empty() ? "" : ", ") + name;
+            std::printf("golden: %llu frames %s\nscreens visited: %s\n", static_cast<unsigned long long>(compared), writer ? "recorded" : identical ? "identical" : "DIFFERENT", list.c_str());
+            if (!writer && !identical) code = 1;
+            if (device.validationErrors() != 0) {
+                std::printf("golden: %u validation errors\n", device.validationErrors());
+                code = 1;
+            }
+        }
+        bool running = !golden;
         while (running) {
             SDL_Event event;
             while (SDL_PollEvent(&event)) {
@@ -681,7 +760,7 @@ int main(int argc, char** argv) {
 
             if (panel.setTime) {
                 const std::chrono::seconds wanted{panel.time[0] * 3600 + panel.time[1] * 60 + panel.time[2]};
-                offset = wanted - secondsOfDay(system_clock::now());
+                offset = wanted - secondsOfDay(wallNow());
                 panel.setTime = false;
             }
             if (panel.localTime) {
@@ -708,7 +787,7 @@ int main(int argc, char** argv) {
                 continue;
             }
 
-            const scene::ClockTime shownTime = clockTime(system_clock::now() + offset);
+            const scene::ClockTime shownTime = clockTime(wallNow() + offset);
             char text[64];
             std::snprintf(text, sizeof text, "%02d:%02d:%02d", shownTime.hours, shownTime.minutes, shownTime.seconds);
             info.clock = text;
@@ -817,9 +896,11 @@ int main(int argc, char** argv) {
         }
         if (audio) std::printf("%s\n", audio->finish().c_str());
         vkDeviceWaitIdle(device.device());
-        ImGui_ImplVulkan_Shutdown();
-        ImGui_ImplSDL3_Shutdown();
-        ImGui::DestroyContext();
+        if (!golden) {
+            ImGui_ImplVulkan_Shutdown();
+            ImGui_ImplSDL3_Shutdown();
+            ImGui::DestroyContext();
+        }
         if (options.soak > 0)
             std::printf("%s: %.1f s, %llu frames presented, %llu logic frames, %u validation errors\n", options.smoke ? "smoke" : "soak", options.soak,
                         static_cast<unsigned long long>(presented), static_cast<unsigned long long>(logicFrames), device.validationErrors());

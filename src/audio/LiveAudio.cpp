@@ -45,6 +45,10 @@ void writeWavFile(const std::filesystem::path& path, const std::vector<int16_t>&
 LiveAudio::LiveAudio(ClockSoundSources sources, const LiveAudioOptions& options)
     : m_sound(std::move(sources), ClockSoundOptions{options.video, true, true, true}), m_options(options), m_muted(options.mute) {
     m_stats.minQueuedFrames = UINT32_MAX;
+    if (!options.device) {
+        core::log(core::Level::Info, core::Subsystem::Audio, "device off");
+        return;
+    }
     if (SDL_InitSubSystem(SDL_INIT_AUDIO)) {
         m_sdl = true;
         const SDL_AudioSpec spec{SDL_AUDIO_S16, 2, kRate};
@@ -95,7 +99,8 @@ void LiveAudio::step() {
     if (m_stats.failed) return;
     const uint64_t count = ((m_stats.frames + 1) * kSamplesNumerator) / kSamplesDenominator - (m_stats.frames * kSamplesNumerator) / kSamplesDenominator;
     ++m_stats.frames;
-    std::vector<int16_t> out(size_t(2) * count);
+    std::vector<int16_t>& out = m_last;
+    out.assign(size_t(2) * count, 0);
     guarded([&] { m_sound.render(out.data(), count); });
     if (m_stats.failed) return;
     m_stats.samples += count;

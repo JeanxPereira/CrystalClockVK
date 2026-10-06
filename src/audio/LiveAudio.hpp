@@ -13,6 +13,7 @@ namespace audio {
 
 struct LiveAudioOptions {
     bool mute = false;
+    bool device = true;
     Video video = Video::Ntsc;
     std::filesystem::path wav;
     std::filesystem::path commandLog;
@@ -42,6 +43,7 @@ public:
     float volume() const { return m_volume; }
     const LiveAudioStats& stats() const { return m_stats; }
     int queuedFrames() const { return m_stream ? int(SDL_GetAudioStreamQueued(m_stream)) / 4 : -1; }
+    const std::vector<int16_t>& lastFrame() const { return m_last; }
     std::string finish();
 
 private:
@@ -55,6 +57,7 @@ private:
     float m_volume = 1.0f;
     LiveAudioStats m_stats;
     std::vector<int16_t> m_recorded;
+    std::vector<int16_t> m_last;
     std::string m_error;
 };
 
