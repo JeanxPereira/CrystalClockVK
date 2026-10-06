@@ -10,7 +10,7 @@ public:
 
     void setTime(const scene::ClockTime& time, const scene::ClockItems& items);
     void step() override;
-    scene::Frame frame() override { return m_frame; }
+    scene::Frame& frame() override { return m_frame; }
     bool done() const override { return false; }
 
     const scene::ClockState& state() const { return m_clock.state(); }

@@ -19,11 +19,12 @@ const char* BootChain::name() const {
 void BootChain::step() {
     if (m_phase == BootPhase::Opening) {
         m_opening->step();
-        m_frame = m_opening->frame();
+        m_active = &m_opening->frame();
         if (m_opening->done()) m_phase = m_gap > 0 ? BootPhase::Gap : BootPhase::Clock;
         return;
     }
     if (m_phase == BootPhase::Gap) {
+        m_active = &m_frame;
         m_frame = {};
         m_frame.displayIndex = m_display;
         m_frame.textureSet = scene::TextureSet::Opening;
@@ -34,7 +35,7 @@ void BootChain::step() {
         return;
     }
     m_clock->step();
-    m_frame = m_clock->frame();
+    m_active = &m_clock->frame();
 }
 
 }

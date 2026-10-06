@@ -12,7 +12,7 @@ public:
     BootChain(std::unique_ptr<FrameSource> opening, std::unique_ptr<FrameSource> clock, int gapFrames);
 
     void step() override;
-    scene::Frame frame() override { return m_frame; }
+    scene::Frame& frame() override { return *m_active; }
     bool done() const override { return false; }
 
     BootPhase phase() const { return m_phase; }
@@ -25,6 +25,7 @@ private:
     int m_gap = 0, m_gapLeft = 0, m_display = 0;
     BootPhase m_phase = BootPhase::Opening;
     scene::Frame m_frame;
+    scene::Frame* m_active = &m_frame;
 };
 
 }

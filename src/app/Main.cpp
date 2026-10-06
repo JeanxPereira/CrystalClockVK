@@ -53,7 +53,7 @@ class FunctionScreen : public app::FrameSource {
 public:
     explicit FunctionScreen(std::function<scene::Frame()> step) : m_step(std::move(step)) {}
     void step() override { m_frame = m_step(); }
-    scene::Frame frame() override { return m_frame; }
+    scene::Frame& frame() override { return m_frame; }
     bool done() const override { return false; }
 
 private:
@@ -524,7 +524,7 @@ int main(int argc, char** argv) {
             if (chain) {
                 const bool inOpening = chain->phase() == app::BootPhase::Opening;
                 chain->step();
-                frame = chain->frame();
+                frame = std::move(chain->frame());
                 if (chain->phase() != lastPhase) {
                     const scene::opening::HandOff* h = bootOpening->handOff();
                     core::log(core::Level::Info, core::Subsystem::Boot, "phase {} -> {}, opening counter {}, hand-off {}", phaseName(lastPhase), chain->name(), bootOpening->counter(),

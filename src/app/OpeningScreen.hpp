@@ -13,7 +13,7 @@ public:
     OpeningScreen(const scene::opening::BootOptions& options, std::shared_ptr<const scene::ProgramImage> program);
 
     void step() override;
-    scene::Frame frame() override { return m_frame; }
+    scene::Frame& frame() override { return m_frame; }
     bool done() const override { return m_opening.ended(); }
 
     int32_t counter() const { return m_opening.counter(); }
