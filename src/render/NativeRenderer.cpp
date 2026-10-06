@@ -647,6 +647,15 @@ void NativeRenderer::record(VkCommandBuffer cmd, const scene::Frame& frame) {
 
     Target* open = nullptr;
     VkPipeline bound = VK_NULL_HANDLE;
+    struct Pushed {
+        VkSampler sampler{VK_NULL_HANDLE};
+        VkImageView view{VK_NULL_HANDLE};
+        bool valid{false};
+    } pushedImage;
+    float lastConstant = 0.0f;
+    bool constantValid = false;
+    PushState lastPush{};
+    bool pushValid = false;
     for (size_t i = 0; i < frame.passes.size(); ++i) {
         const scene::Pass& pass = frame.passes[i];
         const scene::Material& m = pass.material;
@@ -701,24 +710,36 @@ void NativeRenderer::record(VkCommandBuffer cmd, const scene::Frame& frame) {
         push.mode[3] = m.colourOnly;
         push.shade[0] = pass.edgeSmoothing;
 
-        VkDescriptorImageInfo image{m_samplers[(m.bilinear ? 1 : 0) | (m.sampling == scene::Sampling::Repeat ? 0 : 2)], view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
-        VkWriteDescriptorSet write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
-        write.dstBinding = 0;
-        write.descriptorCount = 1;
-        write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        write.pImageInfo = &image;
-        vkCmdPushDescriptorSet(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_layout, 0, 1, &write);
+        const VkSampler sampler = m_samplers[(m.bilinear ? 1 : 0) | (m.sampling == scene::Sampling::Repeat ? 0 : 2)];
+        if (!pushedImage.valid || pushedImage.sampler != sampler || pushedImage.view != view) {
+            VkDescriptorImageInfo image{sampler, view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+            VkWriteDescriptorSet write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+            write.dstBinding = 0;
+            write.descriptorCount = 1;
+            write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            write.pImageInfo = &image;
+            vkCmdPushDescriptorSet(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_layout, 0, 1, &write);
+            pushedImage = {sampler, view, true};
+        }
 
         const float constant = float(m.blendConstant) / 128.0f;
-        const float constants[4] = {constant, constant, constant, constant};
-        vkCmdSetBlendConstants(cmd, constants);
+        if (!constantValid || std::memcmp(&constant, &lastConstant, sizeof constant) != 0) {
+            const float constants[4] = {constant, constant, constant, constant};
+            vkCmdSetBlendConstants(cmd, constants);
+            lastConstant = constant;
+            constantValid = true;
+        }
         const VkPipeline p = pipeline(pass, m.blend);
         if (p != bound) {
             vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, p);
             bound = p;
         }
         push.shade[1] = premultiplied(m.blend);
-        vkCmdPushConstants(cmd, m_layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof push, &push);
+        if (!pushValid || std::memcmp(&push, &lastPush, sizeof push) != 0) {
+            vkCmdPushConstants(cmd, m_layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof push, &push);
+            lastPush = push;
+            pushValid = true;
+        }
         vkCmdDraw(cmd, ranges[i].second, 1, ranges[i].first, 0);
         m_device.endLabel(cmd);
     }
