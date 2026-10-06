@@ -1,8 +1,10 @@
 #include "scene/Clock.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <iterator>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -33,23 +35,30 @@ public:
     // What is drawn between (the text) keeps the next primitives out of the last pass.
     void cut() { m_cut = true; }
 
-    void triangles(const std::vector<Vertex>& strip) {
-        for (size_t i = 0; i + 2 < strip.size(); ++i) put({strip[i], strip[i + 1], strip[i + 2]});
+    std::vector<Vertex>& scratch() {
+        m_scratch.clear();
+        return m_scratch;
     }
-    void lines(const std::vector<Vertex>& strip) {
-        for (size_t i = 0; i + 1 < strip.size(); ++i) put({strip[i], strip[i + 1]});
+    std::vector<Vertex>& held() { return m_held; }
+
+    void triangles(std::span<const Vertex> strip) {
+        for (size_t i = 0; i + 2 < strip.size(); ++i) put(std::array<Vertex, 3>{strip[i], strip[i + 1], strip[i + 2]});
+    }
+    void lines(std::span<const Vertex> strip) {
+        for (size_t i = 0; i + 1 < strip.size(); ++i) put(std::array<Vertex, 2>{strip[i], strip[i + 1]});
     }
     // A triangle fan: triangle i is the centre, vertex i and vertex i + 1.
-    void fan(const std::vector<Vertex>& vertices) {
-        for (size_t i = 1; i + 1 < vertices.size(); ++i) put({vertices[0], vertices[i], vertices[i + 1]});
+    void fan(std::span<const Vertex> vertices) {
+        for (size_t i = 1; i + 1 < vertices.size(); ++i) put(std::array<Vertex, 3>{vertices[0], vertices[i], vertices[i + 1]});
     }
     void sprite(Vertex first, const Vertex& second) {
         first.z = second.z;
-        put({first, second});
+        put(std::array<Vertex, 2>{first, second});
     }
 
 private:
-    void put(std::vector<Vertex> primitive) {
+    template <size_t N>
+    void put(std::array<Vertex, N> primitive) {
         if (!m_header.material.gouraud || m_header.topology == PassTopology::Sprites)
             for (Vertex& v : primitive) {
                 v.r = primitive.back().r;
@@ -70,6 +79,8 @@ private:
     Frame& m_frame;
     Header m_header;
     bool m_cut = false;
+    std::vector<Vertex> m_scratch;
+    std::vector<Vertex> m_held;
 };
 
 uint8_t byteOf(float value, float scale) { return static_cast<uint8_t>(std::lround(value * scale)); }
@@ -166,13 +177,14 @@ Vertex headVertex(const HeadVertex& h, Coordinates coordinates) {
 
 // The vignette's sectors continue one strip: its PRIM is sent once (clock_rest.mjs vignette).
 void emitHead(Builder& out, const std::vector<HeadDraw>& draws, int32_t width, int32_t height) {
-    std::vector<Vertex> vignette;
+    std::vector<Vertex>& vignette = out.held();
+    vignette.clear();
     const auto endVignette = [&] {
         if (!vignette.empty()) out.triangles(vignette);
         vignette.clear();
     };
     for (const HeadDraw& d : draws) {
-        std::vector<Vertex> vertices;
+        std::vector<Vertex>& vertices = out.scratch();
         for (const HeadVertex& h : d.vertices) vertices.push_back(headVertex(h, d.coordinates));
         if (d.part == Part::Vignette) {
             if (vignette.empty()) out.use(headHeader(d, width, height));
@@ -227,7 +239,7 @@ Vertex rodVertex(const RodVertex& r) {
 void emitRodSend(Builder& out, const std::string& name, const RodSend& send, bool split, int32_t grainTexture, int32_t width, int32_t height) {
     for (const RodFaceDraw& face : send.faces) {
         out.use(rodHeader(name, send.kind, face.edgeSmoothing, split, grainTexture, width, height));
-        std::vector<Vertex> strip;
+        std::vector<Vertex>& strip = out.scratch();
         for (const RodVertex& r : face.strip) strip.push_back(rodVertex(r));
         out.triangles(strip);
     }
@@ -240,7 +252,7 @@ void emitOrb(Builder& out, const OrbDraw& orb) {
         const OrbSend& send = orb.sends[s];
         const TargetName target = s == 0 ? TargetName::Display : TargetName::RefractionSource;
         out.use({name + " trail", target, PassTopology::Lines, withState(Material{}, BlendOp::Add, DepthTest::Greater), true, true});
-        std::vector<Vertex> points;
+        std::vector<Vertex>& points = out.scratch();
         for (const OrbVertex& p : send.trail.points)
             points.push_back({p.x, p.y, depthOf(p.z), 0, 0, 1, byteOf(p.r, 255), byteOf(p.g, 255), byteOf(p.b, 255), byteOf(p.a, 128)});
         out.lines(points);
@@ -307,7 +319,7 @@ void emitCubes(Builder& out, const std::vector<CubeDraw>& draws, int32_t width, 
         } else {
             for (const RodFaceDraw& face : d.faces) {
                 out.use(cubeHeader(d.send, face.edgeSmoothing, width, height));
-                std::vector<Vertex> strip;
+                std::vector<Vertex>& strip = out.scratch();
                 for (const RodVertex& r : face.strip) strip.push_back(rodVertex(r));
                 out.triangles(strip);
             }
@@ -327,7 +339,7 @@ void emitText(Builder& out, const TextFrame& text) {
             m.blend = BlendOp::AlphaOver;
             m.gouraud = true;
             out.use({"text", TargetName::Display, PassTopology::Triangles, m, false, true});
-            std::vector<Vertex> fan;
+            std::vector<Vertex>& fan = out.scratch();
             for (const GlyphVertex& g : d.glyph.fan) fan.push_back({g.x, g.y, 0, g.s, g.t, g.q, g.colour[0], g.colour[1], g.colour[2], g.colour[3]});
             out.fan(fan);
             continue;
