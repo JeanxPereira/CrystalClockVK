@@ -38,7 +38,7 @@ endfunction()
 
 clock_fetch(SDL3 https://github.com/libsdl-org/SDL.git release-3.4.18)
 clock_fetch(vma https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator.git v3.4.0)
-clock_fetch(vk-bootstrap https://github.com/charles-lunarg/vk-bootstrap.git v1.4.364)
+clock_fetch(vk-bootstrap https://github.com/charles-lunarg/vk-bootstrap.git v1.4.350)
 clock_fetch(glm https://github.com/g-truc/glm.git 1.0.3)
 clock_fetch(json https://github.com/nlohmann/json.git v3.12.0)
 
