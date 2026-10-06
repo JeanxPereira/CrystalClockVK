@@ -34,6 +34,7 @@
 #include "app/Input.hpp"
 #include "app/OpeningScreen.hpp"
 #include "app/Png.hpp"
+#include "app/Profile.hpp"
 #include "app/Golden.hpp"
 #include "app/GoldenScenario.hpp"
 #include "assets/ClockTextures.hpp"
@@ -65,6 +66,7 @@ struct Options {
     bool validation = true;
     bool smoke = false;
     double soak = 0;
+    bool profile = false;
     bool boot = true;
     bool towersDemo = false;
     std::optional<uint32_t> lightsPhase;
@@ -182,11 +184,12 @@ int main(int argc, char** argv) {
         else if (arg == "--mute") options.mute = true;
         else if (arg == "--audio-wav" && more) options.audioWav = argv[++i];
         else if (arg == "--log" && more) options.logFile = argv[++i];
+        else if (arg == "--profile") options.profile = true;
         else if (arg == "--trace" && more) options.traceFile = argv[++i];
         else if (arg == "--golden" && i + 2 < argc && (std::string(argv[i + 1]) == "record" || std::string(argv[i + 1]) == "check")) options.golden = argv[i + 1], options.goldenFile = argv[i + 2], i += 2;
         else if (arg == "--golden-output" && more && (std::string(argv[i + 1]) == "native" || std::string(argv[i + 1]) == "x2-msaa4")) options.goldenOutput = argv[++i];
         else {
-            std::fprintf(stderr, "usage: CrystalClock [--resources dir] [--bios rom.bin] [--smoke] [--soak seconds] [--skip-boot] [--clock] [--pal] [--language N] [--aspect N] [--towers none|demo] [--lights-phase N] [--opening-textures dir] [--capture all|n,n,...] [--mute] [--audio-wav out.wav] [--log file] [--trace file.jsonl] [--golden record|check file] [--golden-output native|x2-msaa4] [--no-validation] [--shaders dir]\n"
+            std::fprintf(stderr, "usage: CrystalClock [--resources dir] [--bios rom.bin] [--smoke] [--soak seconds] [--skip-boot] [--clock] [--pal] [--language N] [--aspect N] [--towers none|demo] [--lights-phase N] [--opening-textures dir] [--capture all|n,n,...] [--mute] [--audio-wav out.wav] [--log file] [--trace file.jsonl] [--profile] [--golden record|check file] [--golden-output native|x2-msaa4] [--no-validation] [--shaders dir]\n"
                                  "                    [--settings settings.json] [--screenshots dir] [--textures dir] [--mesh rod-mesh.json] [--cube-mesh cube-mesh.json] [--font FNTOSD] [--program hddosd.elf]\n");
             return 1;
         }
@@ -496,7 +499,13 @@ int main(int argc, char** argv) {
             }
             std::printf("start: frame %d, mode %d, menu ramp state %d\n", clockPtr->state().counter, clockPtr->state().mode, clockPtr->state().menuRamp.state);
         }
+        app::Profile profile;
+        const auto screenKey = [&]() -> std::string {
+            if (chain && chain->phase() != app::BootPhase::Clock) return chain->name();
+            return visited.empty() ? "clock" : visited.back();
+        };
         const auto produce = [&] {
+            const Uint64 produceStart = SDL_GetTicksNS();
             const system_clock::time_point now = wallNow() + offset;
             inputs.time = clockTime(now);
             inputs.items = clockItems(now);
@@ -539,17 +548,19 @@ int main(int argc, char** argv) {
                 core::log(core::Level::Warn, core::Subsystem::Clock, "the clock produced a frame with no passes");
                 emptyWarned = true;
             }
+            const double produceMs = double(SDL_GetTicksNS() - produceStart) * 1e-6;
             if (trace.is_open()) {
                 size_t vertices = 0;
                 for (const scene::Pass& pass : frame.passes) vertices += pass.vertices.size();
                 const bool inClock = !chain || chain->phase() == app::BootPhase::Clock;
                 const int32_t counter = inClock && clockPtr ? clockPtr->state().counter : bootOpening ? bootOpening->counter() : 0;
-                trace << std::format(R"({{"frame":{},"phase":"{}","counter":{},"screen":"{}","mode":{},"ramp":{},"sent":"{}","queued":{},"passes":{},"vertices":{},"error":"{}"}})",
+                trace << std::format(R"({{"frame":{},"phase":"{}","counter":{},"screen":"{}","mode":{},"ramp":{},"sent":"{}","queued":{},"passes":{},"vertices":{},"produceMs":{:.3f},"error":"{}"}})",
                                      logicFrames, chain ? chain->name() : "clock", counter, inClock && !visited.empty() ? visited.back() : "", inClock && clockPtr ? clockPtr->state().mode : -1,
-                                     inClock && clockPtr ? clockPtr->state().menuRamp.state : -1, sent, audio ? audio->queuedFrames() : -1, frame.passes.size(), vertices, core::Log::get().lastError().empty() ? "" : "yes")
+                                     inClock && clockPtr ? clockPtr->state().menuRamp.state : -1, sent, audio ? audio->queuedFrames() : -1, frame.passes.size(), vertices, produceMs, core::Log::get().lastError().empty() ? "" : "yes")
                       << '\n';
             }
             fresh = true;
+            if (options.profile) profile.add(screenKey(), app::Stage::Produce, produceMs);
             if (fixedNow) {
                 ++goldenTicks;
                 *fixedNow = goldenStart + std::chrono::duration_cast<system_clock::duration>(std::chrono::duration<double>(double(goldenTicks) * 1001.0 / 60000.0));
@@ -844,7 +855,13 @@ int main(int argc, char** argv) {
             }
             info.outputWidth = output.width;
             info.outputHeight = output.height;
-            if (fresh) renderer.record(context->cmd, frame);
+            const std::string profileScreen = options.profile ? screenKey() : std::string();
+            if (fresh) {
+                const Uint64 recordStart = SDL_GetTicksNS();
+                renderer.record(context->cmd, frame);
+                if (options.profile) profile.add(profileScreen, app::Stage::Record, double(SDL_GetTicksNS() - recordStart) * 1e-6);
+            }
+            const Uint64 presentStart = SDL_GetTicksNS();
             const bool newFrame = fresh;
             fresh = false;
             renderer.present(context->cmd, context->image, device.swapchainExtent(), panel.shown, aspect);
@@ -863,6 +880,7 @@ int main(int argc, char** argv) {
             ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), context->cmd);
             vkCmdEndRendering(context->cmd);
             device.endFrame(*context);
+            if (options.profile) profile.add(profileScreen, app::Stage::Present, double(SDL_GetTicksNS() - presentStart) * 1e-6);
             ++presented;
             const Uint64 shown = now;
             if (newFrame && !panel.paused && presented > 1) {
@@ -926,6 +944,7 @@ int main(int argc, char** argv) {
                 code = 1;
             }
         }
+        if (options.profile) std::printf("%s", profile.table().c_str());
         if (device.validationErrors() != 0) code = 1;
     } catch (const std::exception& error) {
         core::log(core::Level::Error, core::Subsystem::App, "fatal: {}", error.what());
