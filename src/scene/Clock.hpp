@@ -13,6 +13,7 @@
 #include "scene/Menus.hpp"
 #include "scene/Orbs.hpp"
 #include "scene/Rods.hpp"
+#include "scene/Sound.hpp"
 #include "scene/Text.hpp"
 
 namespace scene {
@@ -99,9 +100,12 @@ public:
     const MenuExternals& externals() const { return m_external; }
     // The model's notes of the last frame (what it does not cover).
     const std::vector<std::string>& notes() const { return m_notes; }
+    // The sounds the last frame queued, in queue order.
+    const std::vector<SoundCommand>& sounds() const { return m_sounds; }
 
 private:
     MenuWorld menuWorld();
+    void queueStartSounds();
     ClockState m_state;
     FrameHead<A> m_head;
     Rods<A> m_rods;
@@ -127,6 +131,8 @@ private:
     bool m_passNames;
     std::vector<std::string> m_notes;
     std::vector<uint32_t> m_unmodelled;
+    std::vector<SoundCommand> m_sounds;
+    uint32_t m_soundFrames = 0;
 };
 
 extern template class Clock<EeArithmetic>;

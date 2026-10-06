@@ -17,6 +17,7 @@ constexpr uint64_t kSamplesNumerator = 4004, kSamplesDenominator = 5;
 constexpr uint32_t kPrefillFrames = 4;
 constexpr uint32_t kMaxQueuedFrames = 8;
 constexpr uint32_t kFrameSamples = 801;
+constexpr uint64_t kSendGap = 26;
 
 void put32(std::vector<uint8_t>& b, uint32_t v) {
     for (int k = 0; k < 4; ++k) b.push_back(uint8_t(v >> (8 * k)));
@@ -85,14 +86,28 @@ template <class F> void LiveAudio::guarded(F&& body) {
 
 void LiveAudio::startClock() { guarded([&] { m_sound.startClock(); }); }
 
-void LiveAudio::queueSquare(bool hide) { guarded([&] { m_sound.queueSquare(hide); }); }
+void LiveAudio::queue(const SoundCommand& command, bool carriedA2, bool carriedA3) {
+    SoundCommand c = command;
+    if (carriedA2) c.a2 = m_queue.carriedA2();
+    if (carriedA3) c.a3 = m_queue.carriedA3();
+    m_queue.enqueue(c);
+}
 
-void LiveAudio::send(uint32_t id, uint32_t a1, uint32_t a2, uint32_t a3) {
-    DriverCommand c;
-    c.id = id;
-    c.words = {a1, a2, a3, 0, 0};
-    core::log(core::Level::Debug, core::Subsystem::Audio, "send {:x} {} {} {}", id, a1, a2, a3);
-    guarded([&] { m_sound.queue(c); });
+std::vector<SoundCommand> LiveAudio::drain() {
+    std::vector<SoundCommand> sent = m_queue.drain();
+    if (m_stats.failed) return sent;
+    const uint64_t now = m_sound.position();
+    uint64_t at = now;
+    for (const SoundCommand& c : sent) {
+        DriverCommand d;
+        d.id = c.id;
+        d.words = {c.a1, c.a2, c.a3, 0, 0};
+        d.sample = uint32_t(at);
+        core::log(core::Level::Debug, core::Subsystem::Audio, "send {:x} {} {} {}", c.id, c.a1, c.a2, c.a3);
+        guarded([&] { m_sound.queue(d); });
+        at += kSendGap;
+    }
+    return sent;
 }
 
 void LiveAudio::step() {

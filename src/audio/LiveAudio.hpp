@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "audio/ClockSound.hpp"
+#include "audio/EeSoundQueue.hpp"
 
 #include <SDL3/SDL_audio.h>
 
@@ -34,8 +35,8 @@ public:
     LiveAudio& operator=(const LiveAudio&) = delete;
 
     void startClock();
-    void queueSquare(bool hide);
-    void send(uint32_t id, uint32_t a1, uint32_t a2, uint32_t a3);
+    void queue(const SoundCommand& command, bool carriedA2 = false, bool carriedA3 = false);
+    std::vector<SoundCommand> drain();
     void step();
     void setMuted(bool muted) { m_muted = muted; }
     bool muted() const { return m_muted; }
@@ -50,6 +51,7 @@ private:
     template <class F> void guarded(F&& body);
 
     ClockSound m_sound;
+    EeSoundQueue m_queue;
     LiveAudioOptions m_options;
     SDL_AudioStream* m_stream = nullptr;
     bool m_sdl = false;

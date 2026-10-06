@@ -385,6 +385,10 @@ int main(int argc, char** argv) {
         app::BootPhase lastPhase = app::BootPhase::Opening;
         bool emptyWarned = false;
         const auto phaseName = [](app::BootPhase phase) { return phase == app::BootPhase::Opening ? "opening" : phase == app::BootPhase::Gap ? "black gap" : "clock"; };
+        const auto queueSounds = [&](const std::vector<scene::SoundCommand>& sounds) {
+            if (!audio) return;
+            for (const scene::SoundCommand& c : sounds) audio->queue({c.id, c.a1, c.a2, c.a3}, c.carriedA2, c.carriedA3);
+        };
         const auto stepClock = [&] {
             const system_clock::time_point now = wallNow() + offset;
             scene::Frame produced;
@@ -410,14 +414,8 @@ int main(int argc, char** argv) {
                                                                int32_t(hms.hours().count()), int32_t(hms.minutes().count()), int32_t(hms.seconds().count())};
                 inputs.configItems = items;
             }
-            const int32_t rampBefore = clockPtr->state().menuRamp.state;
-            const bool squarePressed = (inputs.menu.pad.pressed & scene::pad::Square) != 0;
             produced = clockPtr->frame(inputs);
-            if (audio && squarePressed) {
-                const int32_t rampAfter = clockPtr->state().menuRamp.state;
-                if (rampBefore == 2 && rampAfter == 3) audio->queueSquare(false);
-                else if (rampBefore == 0 && rampAfter == 1) audio->queueSquare(true);
-            }
+            queueSounds(clockPtr->sounds());
             if (const scene::MenusState* menus = clockPtr->menus()) {
                 items = clockPtr->items();
                 const app::Screen screen = app::screenOf(*menus, clockPtr->state().menuRamp);
@@ -531,15 +529,7 @@ int main(int argc, char** argv) {
                               h ? std::format("module {} execute type {}", h->module, h->executeAppType) : std::string("none"));
                     lastPhase = chain->phase();
                 }
-                if (inOpening)
-                    for (const scene::opening::SoundEvent& e : bootOpening->sounds()) {
-                        const bool known = e.id == 0x6150 || e.id == 0x6140;
-                        core::log(core::Level::Debug, core::Subsystem::Opening, "sound event {:x} argument {} {}", e.id, e.argument, audio ? (known ? "sent" : "ignored") : "no audio");
-                        if (!audio || !known) continue;
-                        if (e.id == 0x6150) audio->send(e.id, 0, 0, uint32_t(e.argument));
-                        else audio->send(e.id, uint32_t(e.argument), 0, 0);
-                        sent += std::format("{}{:x}({})", sent.empty() ? "" : ",", e.id, e.argument);
-                    }
+                if (inOpening) queueSounds(bootOpening->commands());
             } else {
                 frame = stepClock();
             }
@@ -549,6 +539,8 @@ int main(int argc, char** argv) {
                     audio->startClock();
                     audioClockStarted = true;
                 }
+                for (const audio::SoundCommand& c : audio->drain())
+                    sent += std::format("{}{:x}({},{},{})", sent.empty() ? "" : ",", c.id, c.a1, c.a2, c.a3);
                 audio->setMuted(panel.mute);
                 audio->setVolume(panel.volume);
                 audio->step();

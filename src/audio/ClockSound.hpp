@@ -69,7 +69,6 @@ public:
     void setWriteTiming(std::shared_ptr<WriteTiming> timing);
     void startClock();
     void queue(const DriverCommand& command);
-    void queueSquare(bool hide);
     void scheduleTick(uint64_t sample, uint32_t frame);
     void render(int16_t* interleavedStereo, size_t frames);
     uint64_t position() const;
@@ -97,7 +96,7 @@ private:
     audio::spu2::Spu2 m_spu;
     std::unique_ptr<driver::Driver> m_driver;
     std::shared_ptr<WriteTiming> m_timing;
-    std::map<std::pair<uint64_t, int>, Event> m_events;
+    std::multimap<std::pair<uint64_t, int>, Event> m_events;
     std::vector<LoggedCommand> m_log;
     std::multimap<uint64_t, Pending> m_pending;
     uint64_t m_mixed = 0;

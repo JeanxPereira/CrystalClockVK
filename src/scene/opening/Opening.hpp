@@ -5,6 +5,7 @@
 
 #include "scene/Arithmetic.hpp"
 #include "scene/Frame.hpp"
+#include "scene/Sound.hpp"
 #include "scene/ProgramImage.hpp"
 #include "scene/opening/Cubes.hpp"
 #include "scene/opening/Flat.hpp"
@@ -34,6 +35,8 @@ public:
     // The counter of the frame frame() draws next.
     int32_t counter() const { return m_counter; }
     const std::vector<SoundEvent>& sounds() const { return m_sounds; }
+    // What the frame queued, in queue order: the thread start before the first frame, then the stage 2 sounds.
+    const std::vector<SoundCommand>& commands() const { return m_commands; }
     const HandOff* handOff() const { return m_ended ? &m_handOff : nullptr; }
 
     const Timeline<A>& timeline() const { return m_timeline; }
@@ -58,6 +61,8 @@ private:
     uint32_t m_randCalls = 0;
     HandOff m_handOff;
     std::vector<SoundEvent> m_sounds;
+    std::vector<SoundCommand> m_commands;
+    bool m_started = false;
     std::vector<CubeWork> m_work;
 };
 

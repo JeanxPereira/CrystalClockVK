@@ -16,6 +16,13 @@ constexpr uint32_t kEditor = 0x00227ad0, kAdjustString = 0x00227420, kItemString
 
 enum class Slot { Enter, Confirm, Cancel };
 
+constexpr uint16_t kMenuSound = 0x6300;
+
+// The 0x6300 senders load a1 = 1 and a2 only; a3 is a register the sender does not set (recorded by the facts, never predicted): 0 here.
+void send(std::vector<SoundCommand>* sounds, uint16_t a2, bool carriedA3 = false, uint16_t a3 = 0) {
+    if (sounds) sounds->push_back({kMenuSound, 1, a2, a3, false, carriedA3});
+}
+
 void spritesHide(MenuWorld& w) {
     Ramp& r = w.spriteFade;
     if (r.state == 2) Menus::hide(r);
@@ -157,22 +164,27 @@ void adjustmentFrame(MenuWorld& w, const MenuExternals& ext) {
         const int32_t count = entry.valueCount;
         int32_t cursor = entry.valueIndex;
         if (pressed & pad::Left) {
+            send(w.sounds, 6);
             cursor -= 1;
             if (cursor < 0) cursor += count;
         }
         if (pressed & pad::Right) {
+            send(w.sounds, 6);
             cursor += 1;
             if (cursor == count) cursor = 0;
         }
         entry.valueIndex = cursor;
         const AdjustField field = w.menus.adjustFields.at(static_cast<size_t>(cursor));
         int32_t& value = w.items.at(static_cast<size_t>(field.item));
+        const bool both = (repeat & pad::Up) && (repeat & pad::Down);
         if (repeat & pad::Up) {
+            if (!both) send(w.sounds, 6);
             const int32_t next = value + 1;
             value = next > field.highest ? field.lowest : next;
             checkDate(w, ext, entry);
         }
         if (repeat & pad::Down) {
+            if (!both) send(w.sounds, 6);
             const int32_t next = value - 1;
             value = next < field.lowest ? field.highest : next;
             checkDate(w, ext, entry);
@@ -240,22 +252,28 @@ void listInput(MenuWorld& w, MenuExternals& ext, std::vector<std::string>& notes
     const uint32_t pressed = ext.pad.pressed;
     const int32_t count = page.count;
     if (pressed & pad::Up) {
+        send(w.sounds, 5);
         listMove(w, 1);
         crossfadeStart(w.menus.listFade, page.selected);
         const int32_t selected = page.selected - 1;
         page.selected = selected < 0 ? count - 1 : selected;
     } else if (pressed & pad::Down) {
+        send(w.sounds, 5);
         listMove(w, -1);
         crossfadeStart(w.menus.listFade, page.selected);
         const int32_t selected = page.selected + 1;
         page.selected = selected < count ? selected : 0;
     } else if (pressed & pad::Cross) {
         callback(w, ext, Slot::Enter, notes);
+        send(w.sounds, 4);
         page.level = 1;
         setGate(w, page.selected == 0 ? -1 : 0);
     } else if (pressed & pad::Square) {
+        send(w.sounds, 2);
+        send(w.sounds, 3, true);
         Menus::show(w.clock.menuRamp);
     } else if (pressed & pad::Circle) {
+        send(w.sounds, 0xA);
         Menus::hide(page.ramp);
     } else if (pressed & pad::Triangle) {
         notes.push_back("the Options dialog of System Configuration (triangle) is not modelled");
@@ -270,11 +288,13 @@ void entryInput(MenuWorld& w, MenuExternals& ext, std::vector<std::string>& note
         list.pulse = w.menus.listConstants.pulse;
         list.pulsed = (list.position + list.left) / kStep;
         callback(w, ext, Slot::Confirm, notes);
+        send(w.sounds, 4);
         page.glow = 0;
         page.level = dirty(ext) ? 2 : 0;
         setGate(w, 1);
     } else if (pressed & pad::Circle) {
         callback(w, ext, Slot::Cancel, notes);
+        send(w.sounds, 0xA);
         page.level = 0;
         setGate(w, 1);
         reloadItem0(w, ext);
@@ -398,29 +418,42 @@ void mainMenu(MenuWorld& w, const MenuExternals& ext, std::vector<std::string>& 
     const uint32_t pressed = ext.pad.pressed;
     if (pressed & pad::Up) {
         const int32_t s = menu.selected - 1;
-        if (s >= 0) menu.selected = s;
+        if (s >= 0) {
+            menu.selected = s;
+            send(w.sounds, 6);
+        }
     } else if (pressed & pad::Down) {
         const int32_t s = menu.selected + 1;
-        if (s < menu.count) menu.selected = s;
+        if (s < menu.count) {
+            menu.selected = s;
+            send(w.sounds, 6);
+        }
     } else if (pressed & pad::Cross) {
         if (menu.selected == 0 && mode == 0) {
-            if (browserEnters) Menus::hide(ramp);
-        } else if (menu.selected == 1) startSystemConfiguration(w);
+            if (browserEnters) {
+                send(w.sounds, 4);
+                Menus::hide(ramp);
+            }
+        } else if (menu.selected == 1) {
+            send(w.sounds, 4);
+            startSystemConfiguration(w);
+        }
     } else if (pressed & pad::Triangle) {
-        Menus::versionOpen(w.menus);
+        Menus::versionOpen(w.menus, w.sounds);
     }
 }
 
 }
 
-void Menus::versionOpen(MenusState& m) {
+void Menus::versionOpen(MenusState& m, std::vector<SoundCommand>* sounds) {
     if (m.versionRamp.state != 0) return;
+    send(sounds, 4);
     m.version.job = kVersionJob;
     m.version.polls = 0;
     show(m.versionRamp);
 }
 
-void Menus::versionStep(MenusState& m, uint32_t pressed, std::vector<std::string>& notes) {
+void Menus::versionStep(MenusState& m, uint32_t pressed, std::vector<std::string>& notes, std::vector<SoundCommand>* sounds) {
     VersionPage& v = m.version;
     Ramp& ramp = m.versionRamp;
     tickRamp(ramp);
@@ -444,18 +477,27 @@ void Menus::versionStep(MenusState& m, uint32_t pressed, std::vector<std::string
     const int32_t up = v.selected == 0 ? 0 : static_cast<int32_t>(pad::Up);
     v.arrows = v.selected + 1 < v.count ? (up | static_cast<int32_t>(pad::Down)) : up;
     if (ramp.state != 2) return;
+    // func_0022A7A8 0x0022A7A8: a3 of a move is 0x57 when the row selected at entry has sub-rows, else 1 (movz at 0x0022A820).
+    const uint16_t moveA3 = v.rows[static_cast<size_t>(std::clamp(v.selected, 0, int(kVersionRows) - 1))].subRows != 0 ? 0x57 : 1;
     if (pressed & pad::Up) {
         const int32_t s = v.selected - 1;
-        if (s >= 0) v.selected = s;
+        if (s >= 0) {
+            v.selected = s;
+            send(sounds, 6, false, moveA3);
+        }
         v.first -= v.selected < v.first ? 1 : 0;
     } else if (pressed & pad::Down) {
         const int32_t s = v.selected + 1;
-        if (s < v.count) v.selected = s;
+        if (s < v.count) {
+            v.selected = s;
+            send(sounds, 6, false, moveA3);
+        }
         v.first += v.selected < v.first + v.shown ? 0 : 1;
     } else if (pressed & pad::Triangle) {
         if (v.rows[static_cast<size_t>(std::clamp(v.selected, 0, int(kVersionRows) - 1))].subRows != 0)
             notes.push_back("the front page of a Version row (func_00228F68) is not modelled");
     } else if (pressed & pad::Circle) {
+        send(sounds, 0xA);
         hide(ramp);
     }
 }
@@ -506,6 +548,8 @@ void Menus::menuStep(MenuWorld& w, const MenuExternals& ext) {
     if (ramp.state == 1) {
         if (ramp.counter == w.clock.tail) hide(cubes);
     } else if (ramp.state == 2 && (ext.pad.pressed & pad::Square)) {
+        send(w.sounds, 0);
+        send(w.sounds, 1, true);
         hide(ramp);
         show(cubes);
     }
@@ -514,7 +558,7 @@ void Menus::menuStep(MenuWorld& w, const MenuExternals& ext) {
 void Menus::step(MenuWorld& w, MenuExternals& ext, std::vector<std::string>& notes) const {
     if (w.menus.dialogRamp.state != 0) notes.push_back("dialogRamp is not hidden: that page is not modelled");
     if (w.menus.firstRunRamp.state != 0) notes.push_back("firstRunRamp is not hidden: that page is not modelled");
-    versionStep(w.menus, ext.pad.pressed, notes);
+    versionStep(w.menus, ext.pad.pressed, notes, w.sounds);
     configPage(w, ext, notes);
     mainMenu(w, ext, notes, m_options.browserEnters);
     tickRamp(w.menus.firstRunRamp);
