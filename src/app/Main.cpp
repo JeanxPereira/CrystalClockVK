@@ -692,9 +692,15 @@ int main(int argc, char** argv) {
             if (options.golden == "record") writer.emplace(options.goldenFile);
             else checker.emplace(options.goldenFile);
             const std::span<const app::ScenarioPress> presses = app::goldenScenario();
-            uint64_t clockFrames = 0, compared = 0;
+            uint64_t clockFrames = 0;
+            constexpr uint64_t kGoldenCap = 4000;
             bool identical = true;
             while (clockFrames < app::goldenFrames()) {
+                if (logicFrames >= kGoldenCap) {
+                    identical = false;
+                    std::printf("golden: DIFFERENT - the boot never reached the clock in %llu frames\n", static_cast<unsigned long long>(kGoldenCap));
+                    break;
+                }
                 for (const app::ScenarioPress& press : presses) {
                     if (press.afterClock == clockFrames) reader.down(0, app::bitOf(press.button));
                     if (press.afterClock + 6 == clockFrames) reader.up(0, app::bitOf(press.button));
@@ -719,12 +725,15 @@ int main(int argc, char** argv) {
                     identical = false;
                     break;
                 }
-                ++compared;
                 if (!chain || chain->phase() == app::BootPhase::Clock) ++clockFrames;
+            }
+            if (checker && identical && checker->compared() != checker->size()) {
+                identical = false;
+                std::printf("golden: DIFFERENT - file has %llu frames, run compared %llu\n", static_cast<unsigned long long>(checker->size()), static_cast<unsigned long long>(checker->compared()));
             }
             std::string list;
             for (const std::string& name : visited) list += (list.empty() ? "" : ", ") + name;
-            std::printf("golden: %llu frames %s\nscreens visited: %s\n", static_cast<unsigned long long>(compared), writer ? "recorded" : identical ? "identical" : "DIFFERENT", list.c_str());
+            std::printf("golden: %llu frames %s\nscreens visited: %s\n", static_cast<unsigned long long>(checker ? checker->compared() : logicFrames), writer ? "recorded" : identical ? "identical" : "DIFFERENT", list.c_str());
             if (!writer && !identical) code = 1;
             if (device.validationErrors() != 0) {
                 std::printf("golden: %u validation errors\n", device.validationErrors());

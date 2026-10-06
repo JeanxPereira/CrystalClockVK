@@ -38,6 +38,7 @@ public:
     bool check(const GoldenLine& line);
     const std::string& report() const { return m_report; }
     uint64_t compared() const { return m_compared; }
+    uint64_t size() const { return m_lines.size(); }
 
 private:
     std::vector<GoldenLine> m_lines;
