@@ -66,9 +66,25 @@ constexpr std::array<Timed, 43> kInitCommands{{
     {8419, 0x6200, {4u, 68u, 0u, 2684496400u, 64u}},
 }};
 
-// The pad and sound thread's S/PDIF push (pad_sound_handler_thread_proc 0x0020CE2C) is not EE-queued: the only entry no sender produces.
-constexpr std::array<Timed, 1> kClockCommands{{
+// Entries no EE sender produces: the S/PDIF push (pad_sound_handler_thread_proc 0x0020CE2C) and the 0x60D0 ramp, sent at the drain cadence of the hddosd-110U-sound-ee-boot capture
+// (every second frame from the clock thread start to the set-up pair, every frame after); what skips those drains is not traced.
+constexpr std::array<Timed, 16> kClockCommands{{
     {23, 0x8070, {10u, 0u, 2033250u, 2684492688u, 64u}},
+    {800, 0x60d0, {1u, 0u, 0u, 2684493712u, 64u}},
+    {2407, 0x60d0, {1u, 344u, 344u, 0u, 64u}},
+    {4009, 0x60d0, {1u, 688u, 688u, 0u, 64u}},
+    {5611, 0x60d0, {1u, 1032u, 1032u, 0u, 64u}},
+    {7212, 0x60d0, {1u, 1376u, 1376u, 0u, 64u}},
+    {8814, 0x60d0, {1u, 1720u, 1720u, 0u, 64u}},
+    {10415, 0x60d0, {1u, 2064u, 2064u, 0u, 64u}},
+    {12016, 0x60d0, {1u, 2408u, 2408u, 0u, 64u}},
+    {13618, 0x60d0, {1u, 2752u, 2752u, 0u, 64u}},
+    {15220, 0x60d0, {1u, 3096u, 3096u, 0u, 64u}},
+    {16821, 0x60d0, {1u, 3440u, 3440u, 0u, 64u}},
+    {18423, 0x60d0, {1u, 3784u, 3784u, 0u, 64u}},
+    {20025, 0x60d0, {1u, 4128u, 4128u, 2684493328u, 64u}},
+    {21627, 0x60d0, {1u, 4472u, 4472u, 0u, 64u}},
+    {23228, 0x60d0, {1u, 4816u, 4816u, 0u, 64u}},
 }};
 
 class ModelledStamp final : public WriteTiming {

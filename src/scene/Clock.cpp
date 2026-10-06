@@ -391,19 +391,6 @@ MenuWorld Clock<A>::menuWorld() {
     return {m_state, m_head.state(), m_orbs.spriteFade, m_menusState, m_cubeState, m_items, m_width, m_height, &m_sounds};
 }
 
-// module_clock_thread_proc 0x00225D30 queues 0x6150 once (jal 0x00225D50); func_002324C8 (jal 0x00225E48 from module_clock_init_resources) queues the
-// 0x6150, 6 and 0x6140, 2 pair kSetUpDelayFrames frames later (measured in `boot`: a property of that run, not a rule); the pair's a2 and a3 are the ring temporaries.
-template <class A>
-void Clock<A>::queueStartSounds() {
-    constexpr uint32_t kSetUpDelayFrames = 31;
-    if (m_soundFrames == 0) m_sounds.push_back({0x6150, 1, 0, 0});
-    if (m_soundFrames == kSetUpDelayFrames) {
-        m_sounds.push_back({0x6150, 6, 0, 0xF});
-        m_sounds.push_back({0x6140, 2, 0, 0, true, true});
-    }
-    ++m_soundFrames;
-}
-
 // References/model/clock_frame.mjs frame(), the clock screen's parts, in its order.
 template <class A>
 Frame Clock<A>::frame(const FrameInputs& in) {
@@ -420,7 +407,6 @@ Frame Clock<A>::frame(const FrameInputs& in) {
     m_strings.clear();
     m_notes.clear();
     m_sounds.clear();
-    queueStartSounds();
     MenuExternals ext;
     if (m_menus) {
         ext = in.menu;

@@ -24,7 +24,7 @@ struct BootOptions {
     DiscSchedule disc;
     std::optional<uint32_t> lightsPhase;
     std::optional<History> history;
-    // Word 0x001F0648 at the thread start: 1 BootOpening, 4 BootIllegal / BootWarning (facts/sound-events.md 4.1).
+    // Word 0x001F0648: 1 BootOpening, 4 BootIllegal / BootWarning.
     int32_t module = 1;
     bool clockForced = false, hddReady = false;
     int32_t hddExec = 0;

@@ -367,7 +367,7 @@ int main(int argc, char** argv) {
         bool fresh = false;
         uint64_t logicFrames = 0;
         std::unique_ptr<audio::LiveAudio> audio;
-        bool audioClockStarted = false;
+        bool clockStartPending = false;
         try {
             audio::LiveAudioOptions audioOptions;
             audioOptions.mute = options.mute;
@@ -389,6 +389,19 @@ int main(int argc, char** argv) {
             if (!audio) return;
             for (const scene::SoundCommand& c : sounds) audio->queue({c.id, c.a1, c.a2, c.a3}, c.carriedA2, c.carriedA3);
         };
+        const auto clockThreadStarts = [&] {
+            std::vector<scene::SoundCommand> sounds;
+            scene::clockThreadStart(sounds);
+            queueSounds(sounds);
+            clockStartPending = true;
+        };
+        const auto clockSetsUp = [&](bool forced) {
+            if (forced) return;
+            std::vector<scene::SoundCommand> sounds;
+            scene::clockSetUp(sounds);
+            queueSounds(sounds);
+        };
+        bool bootClockForced = false;
         const auto stepClock = [&] {
             const system_clock::time_point now = wallNow() + offset;
             scene::Frame produced;
@@ -462,6 +475,8 @@ int main(int argc, char** argv) {
             }
             auto opening = std::make_unique<app::OpeningScreen>(boot, program);
             bootOpening = opening.get();
+            bootClockForced = boot.clockForced;
+            queueSounds(bootOpening->startCommands());
             clockPtr.reset();
             auto clockScreen = std::make_unique<FunctionScreen>([&] {
                 if (!clockPtr) startClock(true, bootOpening->randState());
@@ -486,6 +501,8 @@ int main(int argc, char** argv) {
             buildBoot();
         } else {
             startClock(false, std::nullopt);
+            clockThreadStarts();
+            clockSetsUp(false);
             settle([&] { return clockPtr->state().mode == 0 && clockPtr->menus()->mainMenu.ramp.state == 2; });
             if (options.clockStart) {
                 const auto run = [&](int count) {
@@ -519,6 +536,13 @@ int main(int argc, char** argv) {
             inputs.items = clockItems(now);
             core::Log::get().setFrame(logicFrames);
             std::string sent;
+            if (audio && clockStartPending) {
+                core::log(core::Level::Info, core::Subsystem::Audio, "startClock");
+                audio->startClock();
+                clockStartPending = false;
+            }
+            if (audio)
+                for (const audio::SoundCommand& c : audio->drain()) sent += std::format("{}{:x}({},{},{})", sent.empty() ? "" : ",", c.id, c.a1, c.a2, c.a3);
             if (chain) {
                 const bool inOpening = chain->phase() == app::BootPhase::Opening;
                 chain->step();
@@ -527,6 +551,11 @@ int main(int argc, char** argv) {
                     const scene::opening::HandOff* h = bootOpening->handOff();
                     core::log(core::Level::Info, core::Subsystem::Boot, "phase {} -> {}, opening counter {}, hand-off {}", phaseName(lastPhase), chain->name(), bootOpening->counter(),
                               h ? std::format("module {} execute type {}", h->module, h->executeAppType) : std::string("none"));
+                    if (chain->phase() == app::BootPhase::Gap) clockThreadStarts();
+                    if (chain->phase() == app::BootPhase::Clock) {
+                        if (lastPhase == app::BootPhase::Opening) clockThreadStarts();
+                        clockSetsUp(bootClockForced);
+                    }
                     lastPhase = chain->phase();
                 }
                 if (inOpening) queueSounds(bootOpening->commands());
@@ -534,13 +563,6 @@ int main(int argc, char** argv) {
                 frame = stepClock();
             }
             if (audio) {
-                if (!audioClockStarted && clockPtr) {
-                    core::log(core::Level::Info, core::Subsystem::Audio, "startClock");
-                    audio->startClock();
-                    audioClockStarted = true;
-                }
-                for (const audio::SoundCommand& c : audio->drain())
-                    sent += std::format("{}{:x}({},{},{})", sent.empty() ? "" : ",", c.id, c.a1, c.a2, c.a3);
                 audio->setMuted(panel.mute);
                 audio->setVolume(panel.volume);
                 audio->step();
@@ -907,12 +929,14 @@ int main(int argc, char** argv) {
                 chain.reset();
                 bootOpening = nullptr;
                 startClock(false, std::nullopt);
+                clockThreadStarts();
+                clockSetsUp(false);
                 produce();
             }
             if (panel.restartOpening) {
                 panel.restartOpening = false;
                 visited.clear();
-                audioClockStarted = false;
+                lastPhase = app::BootPhase::Opening;
                 buildBoot();
                 logicFrames = 0;
                 produce();

@@ -17,7 +17,7 @@ constexpr uint64_t kSamplesNumerator = 4004, kSamplesDenominator = 5;
 constexpr uint32_t kPrefillFrames = 4;
 constexpr uint32_t kMaxQueuedFrames = 8;
 constexpr uint32_t kFrameSamples = 801;
-constexpr uint64_t kSendGap = 26;
+constexpr uint64_t kUnmeasuredSendSpacing = 26;
 
 void put32(std::vector<uint8_t>& b, uint32_t v) {
     for (int k = 0; k < 4; ++k) b.push_back(uint8_t(v >> (8 * k)));
@@ -44,7 +44,7 @@ void writeWavFile(const std::filesystem::path& path, const std::vector<int16_t>&
 }
 
 LiveAudio::LiveAudio(ClockSoundSources sources, const LiveAudioOptions& options)
-    : m_sound(std::move(sources), ClockSoundOptions{options.video, true, true, true}), m_options(options), m_muted(options.mute) {
+    : m_sound(std::move(sources), ClockSoundOptions{options.video, true, true, true}), m_queue(EeSoundQueue::kRampSteps), m_options(options), m_muted(options.mute) {
     m_stats.minQueuedFrames = UINT32_MAX;
     if (!options.device) {
         core::log(core::Level::Info, core::Subsystem::Audio, "device off");
@@ -105,7 +105,7 @@ std::vector<SoundCommand> LiveAudio::drain() {
         d.sample = uint32_t(at);
         core::log(core::Level::Debug, core::Subsystem::Audio, "send {:x} {} {} {}", c.id, c.a1, c.a2, c.a3);
         guarded([&] { m_sound.queue(d); });
-        at += kSendGap;
+        at += kUnmeasuredSendSpacing;
     }
     return sent;
 }

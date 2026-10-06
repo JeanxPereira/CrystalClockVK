@@ -23,6 +23,7 @@ public:
     uint32_t randState() const { return m_opening.randState(); }
     const std::vector<scene::opening::SoundEvent>& sounds() const { return m_opening.sounds(); }
     const std::vector<scene::SoundCommand>& commands() const { return m_opening.commands(); }
+    std::vector<scene::SoundCommand> startCommands() const { return m_opening.startCommands(); }
 
 private:
     scene::opening::Opening<scene::NativeArithmetic> m_opening;
