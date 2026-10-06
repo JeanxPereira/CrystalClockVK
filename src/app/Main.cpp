@@ -328,7 +328,7 @@ int main(int argc, char** argv) {
         imgui.Device = device.device();
         imgui.QueueFamily = device.queueFamily();
         imgui.Queue = device.queue();
-        imgui.DescriptorPoolSize = IMGUI_IMPL_VULKAN_MINIMUM_IMAGE_SAMPLER_POOL_SIZE;
+        imgui.DescriptorPoolSize = IMGUI_IMPL_VULKAN_MINIMUM_SAMPLED_IMAGE_POOL_SIZE;
         imgui.MinImageCount = 2;
         imgui.ImageCount = std::max(3u, device.swapchainImageCount());
         imgui.UseDynamicRendering = true;
