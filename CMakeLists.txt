@@ -1,4 +1,7 @@
 cmake_minimum_required(VERSION 3.30)
+if(POLICY CMP0184)
+    cmake_policy(SET CMP0184 NEW)
+endif()
 set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 project(CrystalClockVK VERSION 1.0.0 LANGUAGES CXX)
 
