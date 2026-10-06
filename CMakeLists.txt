@@ -7,6 +7,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+
+add_compile_definitions(_MSVC_STL_HARDENING=1 $<$<CONFIG:Debug>:_ITERATOR_DEBUG_LEVEL=0>)
 include(FetchContent)
 
 option(CLOCK_BUILD_TESTS "Build the tests tree (tests/CMakeLists.txt, when present) instead of the app" OFF)
