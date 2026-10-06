@@ -30,7 +30,8 @@ struct Header {
 // sprite its second corner's colour and depth, as the GS does.
 class Builder {
 public:
-    explicit Builder(Frame& frame) : m_frame(frame) {}
+    Builder(Frame& frame, bool names) : m_frame(frame), m_names(names) {}
+    bool names() const { return m_names; }
     void use(Header header) { m_header = std::move(header); }
     // What is drawn between (the text) keeps the next primitives out of the last pass.
     void cut() { m_cut = true; }
@@ -77,6 +78,7 @@ private:
     }
 
     Frame& m_frame;
+    bool m_names;
     Header m_header;
     bool m_cut = false;
     std::vector<Vertex> m_scratch;
@@ -204,29 +206,31 @@ void emitHead(Builder& out, const std::vector<HeadDraw>& draws, int32_t width, i
 
 // facts/clock-rod-draw.md "Per send" and facts/clock-extra-passes.md: the state of each send. The refracted
 // faces have no blending; AA1 blends their edges with the ALPHA register as it stands.
-Header rodHeader(const std::string& name, RodSendKind kind, bool edge, bool split, int32_t grainTexture, int32_t width, int32_t height) {
+std::string label(bool names, const std::string& name, const char* suffix) { return names ? name + suffix : std::string(); }
+
+Header rodHeader(const std::string& name, bool names, RodSendKind kind, bool edge, bool split, int32_t grainTexture, int32_t width, int32_t height) {
     const BlendOp bent = edge ? BlendOp::AlphaOver : BlendOp::Opaque;
     switch (kind) {
     case RodSendKind::RefractedFar:
-        return {name + " refracted far", TargetName::Work, PassTopology::Triangles, withState(fromTarget(TargetName::RefractionSource, false, width, height), bent, DepthTest::Always), edge,
+        return {label(names, name, " refracted far"), TargetName::Work, PassTopology::Triangles, withState(fromTarget(TargetName::RefractionSource, false, width, height), bent, DepthTest::Always), edge,
                 true};
     case RodSendKind::GrainSubtracted:
-        return {name + " grain subtracted", TargetName::Work, PassTopology::Triangles,
+        return {label(names, name, " grain subtracted"), TargetName::Work, PassTopology::Triangles,
                 withState(fromTexture(2, CoordinateKind::Projective, Sampling::Repeat), BlendOp::Subtract, DepthTest::GreaterEqual), false, true};
     case RodSendKind::GrainAdded:
-        return {name + " grain added", TargetName::Work, PassTopology::Triangles,
+        return {label(names, name, " grain added"), TargetName::Work, PassTopology::Triangles,
                 withState(fromTexture(2, CoordinateKind::Projective, Sampling::Repeat), BlendOp::Add, DepthTest::GreaterEqual), false, true};
     case RodSendKind::RefractedNearToFrame:
-        return {name + " refracted near to the frame", TargetName::Display, PassTopology::Triangles,
+        return {label(names, name, " refracted near to the frame"), TargetName::Display, PassTopology::Triangles,
                 withState(fromTarget(TargetName::Work, false, width, height), bent, DepthTest::GreaterEqual), edge, true};
     case RodSendKind::RefractedNearToRefraction:
-        return {name + " refracted near to the refraction buffer", TargetName::RefractionSource, PassTopology::Triangles,
+        return {label(names, name, " refracted near to the refraction buffer"), TargetName::RefractionSource, PassTopology::Triangles,
                 withState(fromTarget(TargetName::Work, false, width, height), bent, DepthTest::GreaterEqual), edge, true};
     case RodSendKind::Reflection:
-        return {name + " reflection", TargetName::Work, PassTopology::Triangles,
+        return {label(names, name, " reflection"), TargetName::Work, PassTopology::Triangles,
                 withState(fromTexture(0, CoordinateKind::Texel, Sampling::Clamp), BlendOp::Opaque, split ? DepthTest::GreaterEqual : DepthTest::Always), false, true};
     case RodSendKind::Grain:
-        return {name + " grain", TargetName::Work, PassTopology::Triangles,
+        return {label(names, name, " grain"), TargetName::Work, PassTopology::Triangles,
                 withState(fromTexture(grainTexture, CoordinateKind::Projective, Sampling::Repeat), BlendOp::Subtract, DepthTest::Always), false, true};
     }
     throw std::runtime_error("unknown rod send");
@@ -238,7 +242,7 @@ Vertex rodVertex(const RodVertex& r) {
 
 void emitRodSend(Builder& out, const std::string& name, const RodSend& send, bool split, int32_t grainTexture, int32_t width, int32_t height) {
     for (const RodFaceDraw& face : send.faces) {
-        out.use(rodHeader(name, send.kind, face.edgeSmoothing, split, grainTexture, width, height));
+        out.use(rodHeader(name, out.names(), send.kind, face.edgeSmoothing, split, grainTexture, width, height));
         std::vector<Vertex>& strip = out.scratch();
         for (const RodVertex& r : face.strip) strip.push_back(rodVertex(r));
         out.triangles(strip);
@@ -247,17 +251,17 @@ void emitRodSend(Builder& out, const std::string& name, const RodSend& send, boo
 
 // facts/clock-orbs.md: the trail (an antialiased line strip) and the two sprites, to the frame and to the refraction buffer.
 void emitOrb(Builder& out, const OrbDraw& orb) {
-    const std::string name = "orb " + std::to_string(orb.k);
+    const std::string name = out.names() ? "orb " + std::to_string(orb.k) : std::string();
     for (size_t s = 0; s < orb.sends.size(); ++s) {
         const OrbSend& send = orb.sends[s];
         const TargetName target = s == 0 ? TargetName::Display : TargetName::RefractionSource;
-        out.use({name + " trail", target, PassTopology::Lines, withState(Material{}, BlendOp::Add, DepthTest::Greater), true, true});
+        out.use({label(out.names(), name, " trail"), target, PassTopology::Lines, withState(Material{}, BlendOp::Add, DepthTest::Greater), true, true});
         std::vector<Vertex>& points = out.scratch();
         for (const OrbVertex& p : send.trail.points)
             points.push_back({p.x, p.y, depthOf(p.z), 0, 0, 1, byteOf(p.r, 255), byteOf(p.g, 255), byteOf(p.b, 255), byteOf(p.a, 128)});
         out.lines(points);
         const auto sprite = [&](const char* what, int32_t texture, const OrbSprite& corners) {
-            out.use({name + " " + what, target, PassTopology::Sprites, withState(fromTexture(texture, CoordinateKind::Texel, Sampling::Clamp), BlendOp::Add, DepthTest::Always), false,
+            out.use({out.names() ? name + " " + what : std::string(), target, PassTopology::Sprites, withState(fromTexture(texture, CoordinateKind::Texel, Sampling::Clamp), BlendOp::Add, DepthTest::Always), false,
                      true});
             const auto corner = [](const OrbVertex& c) {
                 return Vertex{c.x, c.y, depthOf(c.z), c.u * 64.0f, c.v * 64.0f, 1, byteOf(c.r, 128), byteOf(c.g, 128), byteOf(c.b, 128), byteOf(c.a, 128)};
@@ -313,7 +317,7 @@ void clearTarget(Builder& out, const std::string& name, TargetName target, const
 void emitCubes(Builder& out, const std::vector<CubeDraw>& draws, int32_t width, int32_t height) {
     for (const CubeDraw& d : draws) {
         if (d.send == CubeSend::LayerClear) {
-            clearTarget(out, "cubes layer clear", TargetName::Work, d.clear, width, height);
+            clearTarget(out, out.names() ? "cubes layer clear" : "", TargetName::Work, d.clear, width, height);
         } else if (d.rectangle) {
             emitHead(out, {*d.rectangle}, width, height);
         } else {
@@ -371,7 +375,7 @@ void clearTarget(Builder& out, const std::string& name, TargetName target, const
 template <class A>
 Clock<A>::Clock(const ClockInputs& in)
     : m_state(in.state), m_head(in.head), m_rods(in.mesh, in.rodTemplate), m_orbs(in.orbs), m_clearColour(in.clearColour), m_firstDisplayClear(in.firstDisplayClear), m_tube(in.tube),
-      m_minuteFactor(in.minuteFactor), m_fractionEasing(in.fractionEasing), m_orbColour(in.orbColour), m_hasEntryData(in.hasEntryData), m_wide(in.wide), m_orbRandom(in.orbRandom), m_orbColours(in.orbColours), m_width(in.width), m_height(in.height), m_textRamps(in.text.ramps) {
+      m_minuteFactor(in.minuteFactor), m_fractionEasing(in.fractionEasing), m_orbColour(in.orbColour), m_hasEntryData(in.hasEntryData), m_wide(in.wide), m_orbRandom(in.orbRandom), m_orbColours(in.orbColours), m_width(in.width), m_height(in.height), m_textRamps(in.text.ramps), m_passNames(in.passNames) {
     if (in.font && in.program) m_text.emplace(in.font, in.program, in.text);
     if (in.menus) {
         m_menus.emplace(in.menus->options);
@@ -395,7 +399,7 @@ Frame Clock<A>::frame(const FrameInputs& in) {
     frame.height = m_height;
     frame.field = in.field;
     frame.displayIndex = in.displayIndex;
-    Builder out(frame);
+    Builder out(frame, m_passNames);
 
     m_state.time = in.time;
     if (!m_menus) m_state.timeFilled = in.timeFilled.value_or(1);
@@ -482,17 +486,17 @@ Frame Clock<A>::frame(const FrameInputs& in) {
         }
         const Rod& rod = rodFrame.rods[static_cast<size_t>(node.index)];
         if (!rod.drawn) continue;
-        for (const RodSend& send : rod.sends) emitRodSend(out, "rod " + std::to_string(rod.record.number), send, !rod.pieces.empty(), 2, m_width, m_height);
+        for (const RodSend& send : rod.sends) emitRodSend(out, out.names() ? "rod " + std::to_string(rod.record.number) : std::string(), send, !rod.pieces.empty(), 2, m_width, m_height);
     }
     for (size_t pass = 0; pass < rodFrame.extraPasses.size(); ++pass) {
-        const std::string name = "extra pass " + std::to_string(pass);
-        clearTarget(out, name + " clear", TargetName::Work, {0, 0, 0, 0x80}, m_width, m_height);
+        const std::string name = out.names() ? "extra pass " + std::to_string(pass) : std::string();
+        clearTarget(out, label(out.names(), name, " clear"), TargetName::Work, {0, 0, 0, 0x80}, m_width, m_height);
         for (const RodExtraDraw& draw : rodFrame.extraPasses[pass]) {
-            const std::string rod = name + " rod " + std::to_string(rodFrame.rods[draw.rod].record.number);
+            const std::string rod = out.names() ? name + " rod " + std::to_string(rodFrame.rods[draw.rod].record.number) : std::string();
             emitRodSend(out, rod, draw.reflection, draw.split, draw.grainTexture, m_width, m_height);
             emitRodSend(out, rod, draw.grain, draw.split, draw.grainTexture, m_width, m_height);
         }
-        out.use({name + " added to the frame", TargetName::Display, PassTopology::Sprites,
+        out.use({label(out.names(), name, " added to the frame"), TargetName::Display, PassTopology::Sprites,
                  withState(fromTarget(TargetName::Work, false, m_width, m_height), BlendOp::Add, DepthTest::Always), false, false});
         const float w = static_cast<float>(m_width), h = static_cast<float>(m_height);
         out.sprite({0, 0, 0, 0.5f, 0.5f, 1, 0x80, 0x80, 0x80, 30}, {w, h, 0, w + 0.5f, h + 0.5f, 1, 0x80, 0x80, 0x80, 30});

@@ -440,6 +440,7 @@ int main(int argc, char** argv) {
             scene::ColdStartOut start = scene::coldStart<scene::NativeArithmetic>(coldAssets, cold);
             clockInputs = std::move(start.clock);
             if (clockInputs.menus) clockInputs.menus->options.browserEnters = false;
+            clockInputs.passNames = device.labels() || !options.traceFile.empty();
             clockPtr = std::make_unique<Clock>(clockInputs);
             inputs = start.frame;
             app::firstFrame(inputs);

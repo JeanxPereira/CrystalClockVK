@@ -56,6 +56,7 @@ struct ClockInputs {
     std::shared_ptr<const ProgramImage> program;
     TextInputs text;
     std::optional<MenusInputs> menus;            // absent: the clock screen alone, as before
+    bool passNames = true;                       // false: the passes carry no names (labels, trace and parity read them)
 };
 
 // What comes from outside the clock each frame: the time keeper, the field flag, the display buffer
@@ -123,6 +124,7 @@ private:
     ConfigItems m_items{};
     MenuExternals m_external;
     TextRamps m_textRamps;
+    bool m_passNames;
     std::vector<std::string> m_notes;
     std::vector<uint32_t> m_unmodelled;
 };
