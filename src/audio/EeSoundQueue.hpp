@@ -26,6 +26,7 @@ public:
     uint16_t carriedA3() const { return m_carriedA3; }
 
 private:
+    bool push(const SoundCommand& command);
     std::array<SoundCommand, kEntries> m_slots{};
     uint32_t m_head = 0, m_tail = 0;
     int32_t m_rampCounter = 0;
