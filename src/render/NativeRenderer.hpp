@@ -25,15 +25,15 @@ struct NativeOutput {
     bool operator==(const NativeOutput&) const = default;
 };
 
-// Draws a scene::Frame with an ordinary graphics pipeline: float blending, no GS rules.
-// Units (scene/Frame.hpp): colour bytes, alpha 0x80 = 1.0. Targets store alpha / 128, so a target read back
-// or sampled gives the alpha byte the OSD would have; readTarget converts at that boundary.
 struct GpuVertex {
     float x, y, z;
     float u, v, q;
     uint8_t r, g, b, a;
 };
 
+// Draws a scene::Frame with an ordinary graphics pipeline: float blending, no GS rules.
+// Units (scene/Frame.hpp): colour bytes, alpha 0x80 = 1.0. Targets store alpha / 128, so a target read back
+// or sampled gives the alpha byte the OSD would have; readTarget converts at that boundary.
 class NativeRenderer {
 public:
     NativeRenderer(Device& device, const std::filesystem::path& shaderDirectory);

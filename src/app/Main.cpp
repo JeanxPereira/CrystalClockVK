@@ -754,8 +754,8 @@ int main(int argc, char** argv) {
             }
             std::string list;
             for (const std::string& name : visited) list += (list.empty() ? "" : ", ") + name;
-            std::printf("golden: %llu frames %s\nscreens visited: %s\n", static_cast<unsigned long long>(checker ? checker->compared() : logicFrames), writer ? "recorded" : identical ? "identical" : "DIFFERENT", list.c_str());
-            if (!writer && !identical) code = 1;
+            std::printf("golden: %llu frames %s\nscreens visited: %s\n", static_cast<unsigned long long>(checker ? checker->compared() : logicFrames), !identical ? "DIFFERENT" : writer ? "recorded" : "identical", list.c_str());
+            if (!identical) code = 1;
             if (device.validationErrors() != 0) {
                 std::printf("golden: %u validation errors\n", device.validationErrors());
                 code = 1;

@@ -10,6 +10,8 @@ enum class BootPhase { Opening, Gap, Clock };
 class BootChain : public FrameSource {
 public:
     BootChain(std::unique_ptr<FrameSource> opening, std::unique_ptr<FrameSource> clock, int gapFrames);
+    BootChain(const BootChain&) = delete;
+    BootChain& operator=(const BootChain&) = delete;
 
     void step() override;
     scene::Frame& frame() override { return *m_active; }

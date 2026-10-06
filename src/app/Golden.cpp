@@ -4,6 +4,7 @@
 #include <bit>
 #include <cinttypes>
 #include <cstdio>
+#include <stdexcept>
 #include <type_traits>
 
 namespace app {
@@ -84,6 +85,7 @@ std::optional<GoldenLine> parseLine(const std::string& text) {
 GoldenWriter::GoldenWriter(std::filesystem::path path) {
     if (path.has_parent_path()) std::filesystem::create_directories(path.parent_path());
     m_out.open(path, std::ios::trunc);
+    if (!m_out) throw std::runtime_error("golden: cannot write " + path.string());
 }
 
 void GoldenWriter::add(const GoldenLine& line) { m_out << formatLine(line) << std::endl; }

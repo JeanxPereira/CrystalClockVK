@@ -75,7 +75,10 @@ Device::Device(SDL_Window* window, const DeviceOptions& options) : m_window(wind
     if (m_instance.debug_messenger) {
         m_beginLabel = reinterpret_cast<PFN_vkCmdBeginDebugUtilsLabelEXT>(vkGetInstanceProcAddr(m_instance.instance, "vkCmdBeginDebugUtilsLabelEXT"));
         m_endLabel = reinterpret_cast<PFN_vkCmdEndDebugUtilsLabelEXT>(vkGetInstanceProcAddr(m_instance.instance, "vkCmdEndDebugUtilsLabelEXT"));
-        if (!m_beginLabel || !m_endLabel) m_beginLabel = nullptr;
+        if (!m_beginLabel || !m_endLabel) {
+            m_beginLabel = nullptr;
+            m_endLabel = nullptr;
+        }
     }
 
     if (window && !SDL_Vulkan_CreateSurface(window, m_instance.instance, nullptr, &m_surface))
