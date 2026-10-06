@@ -23,7 +23,10 @@ The console's raw resource files (TEXIMAGE, FNTOSD, SNDIMAGE, ICOIMAGE, JISUCS, 
 ## Build and run
 - CMake 4.2+, C++23, Windows only (Vulkan 1.4, `glslc` from the Vulkan SDK, Visual Studio 2026 with Ninja).
 - `tools/build.ps1 configure app`, then `tools/build.ps1 build app-debug` (or `app-release`). Binary: `bin/CrystalClock.exe`.
-- Check: `bin/CrystalClock.exe --soak 10` (opens with the boot; `--skip-boot` starts at the menu) must report 0 validation errors.
+- Check: `bin/CrystalClock.exe --soak 10` (opens with the boot; `--skip-boot` starts at the menu) must report 0 validation errors; `--validate sync` adds synchronization validation.
+- Regression gate: `bin/CrystalClock.exe --golden check <file>` replays a fixed time and a scripted pad headless and compares each frame's scene, pixel and audio hash against a recorded run (`--golden record <file>`; `--golden-output x2-msaa4` for the 2x MSAA 4 output). Record a baseline before a change, check after; any differing frame fails. Baselines are per build type and per machine (the RTC mirror depends on the time zone).
+- Profile: `--profile` with a soak prints produce, record and present means and worst per screen (`--skip-boot --soak 58 --mute --profile`).
+- Debug builds compile the audio emulation (`ClockAudioSpu2`, `ClockAudioDriver`) with `/O2`; the rest keeps `/Od` and runtime checks.
 - One `CMakeLists.txt` serves both branches. The root hooks `tests/CMakeLists.txt` in only when `-DCLOCK_BUILD_TESTS=ON` and the file exists (lab).
 - CI (`.github/workflows/build.yml`): Windows app build only.
 
