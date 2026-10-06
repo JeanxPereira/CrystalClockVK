@@ -44,7 +44,7 @@ void writeWavFile(const std::filesystem::path& path, const std::vector<int16_t>&
 }
 
 LiveAudio::LiveAudio(ClockSoundSources sources, const LiveAudioOptions& options)
-    : m_sound(std::move(sources), ClockSoundOptions{options.video, true, true, true}), m_queue(EeSoundQueue::kRampSteps), m_options(options), m_muted(options.mute) {
+    : m_sound(std::move(sources), ClockSoundOptions{options.video, true, true, true}), m_queue(0, false), m_options(options), m_muted(options.mute) {
     m_stats.minQueuedFrames = UINT32_MAX;
     if (!options.device) {
         core::log(core::Level::Info, core::Subsystem::Audio, "device off");

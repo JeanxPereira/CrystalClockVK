@@ -17,7 +17,7 @@ public:
     static constexpr size_t kEntries = 128;
     static constexpr int kRampSteps = 15;
 
-    explicit EeSoundQueue(int32_t rampCounter = 0) : m_rampCounter(rampCounter) {}
+    explicit EeSoundQueue(int32_t rampCounter = 0, bool sendsRamp = true) : m_rampCounter(rampCounter), m_sendsRamp(sendsRamp) {}
 
     bool enqueue(const SoundCommand& command);
     std::vector<SoundCommand> drain();
@@ -30,6 +30,7 @@ private:
     std::array<SoundCommand, kEntries> m_slots{};
     uint32_t m_head = 0, m_tail = 0;
     int32_t m_rampCounter = 0;
+    bool m_sendsRamp = true;
     uint16_t m_carriedA2 = 0, m_carriedA3 = 0;
 };
 

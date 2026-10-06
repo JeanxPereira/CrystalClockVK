@@ -389,7 +389,10 @@ int main(int argc, char** argv) {
             if (!audio) return;
             for (const scene::SoundCommand& c : sounds) audio->queue({c.id, c.a1, c.a2, c.a3}, c.carriedA2, c.carriedA3);
         };
+        bool clockThreadDone = false;
         const auto clockThreadStarts = [&] {
+            if (clockThreadDone) return;
+            clockThreadDone = true;
             std::vector<scene::SoundCommand> sounds;
             scene::clockThreadStart(sounds);
             queueSounds(sounds);
@@ -476,6 +479,7 @@ int main(int argc, char** argv) {
             auto opening = std::make_unique<app::OpeningScreen>(boot, program);
             bootOpening = opening.get();
             bootClockForced = boot.clockForced;
+            clockThreadDone = false;
             queueSounds(bootOpening->startCommands());
             clockPtr.reset();
             auto clockScreen = std::make_unique<FunctionScreen>([&] {

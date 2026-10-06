@@ -36,7 +36,7 @@ std::vector<SoundCommand> EeSoundQueue::drain() {
         if (slot.id == kDedupId && seen && previous == slot.a2) send = false;
         else previous = slot.a2;
         seen = true;
-        if (send) sends.push_back(slot);
+        if (send && (m_sendsRamp || slot.id != kRampId)) sends.push_back(slot);
         slot = SoundCommand{};
     }
     m_tail = head;
