@@ -129,6 +129,7 @@ HeadDraw strip(const Mat4& view, const Mat4& screen, int32_t angle0, int32_t ang
     const int32_t lightA = A::toInt(A::mul(A::add(A::cos16(a), 1.0f), 10.0f)), lightB = A::toInt(A::mul(A::add(A::cos16(b), 1.0f), 10.0f));
     HeadDraw d;
     d.part = Part::Background;
+    d.vertices.reserve(68);
     setPrim(d, 0x1c);
     setState(d, Target::Display, Source::Background, AlphaMode::Add, 2);
     const float scrolled = static_cast<float>(counter % 5000);
@@ -175,6 +176,7 @@ void vignette(const RingRecord& r, const HeadInputs& in, std::vector<HeadDraw>& 
         const int32_t next = angle + 0x1000;
         HeadDraw d;
         d.part = Part::Vignette;
+        d.vertices.reserve(6);
         setPrim(d, 0x4c);
         setState(d, Target::Display, Source::None, AlphaMode::AlphaOver, 2);
         auto put = [&](int32_t alpha, uint64_t xyz) { d.vertices.push_back(vertexOf(origin, colour(alpha), 0, Coordinates::None, xyz)); };
@@ -200,6 +202,7 @@ HeadDraw headRectangle(const Rect& r, int32_t width, int32_t height, Part part) 
     const uint64_t xyz0 = wide(r.x0 + ox) | (wide(r.y0 + oy) << 16) | z, xyz1 = wide(r.x1 + ox) | (wide(r.y1 + oy) << 16) | z;
     HeadDraw d;
     d.part = part;
+    d.vertices.reserve(2);
     setPrim(d, prim);
     const Origin origin = originOf(width, height);
     d.vertices.push_back(vertexOf(origin, rgbaq, uv0, Coordinates::Uv, xyz0));
@@ -212,6 +215,7 @@ template <class A>
 std::vector<HeadDraw> FrameHead<A>::head(const HeadInputs& in, const Mat4& view, const Mat4& screen) {
     HeadState& s = m_state;
     std::vector<HeadDraw> out;
+    out.reserve(in.mode == 0 ? 16 + 24 : 24);
     s.tint.x1 = in.width << 4;
     s.tint.y1 = in.height << 4;
     s.tint.u1 = (in.width << 4) + 8;

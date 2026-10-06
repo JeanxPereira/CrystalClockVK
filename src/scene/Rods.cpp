@@ -1,5 +1,6 @@
 #include "scene/Rods.hpp"
 
+#include <array>
 #include <fstream>
 #include <stdexcept>
 #include <string>
@@ -30,28 +31,47 @@ struct Set {
     float lift;
 };
 
-std::vector<std::pair<const Set*, const RodFace*>> sideOf(const std::vector<Set>& sets, bool side) {
-    std::vector<std::pair<const Set*, const RodFace*>> faces;
+using Sided = std::vector<std::pair<const Set*, const RodFace*>>;
+
+struct SetList {
+    std::array<Set, 2> items;
+    size_t count = 0;
+    const Set* begin() const { return items.data(); }
+    const Set* end() const { return items.data() + count; }
+};
+
+void sideOf(Sided& faces, const SetList& sets, bool side) {
+    faces.clear();
     for (const Set& set : sets)
         for (const RodFace* face : set.faces)
             if ((face->flag != 0) == side) faces.push_back({&set, face});
-    return faces;
+}
+
+void reset(Set& set, RodPiece piece, const RodRecord& rod, float lift) {
+    set.piece = piece;
+    set.rod = rod;
+    set.faces.clear();
+    set.lift = lift;
 }
 
 // The pieces drawn: the whole rod, or piece A's faces 8 and up and piece B's all but 8 and 9.
-std::vector<Set> setsOf(const Rod& rod, const RodRecord& a, const RodRecord& b, float lift) {
+void setsOf(SetList& sets, const Rod& rod, const RodRecord& a, const RodRecord& b, float lift) {
     if (rod.pieces.empty()) {
-        Set whole{RodPiece::Whole, rod.record, {}, 0.0f};
+        Set& whole = sets.items[0];
+        reset(whole, RodPiece::Whole, rod.record, 0.0f);
         for (const RodFace& face : rod.whole.faces) whole.faces.push_back(&face);
-        return {whole};
+        sets.count = 1;
+        return;
     }
-    Set first{RodPiece::A, a, {}, 0.0f};
+    Set& first = sets.items[0];
+    reset(first, RodPiece::A, a, 0.0f);
     for (const RodFace& face : rod.pieces[0].transform.faces)
         if (face.index >= 8) first.faces.push_back(&face);
-    Set second{RodPiece::B, b, {}, lift};
+    Set& second = sets.items[1];
+    reset(second, RodPiece::B, b, lift);
     for (const RodFace& face : rod.pieces[1].transform.faces)
         if (face.index != 8 && face.index != 9) second.faces.push_back(&face);
-    return {first, second};
+    sets.count = 2;
 }
 
 }
@@ -89,6 +109,7 @@ RodTransform Rods<A>::transform(const RodRecord& rod, const Mat4& view, const Ma
     const float inverse = A::div(1.0f, centre[3]);
     for (float& x : centre) x = A::mul(x, inverse);
     RodTransform out{A::sub(centre[0], 2048.0f), A::sub(centre[1], 2048.0f), centre[2], {}};
+    out.faces.reserve(static_cast<size_t>(rod.faces));
     for (int32_t i = 0; i < rod.faces; ++i) {
         RodFace face;
         face.index = i;
@@ -130,6 +151,10 @@ template <class A>
 RodsFrame Rods<A>::frame(const RodsInput& input, const Mat4& view, const Mat4& screen) {
     RodsFrame out;
     if (!(kRodsShownAbove < input.rods[0].appearance)) return out;
+    out.rods.reserve(12);
+    out.list.reserve(12);
+    SetList sets;
+    Sided side;
 
     for (int32_t i = 0; i < 12; ++i) {
         const uint32_t number = (static_cast<uint32_t>(i) + static_cast<uint32_t>(input.currentRod)) % 12u;
@@ -170,24 +195,30 @@ RodsFrame Rods<A>::frame(const RodsInput& input, const Mat4& view, const Mat4& s
             a.base = input.accent;
             b.sy = A::mul(A::sub(1.0f, rod.t), s);
             b.local[3] = Matrix<A>::apply(rod.record.local, {0.0f, A::mul(A::mul(s, 26.0f), rod.t), 0.0f, 1.0f});
+            rod.pieces.reserve(2);
             rod.pieces.push_back({RodPiece::A, a, transform(a, view, screen, m_mesh)});
             rod.pieces.push_back({RodPiece::B, b, transform(b, view, screen, m_mesh)});
         }
-        const std::vector<Set> sets = rod.pieces.empty() ? setsOf(rod, rod.record, rod.record, 0.0f)
-                                                         : setsOf(rod, rod.pieces[0].record, rod.pieces[1].record, liftOf(rod));
-        const auto bent = [&](RodSendKind kind, bool side, int32_t extra) {
+        if (rod.pieces.empty()) setsOf(sets, rod, rod.record, rod.record, 0.0f);
+        else setsOf(sets, rod, rod.pieces[0].record, rod.pieces[1].record, liftOf(rod));
+        const auto bent = [&](RodSendKind kind, bool nearSide, int32_t extra) {
             RodSend send{kind, {}};
-            for (const auto& [set, face] : sideOf(sets, side)) send.faces.push_back(emit.refracted(*face, set->rod, rod.cx, rod.cy, extra, set->piece));
+            sideOf(side, sets, nearSide);
+            send.faces.reserve(side.size());
+            for (const auto& [set, face] : side) send.faces.push_back(emit.refracted(*face, set->rod, rod.cx, rod.cy, extra, set->piece));
             return send;
         };
         const auto grain = [&](RodSendKind kind, bool paired) {
             RodSend send{kind, {}};
-            for (const auto& [set, face] : sideOf(sets, false)) {
+            sideOf(side, sets, false);
+            send.faces.reserve(side.size());
+            for (const auto& [set, face] : side) {
                 const auto [ds, dt] = E::offsets(set->rod, *face, set->lift, paired);
                 send.faces.push_back(emit.textured(*face, set->rod.textured, ds, dt, set->piece));
             }
             return send;
         };
+        rod.sends.reserve(5);
         rod.sends.push_back(bent(RodSendKind::RefractedFar, false, 0));
         rod.sends.push_back(grain(RodSendKind::GrainSubtracted, false));
         rod.sends.push_back(grain(RodSendKind::GrainAdded, true));
@@ -202,20 +233,22 @@ RodsFrame Rods<A>::frame(const RodsInput& input, const Mat4& view, const Mat4& s
             const Rod& rod = out.rods[static_cast<size_t>(node.index)];
             if (!rod.drawn) continue;
             const bool split = !rod.pieces.empty();
-            std::vector<Set> sets;
             if (split) {
                 RodRecord a = rod.pieces[0].record, b = rod.pieces[1].record;
                 a.strength = rod.record.strength;
                 a.base = rod.record.base;
                 a.reflection = input.fourth;
                 b.reflection = input.fourth;
-                sets = setsOf(rod, a, b, liftOf(rod));
+                setsOf(sets, rod, a, b, liftOf(rod));
             } else {
-                sets = setsOf(rod, rod.record, rod.record, 0.0f);
+                setsOf(sets, rod, rod.record, rod.record, 0.0f);
             }
             RodExtraDraw draw{static_cast<size_t>(node.index), split, (pass != 0) == split ? 3 : 2, {RodSendKind::Reflection, {}}, {RodSendKind::Grain, {}}};
-            for (const auto& [set, face] : sideOf(sets, true)) draw.reflection.faces.push_back(emit.reflected(*face, set->rod.reflection, set->piece));
-            for (const auto& [set, face] : sideOf(sets, true)) {
+            sideOf(side, sets, true);
+            draw.reflection.faces.reserve(side.size());
+            draw.grain.faces.reserve(side.size());
+            for (const auto& [set, face] : side) draw.reflection.faces.push_back(emit.reflected(*face, set->rod.reflection, set->piece));
+            for (const auto& [set, face] : side) {
                 const auto [ds, dt] = E::offsets(set->rod, *face, set->lift, pass != 0);
                 draw.grain.faces.push_back(emit.textured(*face, set->rod.extra, ds, dt, set->piece));
             }

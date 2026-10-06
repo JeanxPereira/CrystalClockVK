@@ -17,12 +17,6 @@ namespace {
 constexpr VkFormat kColourFormat = VK_FORMAT_R8G8B8A8_UNORM;
 constexpr VkFormat kDepthFormat = VK_FORMAT_D32_SFLOAT;
 
-struct GpuVertex {
-    float x, y, z;
-    float u, v, q;
-    uint8_t r, g, b, a;
-};
-
 struct PushState {
     float scene[4];
     float source[4];
@@ -628,8 +622,10 @@ void NativeRenderer::record(VkCommandBuffer cmd, const scene::Frame& frame) {
     if (m_output.width == 0) throw std::runtime_error("the renderer has no output");
     checkAlpha(frame);
     ensureTargets(cmd, frame);
-    std::vector<GpuVertex> vertices;
-    std::vector<std::pair<uint32_t, uint32_t>> ranges;
+    std::vector<GpuVertex>& vertices = m_staging;
+    std::vector<std::pair<uint32_t, uint32_t>>& ranges = m_ranges;
+    vertices.clear();
+    ranges.clear();
     for (const scene::Pass& pass : frame.passes) {
         const size_t first = vertices.size();
         appendVertices(vertices, pass, frame.depthBits);

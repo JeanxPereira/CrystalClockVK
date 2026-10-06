@@ -28,6 +28,12 @@ struct NativeOutput {
 // Draws a scene::Frame with an ordinary graphics pipeline: float blending, no GS rules.
 // Units (scene/Frame.hpp): colour bytes, alpha 0x80 = 1.0. Targets store alpha / 128, so a target read back
 // or sampled gives the alpha byte the OSD would have; readTarget converts at that boundary.
+struct GpuVertex {
+    float x, y, z;
+    float u, v, q;
+    uint8_t r, g, b, a;
+};
+
 class NativeRenderer {
 public:
     NativeRenderer(Device& device, const std::filesystem::path& shaderDirectory);
@@ -125,6 +131,8 @@ private:
     NativeOutput m_output{0, 0, 0};
     std::array<Buffer, 3> m_vertices{};
     uint32_t m_slot{0};
+    std::vector<GpuVertex> m_staging;
+    std::vector<std::pair<uint32_t, uint32_t>> m_ranges;
     scene::GlyphCache m_glyphs;
 };
 

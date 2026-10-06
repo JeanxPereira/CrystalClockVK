@@ -67,6 +67,8 @@ void place(CubeState& c, int32_t index, int32_t position, float scale, int32_t s
     record.local = M::rotateZ(M::rotateY(M::rotateX(moved, turn), turn), turn);
 }
 
+constexpr size_t kExpectedDraws = 96;
+
 template <class A>
 struct Pass {
     CubeState& c;
@@ -143,14 +145,18 @@ struct Pass {
         const RodTransform whole = Rods<A>::transform(rod, view, screen, mesh);
         const float cx = A::mul(whole.cx, c.centreFactors[0]), cy = A::mul(whole.cy, c.centreFactors[0]);
         std::vector<const RodFace*> far, near;
+        far.reserve(whole.faces.size());
+        near.reserve(whole.faces.size());
         for (const RodFace& face : whole.faces) (face.flag == 0 ? far : near).push_back(&face);
         const auto bent = [&](CubeSend send, const std::vector<const RodFace*>& faces) {
             CubeDraw d = strips(send, "cube: refracted");
+            d.faces.reserve(faces.size());
             for (const RodFace* face : faces) d.faces.push_back(emit.refracted(*face, rod, cx, cy, 0, RodPiece::Whole));
             push(std::move(d));
         };
         const auto grain = [&](CubeSend send, const std::vector<const RodFace*>& faces, float ds, float dt) {
             CubeDraw d = strips(send, "cube: grain");
+            d.faces.reserve(faces.size());
             for (const RodFace* face : faces) d.faces.push_back(emit.textured(*face, rod.textured, ds, dt, RodPiece::Whole));
             push(std::move(d));
         };
@@ -158,9 +164,11 @@ struct Pass {
         grain(CubeSend::GrainOffsetFar, far, rod.pair[0], rod.pair[1]);
         grain(CubeSend::GrainPlainFar, far, 0.0f, 0.0f);
         CubeDraw edges = strips(CubeSend::EdgeColour, "cube: edge colour");
+        edges.faces.reserve(far.size());
         for (const RodFace* face : far) edges.faces.push_back(edge(*face, rod));
         push(std::move(edges));
         CubeDraw depths = strips(CubeSend::Depth, "cube: depth");
+        depths.faces.reserve(near.size());
         for (const RodFace* face : near) depths.faces.push_back(depth(*face));
         push(std::move(depths));
         const int32_t w = input.width, h = input.height;
@@ -182,6 +190,8 @@ struct Pass {
         const RodTransform whole = Rods<A>::transform(rod, view, screen, mesh);
         CubeDraw reflection = strips(CubeSend::LayerReflection, "cube layer: reflection");
         CubeDraw shade = strips(CubeSend::LayerAlpha, "cube layer: alpha");
+        reflection.faces.reserve(whole.faces.size());
+        shade.faces.reserve(whole.faces.size());
         for (const RodFace& face : whole.faces) {
             if (face.flag == 0) continue;
             reflection.faces.push_back(emit.reflected(face, rod.reflection, RodPiece::Whole, true));
@@ -201,6 +211,7 @@ Cubes<A>::Cubes(RodMesh mesh) : m_mesh(std::move(mesh)) {}
 template <class A>
 std::vector<CubeDraw> Cubes<A>::frame(CubeState& c, HeadState& head, const ClockState& clock, const CubeFrameInputs& in) {
     std::vector<CubeDraw> out;
+    out.reserve(kExpectedDraws);
     tickRamp(c.ramp);
     ringStep<A>(c);
 
