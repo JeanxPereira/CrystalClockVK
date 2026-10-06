@@ -321,8 +321,8 @@ void NativeRenderer::submit(const std::function<void(VkCommandBuffer)>& record) 
     VkSubmitInfo2 info{VK_STRUCTURE_TYPE_SUBMIT_INFO_2};
     info.commandBufferInfoCount = 1;
     info.pCommandBufferInfos = &cmd;
-    check(vkQueueSubmit2(m_device.queue(), 1, &info, VK_NULL_HANDLE), "submit");
-    check(vkQueueWaitIdle(m_device.queue()), "wait");
+    m_device.verify(vkQueueSubmit2(m_device.queue(), 1, &info, VK_NULL_HANDLE), "submit");
+    m_device.verify(vkQueueWaitIdle(m_device.queue()), "wait");
 }
 
 void NativeRenderer::transition(VkCommandBuffer cmd, Image& image, VkImageLayout layout, VkPipelineStageFlags2 stage, VkAccessFlags2 access) {
@@ -669,6 +669,7 @@ void NativeRenderer::record(VkCommandBuffer cmd, const scene::Frame& frame) {
             open = &drawn;
             bound = VK_NULL_HANDLE;
         }
+        if (m_device.labels()) m_device.beginLabel(cmd, pass.name);
         PushState push{};
         push.scene[0] = float(frame.width);
         push.scene[1] = float(frame.height);
@@ -723,6 +724,7 @@ void NativeRenderer::record(VkCommandBuffer cmd, const scene::Frame& frame) {
         push.shade[1] = premultiplied(m.blend);
         vkCmdPushConstants(cmd, m_layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof push, &push);
         vkCmdDraw(cmd, ranges[i].second, 1, ranges[i].first, 0);
+        m_device.endLabel(cmd);
     }
     if (open) vkCmdEndRendering(cmd);
 }

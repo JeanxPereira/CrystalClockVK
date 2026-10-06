@@ -6,12 +6,20 @@
 #include <array>
 #include <atomic>
 #include <optional>
+#include <stdexcept>
+#include <string>
 #include <vector>
 
 namespace render {
 
 struct DeviceOptions {
     bool validation;
+    bool syncValidation = false;
+};
+
+class DeviceLost : public std::runtime_error {
+public:
+    using std::runtime_error::runtime_error;
 };
 
 class Device {
@@ -41,6 +49,11 @@ public:
     std::optional<FrameContext> beginFrame();
     void endFrame(const FrameContext& frame);
     uint32_t validationErrors() const { return m_errors.load(); }
+    bool labels() const { return m_beginLabel != nullptr; }
+    void beginLabel(VkCommandBuffer cmd, const std::string& name) const;
+    void endLabel(VkCommandBuffer cmd) const;
+    std::string faultReport() const;
+    void verify(VkResult result, const char* what) const;
 
 private:
     static constexpr uint32_t kFramesInFlight = 2;
@@ -71,6 +84,9 @@ private:
     bool m_hasSwapchain{false};
     VkSampleCountFlags m_sampleCounts{VK_SAMPLE_COUNT_1_BIT};
     std::atomic<uint32_t> m_errors{0};
+    PFN_vkCmdBeginDebugUtilsLabelEXT m_beginLabel{nullptr};
+    PFN_vkCmdEndDebugUtilsLabelEXT m_endLabel{nullptr};
+    PFN_vkGetDeviceFaultInfoEXT m_faultInfo{nullptr};
 };
 
 }  // namespace render

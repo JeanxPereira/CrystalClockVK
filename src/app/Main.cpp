@@ -64,6 +64,7 @@ using std::chrono::system_clock;
 
 struct Options {
     bool validation = true;
+    bool syncValidation = false;
     bool smoke = false;
     double soak = 0;
     bool profile = false;
@@ -166,6 +167,14 @@ int main(int argc, char** argv) {
         else if (arg == "--opening-textures" && more) options.openingTextures = argv[++i];
         else if (arg == "--capture" && more) options.capture = argv[++i];
         else if (arg == "--no-validation") options.validation = false;
+        else if (arg == "--validate" && more) {
+            const std::string mode = argv[++i];
+            if (mode == "sync") options.syncValidation = true;
+            else {
+                std::fprintf(stderr, "--validate: unknown mode %s (sync)\n", mode.c_str());
+                return 1;
+            }
+        }
         else if (arg == "--soak" && more) options.soak = std::atof(argv[++i]);
         else if (arg == "--shaders" && more) options.shaders = argv[++i];
         else if (arg == "--textures" && more) options.textures = argv[++i];
@@ -189,7 +198,7 @@ int main(int argc, char** argv) {
         else if (arg == "--golden" && i + 2 < argc && (std::string(argv[i + 1]) == "record" || std::string(argv[i + 1]) == "check")) options.golden = argv[i + 1], options.goldenFile = argv[i + 2], i += 2;
         else if (arg == "--golden-output" && more && (std::string(argv[i + 1]) == "native" || std::string(argv[i + 1]) == "x2-msaa4")) options.goldenOutput = argv[++i];
         else {
-            std::fprintf(stderr, "usage: CrystalClock [--resources dir] [--bios rom.bin] [--smoke] [--soak seconds] [--skip-boot] [--clock] [--pal] [--language N] [--aspect N] [--towers none|demo] [--lights-phase N] [--opening-textures dir] [--capture all|n,n,...] [--mute] [--audio-wav out.wav] [--log file] [--trace file.jsonl] [--profile] [--golden record|check file] [--golden-output native|x2-msaa4] [--no-validation] [--shaders dir]\n"
+            std::fprintf(stderr, "usage: CrystalClock [--resources dir] [--bios rom.bin] [--smoke] [--soak seconds] [--skip-boot] [--clock] [--pal] [--language N] [--aspect N] [--towers none|demo] [--lights-phase N] [--opening-textures dir] [--capture all|n,n,...] [--mute] [--audio-wav out.wav] [--log file] [--trace file.jsonl] [--profile] [--golden record|check file] [--golden-output native|x2-msaa4] [--no-validation] [--validate sync] [--shaders dir]\n"
                                  "                    [--settings settings.json] [--screenshots dir] [--textures dir] [--mesh rod-mesh.json] [--cube-mesh cube-mesh.json] [--font FNTOSD] [--program hddosd.elf]\n");
             return 1;
         }
@@ -282,7 +291,7 @@ int main(int argc, char** argv) {
     }
     int code = 0;
     try {
-        render::Device device(window, {options.validation});
+        render::Device device(window, {options.validation, options.syncValidation});
         render::NativeRenderer renderer(device, options.shaders);
         if (useTextureFiles) renderer.loadClockTextures(options.textures);
         else app::uploadClockTextures(renderer, *decoded);
@@ -946,6 +955,9 @@ int main(int argc, char** argv) {
         }
         if (options.profile) std::printf("%s", profile.table().c_str());
         if (device.validationErrors() != 0) code = 1;
+    } catch (const render::DeviceLost& error) {
+        core::log(core::Level::Error, core::Subsystem::Render, "device lost: {}", error.what());
+        code = 2;
     } catch (const std::exception& error) {
         core::log(core::Level::Error, core::Subsystem::App, "fatal: {}", error.what());
         code = 1;

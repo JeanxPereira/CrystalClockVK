@@ -1,6 +1,7 @@
 #include "render/Device.hpp"
 #include <SDL3/SDL_vulkan.h>
 #include <cstdio>
+#include <format>
 #include <stdexcept>
 #include <string>
 
@@ -20,6 +21,40 @@ void check(VkResult result, const char* what) {
 }
 }  // namespace
 
+void Device::verify(VkResult result, const char* what) const {
+    if (result == VK_ERROR_DEVICE_LOST) throw DeviceLost(std::string(what) + ": device lost" + faultReport());
+    check(result, what);
+}
+
+void Device::beginLabel(VkCommandBuffer cmd, const std::string& name) const {
+    if (!m_beginLabel) return;
+    VkDebugUtilsLabelEXT label{VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT};
+    label.pLabelName = name.c_str();
+    m_beginLabel(cmd, &label);
+}
+
+void Device::endLabel(VkCommandBuffer cmd) const {
+    if (m_endLabel) m_endLabel(cmd);
+}
+
+std::string Device::faultReport() const {
+    if (!m_faultInfo) return {};
+    VkDeviceFaultCountsEXT counts{VK_STRUCTURE_TYPE_DEVICE_FAULT_COUNTS_EXT};
+    if (m_faultInfo(device(), &counts, nullptr) != VK_SUCCESS) return {};
+    std::vector<VkDeviceFaultAddressInfoEXT> addresses(counts.addressInfoCount);
+    std::vector<VkDeviceFaultVendorInfoEXT> vendors(counts.vendorInfoCount);
+    VkDeviceFaultInfoEXT info{VK_STRUCTURE_TYPE_DEVICE_FAULT_INFO_EXT};
+    info.pAddressInfos = addresses.data();
+    info.pVendorInfos = vendors.data();
+    if (m_faultInfo(device(), &counts, &info) < 0) return {};
+    std::string report = std::string("\ndevice fault: ") + info.description;
+    for (const VkDeviceFaultAddressInfoEXT& a : addresses)
+        report += std::format("\n  address type {} at 0x{:x}, precision {}", static_cast<int>(a.addressType), a.reportedAddress, a.addressPrecision);
+    for (const VkDeviceFaultVendorInfoEXT& v : vendors)
+        report += std::format("\n  vendor {} code 0x{:x} data 0x{:x}", v.description, v.vendorFaultCode, v.vendorFaultData);
+    return report;
+}
+
 Device::Device(SDL_Window* window, const DeviceOptions& options) : m_window(window) {
     vkb::InstanceBuilder instanceBuilder;
     instanceBuilder.set_app_name("CrystalClock").require_api_version(1, 4, 0);
@@ -30,10 +65,18 @@ Device::Device(SDL_Window* window, const DeviceOptions& options) : m_window(wind
     } else {
         instanceBuilder.set_headless(true);
     }
+    const VkBool32 syncOn = VK_TRUE;
+    if (options.validation && options.syncValidation)
+        instanceBuilder.add_layer_setting({"VK_LAYER_KHRONOS_validation", "validate_sync", VK_LAYER_SETTING_TYPE_BOOL32_EXT, 1, &syncOn});
     if (options.validation) instanceBuilder.request_validation_layers(true).set_debug_callback(onMessage).set_debug_callback_user_data_pointer(&m_errors);
     auto instance = instanceBuilder.build();
     if (!instance) throw std::runtime_error("instance: " + instance.error().message());
     m_instance = instance.value();
+    if (m_instance.debug_messenger) {
+        m_beginLabel = reinterpret_cast<PFN_vkCmdBeginDebugUtilsLabelEXT>(vkGetInstanceProcAddr(m_instance.instance, "vkCmdBeginDebugUtilsLabelEXT"));
+        m_endLabel = reinterpret_cast<PFN_vkCmdEndDebugUtilsLabelEXT>(vkGetInstanceProcAddr(m_instance.instance, "vkCmdEndDebugUtilsLabelEXT"));
+        if (!m_beginLabel || !m_endLabel) m_beginLabel = nullptr;
+    }
 
     if (window && !SDL_Vulkan_CreateSurface(window, m_instance.instance, nullptr, &m_surface))
         throw std::runtime_error(std::string("surface: ") + SDL_GetError());
@@ -55,9 +98,15 @@ Device::Device(SDL_Window* window, const DeviceOptions& options) : m_window(wind
     const VkPhysicalDeviceLimits& limits = chosen.properties.limits;
     m_sampleCounts = limits.framebufferColorSampleCounts & limits.framebufferDepthSampleCounts;
 
+    VkPhysicalDeviceFaultFeaturesEXT faultFeatures{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FAULT_FEATURES_EXT};
+    faultFeatures.deviceFault = VK_TRUE;
+    const bool fault = chosen.is_extension_present(VK_EXT_DEVICE_FAULT_EXTENSION_NAME) && chosen.are_extension_features_present(faultFeatures) &&
+                       chosen.enable_extension_if_present(VK_EXT_DEVICE_FAULT_EXTENSION_NAME) && chosen.enable_extension_features_if_present(faultFeatures);
+
     auto device = vkb::DeviceBuilder{chosen}.build();
     if (!device) throw std::runtime_error("device: " + device.error().message());
     m_device = device.value();
+    if (fault) m_faultInfo = reinterpret_cast<PFN_vkGetDeviceFaultInfoEXT>(vkGetDeviceProcAddr(m_device.device, "vkGetDeviceFaultInfoEXT"));
 
     auto queue = m_device.get_queue(vkb::QueueType::graphics);
     auto family = m_device.get_queue_index(vkb::QueueType::graphics);
@@ -175,7 +224,7 @@ std::optional<Device::FrameContext> Device::beginFrame() {
     if (!m_hasSwapchain) return std::nullopt;
 
     Frame& frame = m_frames[m_frameSlot];
-    check(vkWaitForFences(device(), 1, &frame.fence, VK_TRUE, UINT64_MAX), "wait fence");
+    verify(vkWaitForFences(device(), 1, &frame.fence, VK_TRUE, UINT64_MAX), "wait fence");
 
     uint32_t index = 0;
     VkResult acquired = vkAcquireNextImageKHR(device(), m_swapchain.swapchain, UINT64_MAX, frame.acquired, VK_NULL_HANDLE, &index);
@@ -183,13 +232,13 @@ std::optional<Device::FrameContext> Device::beginFrame() {
         m_hasSwapchain = createSwapchain();
         return std::nullopt;
     }
-    if (acquired != VK_SUCCESS && acquired != VK_SUBOPTIMAL_KHR) check(acquired, "acquire");
-    check(vkResetFences(device(), 1, &frame.fence), "reset fence");
+    if (acquired != VK_SUCCESS && acquired != VK_SUBOPTIMAL_KHR) verify(acquired, "acquire");
+    verify(vkResetFences(device(), 1, &frame.fence), "reset fence");
 
-    check(vkResetCommandBuffer(frame.cmd, 0), "reset command buffer");
+    verify(vkResetCommandBuffer(frame.cmd, 0), "reset command buffer");
     VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
     begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    check(vkBeginCommandBuffer(frame.cmd, &begin), "begin command buffer");
+    verify(vkBeginCommandBuffer(frame.cmd, &begin), "begin command buffer");
     transition(frame.cmd, m_images[index], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, 0,
                VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
@@ -201,7 +250,7 @@ void Device::endFrame(const FrameContext& context) {
     transition(frame.cmd, context.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
                VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
                VK_PIPELINE_STAGE_2_NONE, 0);
-    check(vkEndCommandBuffer(frame.cmd), "end command buffer");
+    verify(vkEndCommandBuffer(frame.cmd), "end command buffer");
 
     VkSemaphoreSubmitInfo wait{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
     wait.semaphore = frame.acquired;
@@ -218,7 +267,7 @@ void Device::endFrame(const FrameContext& context) {
     submit.pCommandBufferInfos = &cmd;
     submit.signalSemaphoreInfoCount = 1;
     submit.pSignalSemaphoreInfos = &signal;
-    check(vkQueueSubmit2(m_queue, 1, &submit, frame.fence), "submit");
+    verify(vkQueueSubmit2(m_queue, 1, &submit, frame.fence), "submit");
 
     VkPresentInfoKHR present{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
     present.waitSemaphoreCount = 1;
@@ -228,7 +277,7 @@ void Device::endFrame(const FrameContext& context) {
     present.pImageIndices = &context.index;
     VkResult result = vkQueuePresentKHR(m_queue, &present);
     if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) m_hasSwapchain = createSwapchain();
-    else check(result, "present");
+    else verify(result, "present");
     m_frameSlot = (m_frameSlot + 1) % kFramesInFlight;
 }
 
