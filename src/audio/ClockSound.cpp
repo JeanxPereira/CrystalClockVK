@@ -19,7 +19,6 @@ struct Timed {
 
 constexpr uint64_t kCyclesPerSample = 768;
 constexpr uint32_t kFirstTickAfterInit = 8811;
-constexpr uint32_t kSquareGap = 26;
 
 constexpr std::array<Timed, 43> kInitCommands{{
     {0, 0x6010, {4u, 68u, 4096u, 0u, 64u}},
@@ -67,36 +66,27 @@ constexpr std::array<Timed, 43> kInitCommands{{
     {8419, 0x6200, {4u, 68u, 0u, 2684496400u, 64u}},
 }};
 
-constexpr std::array<Timed, 19> kClockCommands{{
-    {0, 0x6150, {1u, 0u, 0u, 0u, 0u}},
+// The S/PDIF push (pad_sound_handler_thread_proc 0x0020CE2C) and the 0x60D0 ramp (EE-queued, sent from this table instead).
+// Ramp times: the send frames of hddosd-110U-sound-ee-boot after the 6150,1 send, +1 then +5, +7 ... +31 (drains skip the other frames; the cause is not traced),
+// as samples at 4004/5 per frame (the app's audio frame length).
+constexpr uint32_t samplesAfter(uint32_t frames) { return frames * 4004 / 5; }
+constexpr std::array<Timed, 16> kClockCommands{{
     {23, 0x8070, {10u, 0u, 2033250u, 2684492688u, 64u}},
-    {800, 0x60d0, {1u, 0u, 0u, 2684493712u, 64u}},
-    {2407, 0x60d0, {1u, 344u, 344u, 0u, 64u}},
-    {4009, 0x60d0, {1u, 688u, 688u, 0u, 64u}},
-    {5611, 0x60d0, {1u, 1032u, 1032u, 0u, 64u}},
-    {7212, 0x60d0, {1u, 1376u, 1376u, 0u, 64u}},
-    {8814, 0x60d0, {1u, 1720u, 1720u, 0u, 64u}},
-    {10415, 0x60d0, {1u, 2064u, 2064u, 0u, 64u}},
-    {12016, 0x60d0, {1u, 2408u, 2408u, 0u, 64u}},
-    {13618, 0x60d0, {1u, 2752u, 2752u, 0u, 64u}},
-    {15220, 0x60d0, {1u, 3096u, 3096u, 0u, 64u}},
-    {16821, 0x60d0, {1u, 3440u, 3440u, 0u, 64u}},
-    {18423, 0x60d0, {1u, 3784u, 3784u, 0u, 64u}},
-    {20025, 0x60d0, {1u, 4128u, 4128u, 2684493328u, 64u}},
-    {21627, 0x60d0, {1u, 4472u, 4472u, 0u, 64u}},
-    {23228, 0x60d0, {1u, 4816u, 4816u, 0u, 64u}},
-    {24830, 0x6150, {6u, 0u, 15u, 0u, 64u}},
-    {24853, 0x6140, {2u, 1756u, 1752u, 2684494352u, 64u}},
-}};
-
-constexpr std::array<Timed, 2> kSquareHide{{
-    {0, 0x6300, {1u, 2u, 384u, 0u, 64u}},
-    {kSquareGap, 0x6300, {1u, 3u, 1784u, 2684493584u, 64u}},
-}};
-
-constexpr std::array<Timed, 2> kSquareShow{{
-    {0, 0x6300, {1u, 0u, 4294934528u, 0u, 64u}},
-    {kSquareGap, 0x6300, {1u, 1u, 1800u, 2684495248u, 64u}},
+    {samplesAfter(1), 0x60d0, {1u, 0u, 0u, 2684493712u, 64u}},
+    {samplesAfter(5), 0x60d0, {1u, 344u, 344u, 0u, 64u}},
+    {samplesAfter(7), 0x60d0, {1u, 688u, 688u, 0u, 64u}},
+    {samplesAfter(9), 0x60d0, {1u, 1032u, 1032u, 0u, 64u}},
+    {samplesAfter(11), 0x60d0, {1u, 1376u, 1376u, 0u, 64u}},
+    {samplesAfter(13), 0x60d0, {1u, 1720u, 1720u, 0u, 64u}},
+    {samplesAfter(15), 0x60d0, {1u, 2064u, 2064u, 0u, 64u}},
+    {samplesAfter(17), 0x60d0, {1u, 2408u, 2408u, 0u, 64u}},
+    {samplesAfter(19), 0x60d0, {1u, 2752u, 2752u, 0u, 64u}},
+    {samplesAfter(21), 0x60d0, {1u, 3096u, 3096u, 0u, 64u}},
+    {samplesAfter(23), 0x60d0, {1u, 3440u, 3440u, 0u, 64u}},
+    {samplesAfter(25), 0x60d0, {1u, 3784u, 3784u, 0u, 64u}},
+    {samplesAfter(27), 0x60d0, {1u, 4128u, 4128u, 2684493328u, 64u}},
+    {samplesAfter(29), 0x60d0, {1u, 4472u, 4472u, 0u, 64u}},
+    {samplesAfter(31), 0x60d0, {1u, 4816u, 4816u, 0u, 64u}},
 }};
 
 class ModelledStamp final : public WriteTiming {
@@ -209,17 +199,8 @@ void ClockSound::startClock() {
         DriverCommand c;
         c.id = t.id;
         c.words = t.words;
-        enqueue(m_mixed + t.offset, c);
-    }
-}
-
-void ClockSound::queueSquare(bool hide) {
-    std::lock_guard lock(m_lock);
-    for (const Timed& t : hide ? kSquareHide : kSquareShow) {
-        DriverCommand c;
-        c.id = t.id;
-        c.words = t.words;
-        enqueue(m_mixed + t.offset, c);
+        c.sample = m_mixed + t.offset;
+        enqueue(c.sample, c);
     }
 }
 

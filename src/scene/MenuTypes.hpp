@@ -10,6 +10,7 @@
 #include "scene/Matrix.hpp"
 #include "scene/Ramp.hpp"
 #include "scene/Rods.hpp"
+#include "scene/Sound.hpp"
 
 namespace scene {
 
@@ -139,6 +140,7 @@ struct MenuWorld {
     CubeState& cubes;
     ConfigItems& items;
     int32_t width = 640, height = 224;
+    std::vector<SoundCommand>* sounds = nullptr;
 };
 
 }

@@ -63,6 +63,15 @@ void Opening<A>::advance() {
     m_handOff = decide(in);
 }
 
+// opening_thread_set_vars_2 0x0021AE78 (jal 0x0021ABF0, before OpeningInit): module 4 queues 0x6150 then 0x6140 on the ring temporaries;
+// module 1 queues 0x6140, 0 with the registers it was entered with (measured 0 and 0).
+template <class A>
+std::vector<SoundCommand> Opening<A>::startCommands() const {
+    if (m_options.module == 4) return {{0x6150, 2, 0, 0}, {0x6140, 6, 0, 0, true, true}};
+    if (m_options.module == 1) return {{0x6140, 0, 0, 0}};
+    return {};
+}
+
 template <class A>
 Frame Opening<A>::frame(int32_t displayIndex, int32_t field) {
     if (m_ended) throw std::logic_error("the opening has ended");
@@ -103,6 +112,12 @@ Frame Opening<A>::frame(int32_t displayIndex, int32_t field) {
     Flat<A>::bars(flat, passes);
 
     m_sounds = m_step.sounds;
+    m_commands.clear();
+    // Stage 2 handler 0x0021F0F8: a 0x6140 carries a2 = low 16 bits of D_003DB800 (0x0021EF44) and a3 as entered (measured 0x8000).
+    for (const SoundEvent& e : m_sounds) {
+        if (e.id == 0x6140) m_commands.push_back({0x6140, static_cast<uint16_t>(e.argument), 0xB800, 0x8000});
+        else if (e.id == 0x6150) m_commands.push_back({0x6150, 0, 0, static_cast<uint16_t>(e.argument)});
+    }
     advance();
     return out;
 }

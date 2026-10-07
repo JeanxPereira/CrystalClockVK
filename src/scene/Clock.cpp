@@ -388,7 +388,7 @@ Clock<A>::Clock(const ClockInputs& in)
 
 template <class A>
 MenuWorld Clock<A>::menuWorld() {
-    return {m_state, m_head.state(), m_orbs.spriteFade, m_menusState, m_cubeState, m_items, m_width, m_height};
+    return {m_state, m_head.state(), m_orbs.spriteFade, m_menusState, m_cubeState, m_items, m_width, m_height, &m_sounds};
 }
 
 // References/model/clock_frame.mjs frame(), the clock screen's parts, in its order.
@@ -406,6 +406,7 @@ Frame Clock<A>::frame(const FrameInputs& in) {
     m_state.scene.field = in.field;
     m_strings.clear();
     m_notes.clear();
+    m_sounds.clear();
     MenuExternals ext;
     if (m_menus) {
         ext = in.menu;

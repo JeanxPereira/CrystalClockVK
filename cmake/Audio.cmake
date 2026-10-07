@@ -1,4 +1,4 @@
-add_library(ClockAudioCore STATIC src/audio/SpuWrite.cpp)
+add_library(ClockAudioCore STATIC src/audio/SpuWrite.cpp src/audio/EeSoundQueue.cpp)
 target_include_directories(ClockAudioCore PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 add_library(ClockAudioData STATIC src/audio/data/SndImage.cpp src/audio/data/HdBank.cpp src/audio/data/SqSequence.cpp)
