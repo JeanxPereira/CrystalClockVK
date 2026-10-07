@@ -390,9 +390,11 @@ int main(int argc, char** argv) {
             for (const scene::SoundCommand& c : sounds) audio->queue({c.id, c.a1, c.a2, c.a3}, c.carriedA2, c.carriedA3);
         };
         bool clockThreadDone = false;
-        const auto clockThreadStarts = [&] {
+        uint32_t setUpIn = 0;
+        const auto clockThreadStarts = [&](bool delayedSetUp = false) {
             if (clockThreadDone) return;
             clockThreadDone = true;
+            if (delayedSetUp) setUpIn = scene::kClockInitFrames;
             std::vector<scene::SoundCommand> sounds;
             scene::clockThreadStart(sounds);
             queueSounds(sounds);
@@ -480,6 +482,7 @@ int main(int argc, char** argv) {
             bootOpening = opening.get();
             bootClockForced = boot.clockForced;
             clockThreadDone = false;
+            setUpIn = 0;
             queueSounds(bootOpening->startCommands());
             clockPtr.reset();
             auto clockScreen = std::make_unique<FunctionScreen>([&] {
@@ -547,6 +550,7 @@ int main(int argc, char** argv) {
             }
             if (audio)
                 for (const audio::SoundCommand& c : audio->drain()) sent += std::format("{}{:x}({},{},{})", sent.empty() ? "" : ",", c.id, c.a1, c.a2, c.a3);
+            if (setUpIn > 0 && --setUpIn == 0) clockSetsUp(bootClockForced);
             if (chain) {
                 const bool inOpening = chain->phase() == app::BootPhase::Opening;
                 chain->step();
@@ -555,10 +559,10 @@ int main(int argc, char** argv) {
                     const scene::opening::HandOff* h = bootOpening->handOff();
                     core::log(core::Level::Info, core::Subsystem::Boot, "phase {} -> {}, opening counter {}, hand-off {}", phaseName(lastPhase), chain->name(), bootOpening->counter(),
                               h ? std::format("module {} execute type {}", h->module, h->executeAppType) : std::string("none"));
-                    if (chain->phase() == app::BootPhase::Gap) clockThreadStarts();
+                    if (chain->phase() == app::BootPhase::Gap) clockThreadStarts(true);
                     if (chain->phase() == app::BootPhase::Clock) {
                         if (lastPhase == app::BootPhase::Opening) clockThreadStarts();
-                        clockSetsUp(bootClockForced);
+                        if (lastPhase == app::BootPhase::Opening) clockSetsUp(bootClockForced);
                     }
                     lastPhase = chain->phase();
                 }
@@ -933,8 +937,10 @@ int main(int argc, char** argv) {
                 chain.reset();
                 bootOpening = nullptr;
                 startClock(false, std::nullopt);
-                clockThreadStarts();
-                clockSetsUp(false);
+                if (!clockThreadDone) {
+                    clockThreadStarts();
+                    clockSetsUp(false);
+                }
                 produce();
             }
             if (panel.restartOpening) {

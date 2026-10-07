@@ -13,6 +13,10 @@ struct SoundCommand {
 // The a3 a sender does not set is a register the facts record and never predict: a value a capture measured at the site where there is one, else this placeholder.
 constexpr uint16_t kPlaceholderA3 = 0;
 
+// Frames from the thread start (6150,1 send) to the set-up pair's send: the EE compute of module_clock_init_resources (jal 0x00225E48) before the loop,
+// 31 in hddosd-110U-sound-clock-boot and hddosd-110U-sound-ee-boot.
+constexpr uint32_t kClockInitFrames = 31;
+
 // module_clock_thread_proc 0x00225D30, jal 0x00225D50.
 inline void clockThreadStart(std::vector<SoundCommand>& out) { out.push_back({0x6150, 1, 0, 0}); }
 
