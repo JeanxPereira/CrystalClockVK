@@ -199,7 +199,8 @@ void ClockSound::startClock() {
         DriverCommand c;
         c.id = t.id;
         c.words = t.words;
-        enqueue(m_mixed + t.offset, c);
+        c.sample = m_mixed + t.offset;
+        enqueue(c.sample, c);
     }
 }
 

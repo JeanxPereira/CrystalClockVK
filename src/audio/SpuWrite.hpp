@@ -18,7 +18,7 @@ struct SpuWrite {
 
 struct DriverCommand {
     uint32_t frame = 0;
-    uint32_t sample = 0;
+    uint64_t sample = 0;
     uint32_t id = 0;
     std::array<uint32_t, 5> words{};
 };

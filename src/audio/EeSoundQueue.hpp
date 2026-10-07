@@ -19,6 +19,7 @@ public:
 
     explicit EeSoundQueue(int32_t rampCounter = 0, bool sendsRamp = true) : m_rampCounter(rampCounter), m_sendsRamp(sendsRamp) {}
 
+    void restartRamp() { m_rampCounter = 0; }
     bool enqueue(const SoundCommand& command);
     std::vector<SoundCommand> drain();
 

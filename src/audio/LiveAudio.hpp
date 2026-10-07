@@ -35,6 +35,7 @@ public:
     LiveAudio& operator=(const LiveAudio&) = delete;
 
     void startClock();
+    void discardPending() { m_queue.drain(); }
     void queue(const SoundCommand& command, bool carriedA2 = false, bool carriedA3 = false);
     std::vector<SoundCommand> drain();
     void step();
