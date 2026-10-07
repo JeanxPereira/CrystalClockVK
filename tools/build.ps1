@@ -1,7 +1,7 @@
 param(
     [Parameter(Mandatory)][ValidateSet('configure', 'build', 'test')][string]$Action,
     [Parameter(Mandatory)][string]$Preset,
-    [Parameter(ValueFromRemainingArguments)][string[]]$Rest
+    [Parameter(ValueFromRemainingArguments)][string[]]$Forward
 )
 
 $ErrorActionPreference = 'Stop'
@@ -20,9 +20,9 @@ if (Test-Path $ninja) { $env:PATH = "$ninja;$env:PATH" }
 Push-Location (Split-Path $PSScriptRoot)
 try {
     switch ($Action) {
-        'configure' { cmake --preset $Preset @Rest }
-        'build' { cmake --build --preset $Preset @Rest }
-        'test' { ctest --preset $Preset @Rest }
+        'configure' { cmake --preset $Preset @Forward }
+        'build' { cmake --build --preset $Preset @Forward }
+        'test' { ctest --preset $Preset @Forward }
     }
     exit $LASTEXITCODE
 }
